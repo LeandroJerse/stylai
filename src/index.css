@@ -1,0 +1,5 @@
+@import "tailwindcss";
+@import "./styles/tokens.css";
+@import "./styles/app.css";
+@source "./";
+html, body, #root { margin: 0; min-height: 100%; }
