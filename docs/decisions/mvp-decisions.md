@@ -16,6 +16,11 @@ Updated 2026-11-10. Latest explicit user decisions supersede earlier proposals. 
 | D08 | Plan the full MVP and needed frontend/API changes | Documentation and reviewable plans are authorized; live payments, purchases, cloud creation and public deployment have not been performed |
 | D09 | Asaas payment processor | Processor selection is settled; verify merchant settings, methods and sandbox integration. Do not build Stripe |
 | D10 | Create runnable monorepo/app structure and detailed successor handoff | Scaffold is implemented under apps/packages; full domain integrations remain next-developer work |
+| D11 | Bun tooling with Node 26.13.0 LTS API/worker runtime | Pinned versions, generated schema types and local build/verification evidence exist |
+| D12 | Connect hosted Supabase before publication | Owner created `stylai-dev` (`yekhpfwxuiuakxznxaew`, `us-east-1`); starter migration/readiness/types verified; full domain/Auth flows pending |
+| D13 | Phase 1: keep all people unassigned | Role coverage exists in `docs/operations/owners.md`; operational assignments remain unresolved by explicit choice |
+| D14 | Existing Asaas account; no Segmind or marketplace developer accounts yet | Asaas environment/capabilities unverified; no inferred sandbox, scopes or supplier rights |
+| D15 | Launch business settings not defined | Market/currency/methods/seller/funding/support must remain pending; BRL defaults are not approval |
 
 ## Engineering/product proposals to validate
 
@@ -33,6 +38,8 @@ Updated 2026-11-10. Latest explicit user decisions supersede earlier proposals. 
 ## Remaining decisions and proof owners
 
 Owners below are roles to assign, not named people who have accepted responsibility. No external outreach is authorized by this register.
+
+Current Phase 1 facts and next actions are maintained in [phase-1-readiness.md](phase-1-readiness.md), [source-capabilities.md](source-capabilities.md), [owners](../operations/owners.md) and [IDM-VTON evaluation](../evaluations/idm-vton.md). Provider selection stays settled; these records concern access and actual capability.
 
 | ID | Required decision/evidence | Owner role | Blocks |
 | --- | --- | --- | --- |

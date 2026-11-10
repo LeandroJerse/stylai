@@ -22,6 +22,8 @@ Desired launch journey: public catalog -> choose garment/variant -> verified acc
 - Use the user's layered diagram as architecture/management context. It does not select every example technology shown.
 - Current request implements the monorepo, detailed successor plan, Node 26 pin and Supabase foundation/hosted connection. The owner created `stylai-dev`; starter migration, hosted readiness and public schema type generation are verified. It does not authorize pretending the whole MVP exists, spending on live integrations, publishing or sending external outreach.
 
+Phase 1 baseline and fact registers are implemented; see [Phase 1 readiness](../decisions/phase-1-readiness.md). All people remain unassigned by explicit choice; Asaas account exists with environment/access unverified, Segmind and marketplace developer accounts do not yet exist, and business settings are not defined.
+
 See [decision register](../decisions/mvp-decisions.md) for open owner responsibilities. New merchant/source facts must be recorded with evidence.
 
 ## 3. MVP boundaries proposed by the design

@@ -4,7 +4,7 @@ Updated 2026-11-10. User-selected provider, replacing the earlier Luna suggestio
 
 ## Verified documentation and limits
 
-The [IDM-VTON API](https://www.segmind.com/models/idm-vton/api) takes `human_img` and `garm_img`; documented categories are `upper_body`, `lower_body`, `dresses`. Async v2 supports submit/status/result retrieval. Documented states are QUEUED, PROCESSING, COMPLETED and FAILED; results expire after one hour. The [JavaScript SDK](https://docs.segmind.com/docs/sdks/javascript) documents stable `X-Request-ID` submission deduplication.
+The [IDM-VTON API](https://www.segmind.com/models/idm-vton/api) takes `human_img` and `garm_img`; documented categories are `upper_body`, `lower_body`, `dresses`. Async v2 supports submit/status/result retrieval. Documented states are QUEUED, PROCESSING, COMPLETED and FAILED. The model page describes one-hour async result-record expiry; the [logging policy](https://docs.segmind.com/docs/serverless-api/logging) separately describes seven-day output-file retention and logged prompts/settings. Record expiry is not deletion of all provider media. The [JavaScript SDK](https://docs.segmind.com/docs/sdks/javascript) documents stable `X-Request-ID` submission deduplication; generic async guidance differs, so verify the chosen account/SDK contract before relying on retries. See the [Phase 1 evaluation and rights record](../evaluations/idm-vton.md).
 
 The [model page](https://www.segmind.com/models/idm-vton) lists a noncommercial license. Obtain explicit confirmation of commercial hosted-use rights covering StylAI; paid API availability alone does not establish that permission. This is a launch dependency, not a conclusion that a specific commercial agreement cannot exist.
 

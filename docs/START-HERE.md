@@ -20,8 +20,8 @@ Authoritative order: actual source/verification evidence for current behavior; c
 - Runnable API and idle worker foundations exist, along with package boundaries, config examples, Supabase local config and CI.
 - API live health is 200; readiness probes the real Supabase schema RPC and is 503 until configured with the expected reachable schema. Business routes remain unimplemented 503 errors. Worker consumes no queue.
 - Supabase SDK clients, starter schema/RLS/private buckets and isolated PostgreSQL tests exist. Hosted connection and generated public schema types are verified. App auth, catalog endpoints, Asaas, Segmind, source orders and privacy workflows remain pending.
-- Asaas is confirmed. Do not reopen Stripe/provider selection. Payment methods, merchant account and commercial settings still need confirmation.
-- No live service keys, accounts, actual `.env.local`, cloud projects, migrations, real purchases, paid image calls or deployment are supplied.
+- Asaas is confirmed and the owner has an account; its environment, merchant capability, payment methods and commercial settings remain unverified. Do not reopen processor selection.
+- The owner created hosted `stylai-dev`; the starter migration is applied and the API uses ignored local Supabase configuration. No credentials are committed. Segmind and marketplace developer accounts do not yet exist. No real purchase, paid image call or app deployment has been performed.
 
 ## Local setup
 
@@ -49,10 +49,10 @@ Follow [hosted Supabase setup](SUPABASE-SETUP.md). The target is hosted Supabase
 
 ## Repository/publication
 
-Origin: https://github.com/LeandroJerse/stylai. Keep `.git` at root and no nested repositories. Work was prepared on `chore/monorepo-mvp-handoff`; no commit/push was made by this task. Git shows old root source files deleted and `apps/web` untracked until staging; this is the expected move, not lost source. Stage/review the full move together so Git can detect renames. Do not stage `node_modules`, outputs, keys or actual environment files.
+Origin: https://github.com/LeandroJerse/stylai. Keep `.git` at root and no nested repositories. The owner committed the monorepo baseline as `a096c92` on `chore/monorepo-mvp-handoff`; the frontend move is already tracked. Phase 1 changes remain uncommitted for review; this execution made no commit/push. Do not stage `node_modules`, outputs, keys or actual environment files.
 
 Inherited tracking refs can describe the previous frontend remote. Before first push, inspect the actual new remote's history and reconcile non-destructively. Do not force-push based on a copied repository's old refs. The sibling `stylai_frontend` and prototype remain outside the new monorepo and are not required by this handoff.
 
 ## First implementation assignment
 
-Follow phases 1–2 in the complete plan: validate this scaffold, establish the real Supabase schema/access controls and capture real role-test evidence. External commercial-rights/app-account work can proceed in parallel through the responsible owner; do not let unavailable credentials lead to fake successful integrations. Work task-by-task, maintain actual coverage/status, and stop calling a feature complete until its named verification exists.
+Phase 1's baseline and fact registers are implemented; see [Phase 1 readiness](decisions/phase-1-readiness.md) and [its verification](qa/2026-11-10-phase-1-baseline.md). People remain unassigned by explicit owner choice; Asaas account exists but environment/access is unverified; Segmind/marketplace developer accounts and business settings remain open. Full Phase 1 external acceptance is not complete. Continue the independent Phase 2 schema/transaction work, extending the applied Supabase foundation. Do not let missing accounts become fake successful integrations or silently close launch gates.

@@ -63,9 +63,13 @@ External approvals and real data collection may run in parallel with code; the t
 
 **Files:** existing root tooling; `docs/qa/scaffold-progress.md`; `docs/decisions/mvp-decisions.md`; new `docs/decisions/source-capabilities.md`, `docs/evaluations/idm-vton.md`, `docs/operations/owners.md`.
 
-- [ ] Run the existing commands and verify built API/worker are live yet not ready; preserve that distinction during development. Do not reopen completed folder migration without evidence of a problem.
+**Execution status (2026-11-10):** repository baseline verified and all fact registers created. [Readiness/access ledger](../decisions/phase-1-readiness.md) and [verification evidence](../qa/2026-11-10-phase-1-baseline.md) are authoritative for this phase. The owner chose all people unassigned, confirms an Asaas account (environment/access unverified), no Segmind account and no marketplace developer accounts; business settings are not defined. External requirements below remain open, so the full phase is not declared complete.
+
+- [x] Run the existing commands and verify built API/worker liveness and credential-free readiness 503; the configured API foundation is separately verified ready against hosted Supabase. Worker stays idle/nonready. Preserve that distinction and the completed frontend move.
+- [x] Create role coverage, provider/access capability, business-decision and Segmind evaluation/rights registers with current owner answers and evidence; no invented assignments or account permissions.
 - [ ] Assign roles for product/business, platform, catalog/source authorization, Asaas merchant/payment operations, procurement funding, privacy/support and technical review. No names are implied by a role table.
 - [ ] Obtain actual Supabase dev/staging projects or local stack; Asaas sandbox; Segmind access/commercial-use confirmation/test budget; all three marketplace account/region/program grants and supplier/image permissions. Do not put secrets in docs/Git or ask for them in a public issue.
+  Supabase development foundation is verified; remaining environments/providers/grants in this item are open. Existing Asaas account is not assumed to be sandbox.
 - [ ] Record enabled payment methods, currency/destinations, seller identity, shipping/tax/returns/support obligations, procurement funding and source capabilities. Asaas itself is settled; Pix/card/one-off are proposals pending merchant capability.
 - [ ] Verify licenses and provider data handling before real customer images. IDM-VTON's listing has a noncommercial license; get actual hosted commercial rights evidence rather than assuming API credits solve it.
 

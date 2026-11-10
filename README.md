@@ -45,5 +45,7 @@ The root check verifies imports, types, tests, builds and real built Node servic
 - [Segmind and commercial-use/data/quality gates](docs/integrations/segmind-idm-vton.md)
 - [Three marketplace connector plan](docs/superpowers/plans/2026-11-10-marketplace-connectors.md)
 - [Current scaffold verification](docs/qa/scaffold-progress.md)
+- [Phase 1 readiness and current access facts](docs/decisions/phase-1-readiness.md)
+- [Phase 1 verification](docs/qa/2026-11-10-phase-1-baseline.md)
 
-No commit, push or deployment was made by the scaffold task. Review/stage the entire frontend move with the new root files; Git can then recognize renames. Do not stage node_modules, build outputs or actual environment values. Verify new-remote history before the first push; inherited tracking refs may describe the old frontend repository.
+The owner committed the monorepo baseline as `a096c92`; the frontend move is tracked. Phase 1 changes remain uncommitted for review, and no commit/push was performed by this execution. Do not stage node_modules, build outputs or actual environment values. Verify new-remote history before the first push; inherited tracking refs may describe the old frontend repository.

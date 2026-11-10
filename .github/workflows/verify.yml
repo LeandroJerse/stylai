@@ -19,7 +19,8 @@ jobs:
           bun-version: 1.3.12
       - run: bun install --frozen-lockfile
       - run: bun run check
+      - run: bun run test:db
       - run: bun run test:e2e:install
       - run: bun run test:e2e
-      # Real Supabase/Segmind/Asaas/source tests are not implemented yet.
-      # Add isolated integration jobs during the corresponding handoff tasks.
+      # SQL/RLS tests use a disposable PostgreSQL compatibility fixture.
+      # Hosted checks and Segmind/Asaas/source flows need separate gated integration jobs.
