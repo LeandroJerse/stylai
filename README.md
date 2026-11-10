@@ -1,58 +1,49 @@
-# StylAI — frontend
+# StylAI monorepo
 
-Frontend mobile-first do StylAI (Explorar, Estúdio, Closet, Perfil e contas), pronto para o backend real. **Não há dados demonstrativos**: todo conteúdo vem da API descrita em [`docs/API-CONTRACT.md`](docs/API-CONTRACT.md). Sem API configurada, o app abre e cada tela informa que o servidor não está conectado.
+Origin: [LeandroJerse/stylai](https://github.com/LeandroJerse/stylai).
 
-Stack: Vite 6, React 19, TypeScript strict, Tailwind 4 (tokens em `src/styles/tokens.css`) e TanStack Query 5.
+**Start with [docs/START-HERE.md](docs/START-HERE.md).** It links the self-contained context, complete implementation plan, integration specifications, original project/UX snapshots and current verification evidence. No chat history or external vault is required.
 
-## Configuração
+## Current delivery
 
-Variáveis de build (Vite). Defina no provedor de hospedagem ou em um `.env.local` criado por você:
+The existing React frontend is under apps/web. Runnable Fastify API and idle Node worker foundations, shared packages, environment examples, local Supabase configuration and verification CI are provided.
 
-| Variável | Uso |
-|---|---|
-| `VITE_API_BASE_URL` | URL base da API com versão, ex. `https://api.stylai.app/v1` |
-| `VITE_GOOGLE_CLIENT_ID` | Client ID OAuth Web do Google Identity Services. Sem ele, o botão "Continuar com Google" fica oculto. |
+The Supabase foundation includes isolated SDK clients, a starter SQL/RLS migration, private buckets and a bounded database readiness probe. The starter foundation is applied and verified on `stylai-dev`; follow [hosted setup](docs/SUPABASE-SETUP.md). App auth, catalog endpoints, Segmind, Asaas and fulfillment remain future implementation. Business API routes return unavailable. API readiness is 200 only when the expected schema RPC succeeds; the idle worker stays nonready.
 
-Nenhuma das duas é segredo; ambas chegam ao navegador.
+Confirmed stack: React/Vite + TypeScript/Fastify + Supabase + Segmind IDM-VTON + **Asaas** + AliExpress/Shopee/TikTok Shop adapters. The project architecture reference is documented, not a requirement to adopt every illustrated technology.
 
-No Google Cloud, cadastre a origem do app em **Authorized JavaScript origins**.
+## Structure
 
-O link do e-mail de redefinição de senha deve apontar para `<APP_URL>/#/redefinir-senha?token=<token>`.
+    apps/web/        existing mobile-first frontend, tests and assets
+    apps/api/        HTTP foundation and documented future domain modules
+    apps/worker/     idle health service and future durable handler locations
+    packages/        contracts, config, supabase, ai and commerce boundaries
+    supabase/        starter migration, isolated PostgreSQL tests and future email templates
+    scripts/         boundary guard, doctor, database checks and built-service smoke
+    docs/            complete handoff, plans, context, integrations and evidence
 
-## Scripts
+## Run and verify
 
-```sh
-bun install
-bun run dev        # http://localhost:5190
-bun run typecheck
-bun run test       # unitários (cliente HTTP, parser, rotas, validações, regras)
-bun run e2e        # build + Playwright contra um backend falso que só existe no teste
-bun run build
-```
+Use Node 26.13.0 LTS and Bun 1.3.12. Run from this root:
 
-## Estrutura
+    bun install --frozen-lockfile
+    bun run doctor
+    bun run check
+    bun run test:e2e:install
+    bun run test:e2e
+    bun run dev
 
-```
-src/
-  config/env.ts        variáveis de ambiente
-  api/                 http (token em memória + refresh por cookie), errors, parse, client (endpoints), queries (cache)
-  auth/                AuthProvider, botão Google, validações de formulário
-  app/                 App (providers + shell), routes (hash), store (estado de UI), useStudio (jobs)
-  screens/             Explore, Studio, Closet, Profile, Auth
-  components/          peças, folhas do Estúdio, Match, Configurações, UI base
-  lib/                 formatação, links de parceiros, regras de preferência, checagem de imagens
-scripts/e2e.mjs        E2E com page.route (fixtures só de teste)
-```
+Web runs on localhost:5190, API on 127.0.0.1:3000, worker health on 127.0.0.1:3001. Each also has a root dev:web/dev:api/dev:worker command. Copy each app's .env.example into an ignored .env.local if needed. Web config is public; never put secrets there.
 
-## Decisões
+The root check verifies imports, types, tests, builds and real built Node services. Fixture browser E2E does not prove real provider integration. `test:db` runs isolated PostgreSQL role/RLS tests. `supabase:check` probes the configured hosted foundation; `db:types` needs the actual migrated project and CLI authentication. The owner created `stylai-dev`; its ignored API env is local only. No app deployment or credentials are committed. See the [current verification record](docs/qa/2026-11-10-node26-supabase-foundation.md).
 
-- **Sessão**: o access token fica só em memória; o refresh token vai em cookie `httpOnly` emitido pela API. Um 401 dispara um único refresh, compartilhado entre as requisições, e depois uma nova tentativa.
-- **Rotas por hash** (`#/explorar`, `#/entrar?next=estudio`): funcionam em qualquer host estático e dentro de um wrapper Capacitor/PWA.
-- **Segurança de conteúdo**: o parser descarta URLs que não sejam http(s) e links de loja que não sejam https. Links de afiliado saem com `rel="sponsored noopener noreferrer"`.
-- **Honestidade de dados**: um dado ausente aparece como ausente ("Preço não informado", "sem avaliações"), nunca como zero ou valor inventado. A cobrança de tokens só é exibida quando o servidor a confirma.
-- Explorar é público. Estúdio, Closet e Perfil pedem conta.
-- **Code-splitting** (`src/app/lazy.tsx`): Explorar, o detalhe da peça e o visualizador vão no bundle inicial. Estúdio, Closet, Perfil, telas de conta, Match, Configurações e as folhas do Estúdio carregam sob demanda e são pré-carregados em idle (exceto com Save-Data ou 2G). React e TanStack Query ficam em chunks próprios, que continuam em cache entre deploys. Se um chunk falhar, aparece "Recarregar", nunca uma tela em branco.
+## Successor handoff
 
-## Pendências conhecidas
+- [Complete context](docs/handoff/CONTEXT.md)
+- [Detailed implementation plan and verification inventory](docs/handoff/IMPLEMENTATION-PLAN.md)
+- [Asaas protocol, money invariants and acceptance tests](docs/integrations/asaas.md)
+- [Segmind and commercial-use/data/quality gates](docs/integrations/segmind-idm-vton.md)
+- [Three marketplace connector plan](docs/superpowers/plans/2026-11-10-marketplace-connectors.md)
+- [Current scaffold verification](docs/qa/scaffold-progress.md)
 
-- Troca de plano e pagamento ainda não existem na API; a folha de planos avisa isso.
+No commit, push or deployment was made by the scaffold task. Review/stage the entire frontend move with the new root files; Git can then recognize renames. Do not stage node_modules, build outputs or actual environment values. Verify new-remote history before the first push; inherited tracking refs may describe the old frontend repository.

@@ -5,3 +5,14 @@ test-results
 *.local
 .env*
 !.env.example
+!.env.*.example
+coverage
+*.tsbuildinfo
+.superpowers
+.worktrees
+.tools
+.DS_Store
+*.log
+supabase/.temp
+supabase/.branches
+supabase/.env

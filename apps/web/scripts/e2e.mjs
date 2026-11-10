@@ -11,6 +11,7 @@ import { spawn, spawnSync } from "node:child_process"
 import { mkdirSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { createRequire } from "node:module"
 import { chromium } from "playwright"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -23,7 +24,7 @@ mkdirSync(SHOTS, { recursive: true })
 
 /* ------------------------------------------------------------------ build + serve */
 
-const vite = join(root, "node_modules", "vite", "bin", "vite.js")
+const vite = join(dirname(createRequire(import.meta.url).resolve("vite/package.json")), "bin", "vite.js")
 const build = spawnSync(process.execPath, [vite, "build", "--outDir", "dist-e2e", "--emptyOutDir", "--logLevel", "warn"], { cwd: root, stdio: "inherit", env: { ...process.env, VITE_API_BASE_URL: API, VITE_GOOGLE_CLIENT_ID: "" } })
 if (build.status !== 0) process.exit(build.status ?? 1)
 const server = spawn(process.execPath, [vite, "preview", "--outDir", "dist-e2e", "--port", String(PORT), "--strictPort"], { cwd: root, stdio: "pipe" })
@@ -148,8 +149,9 @@ const check = (cond, label) => {
   if (!cond) failures.push(label)
 }
 
-const browser = await chromium.launch()
+let browser
 try {
+  browser = await chromium.launch()
   const backend = createBackend()
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, reducedMotion: "reduce" })
   const page = await context.newPage()
@@ -265,7 +267,7 @@ try {
   failures.push(String(e))
   console.error(e)
 } finally {
-  await browser.close()
+  await browser?.close()
   server.kill()
 }
 

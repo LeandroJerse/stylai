@@ -1,0 +1,25 @@
+name: Verify scaffold
+on:
+  pull_request:
+  push:
+    branches: [main, "chore/**", "feat/**"]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun run test:e2e:install
+      - run: bun run test:e2e
+      # Real Supabase/Segmind/Asaas/source tests are not implemented yet.
+      # Add isolated integration jobs during the corresponding handoff tasks.
