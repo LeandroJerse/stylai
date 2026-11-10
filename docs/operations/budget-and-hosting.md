@@ -10,16 +10,16 @@ For an illustrative ten-order pilot at up to R$100 landed supplier cost per orde
 
 ## AI spend and membership
 
-The owner estimates **0.01 for AI catalog search and embedding verification** and **0.02 for generating one image**. A complete request therefore costs an estimated **0.03** in either plan. The currency of this calculation is pending. These figures describe operating cost. The monthly subscription price is an open decision. [AI plans and request cost](../decisions/2026-11-10-ai-plans-and-request-cost.md).
+The owner estimates **R$0.01 for AI catalog search and embedding verification** and **R$0.02 for generating one image**. A complete request therefore costs an estimated **R$0.03** in either plan. These figures describe operating cost. The monthly subscription price is an open decision. [AI plans and request cost](../decisions/2026-11-10-ai-plans-and-request-cost.md).
 
 | Plan | Requests/day | Cost/day at full use | Requests in 30 days | Cost in 30 days at full use |
 | --- | ---: | ---: | ---: | ---: |
-| Free | 3 | 0.09 | 90 | 2.70 |
-| Paid | 12 total | 0.36 | 360 | 10.80 |
+| Free | 3 | R$0.09 | 90 | R$2.70 |
+| Paid | 12 total | R$0.36 | 360 | R$10.80 |
 
-A paid member using the full daily allowance in a 31-day month makes 372 requests at an estimated cost of 11.16. Compare per-stage actual charges, retries, failures and catalog index refresh costs before setting financial limits. Account separately for taxes, fees, storage and support when pricing the subscription.
+A paid member using the full daily allowance in a 31-day month makes 372 requests at an estimated cost of R$11.16. Compare per-stage actual charges, retries, failures and catalog index refresh costs before setting financial limits. Account separately for taxes, fees, storage and support when pricing the subscription.
 
-The earlier USD scenario used US$0.0072 per billed GPU-second and an assumed eight seconds, or US$0.0576 for generation alone. Keep it as a separate sensitivity check until the generation estimate, billing basis and currency are reconciled with actual account charges. The earlier US$10 evaluation and US$50 monthly pilot figures are proposals. Set enforceable caps after confirming the currency, measured cost, available credits and how to honor paid entitlements during a budget pause. [Segmind pricing](https://www.segmind.com/models/try-on-diffusion/pricing).
+The earlier USD scenario used US$0.0072 per billed GPU-second and an assumed eight seconds, or US$0.0576 for generation alone. Keep it as a separate sensitivity check until the BRL generation estimate and USD billing basis are reconciled with actual account charges. The earlier US$10 evaluation and US$50 monthly pilot figures are proposals. Set enforceable caps after confirming measured BRL cost, available credits and how to honor paid entitlements during a budget pause. [Segmind pricing](https://www.segmind.com/models/try-on-diffusion/pricing).
 
 ## Hetzner deployment proposal
 

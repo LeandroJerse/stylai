@@ -2,6 +2,6 @@
 
 Run `bun run test:db` for real PostgreSQL 17 SQL/RLS/constraint assertions in an ephemeral network-disabled container. `bootstrap-postgres.sql` is a test-only minimal Auth/Storage compatibility schema; NEVER apply it to a Supabase project. `foundation.sql` rolls back all synthetic data. This is real SQL/RLS evidence, not proof of the hosted platform's complete Auth/Storage behavior. Real hosted connection is checked separately via `bun run supabase:check`.
 
-Add isolated migration/RLS/transaction/concurrency tests with anon, user A, user B and worker/admin roles. Root `test:db` covers the starter foundation; remaining domain cases below are still required. Required cases include cross-owner denial, direct Storage mutation denial, revoked sessions, job quota races, unique quote-to-order/payment attempts, worker fencing, procurement budgets and deletion with retained commerce obligations.
+The harness replays all numbered migrations. `domain.sql` and `commerce.sql` test private privileges and core business transactions. `concurrency-fixtures.sql` seeds only the disposable database for independent-session request idempotency and procurement balance races. See [Phase 2 verification](../../docs/qa/2026-11-10-phase-2-database.md) for coverage and remaining hosted/provider checks.
 
 Do not replace these checks with fake Supabase clients or report them as passing from a green scaffold unit suite.

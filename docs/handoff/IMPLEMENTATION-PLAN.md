@@ -83,6 +83,8 @@ External approvals and real data collection may run in parallel with code; the t
 
 **Existing partial foundation:** migration `20261110000100_foundation.sql` and SDK config/client/probe files already cover starter profiles/session vault/catalog/private buckets. Preserve and extend these files; do not recreate conflicting objects. Hosted apply and public type generation are complete on `stylai-dev`; extend through new migrations. The full-phase checklist below includes partially completed items.
 
+**Phase 2 database baseline:** migrations `20261110000200`–`20261110000400` implement private schema and core job, quota, spend, checkout, procurement and deletion transactions. See [implementation and evidence](../qa/2026-11-10-phase-2-database.md). Later phases wire the private server boundary, provider evidence and domain-specific lifecycle operations.
+
 **Schema groups to complete:**
 
 | Group | Minimum entities/columns and constraints |
@@ -104,9 +106,9 @@ External approvals and real data collection may run in parallel with code; the t
 - [ ] Migrations create RLS/grants with tables; default deny. Private schemas/tables/functions are not browser accessible. Restrict editable columns, not just owner rows: profile writes cannot grant credits/roles; user writes cannot publish products/finalize jobs.
 - [ ] Add indexed owner/filter/FK/unique/check constraints. Namespace external identifiers as strings by source/connection/market/seller. Store fixed money units/currency and prevent mixed-currency totals.
 - [x] Implement isolated public/user/admin SDK factories with explicit user JWT and purpose labels (labels are not authorization middleware); generate actual hosted public types using CLI 3.1.0 via `bun run db:types`. Full domain-specific admin authorization remains part of feature implementation.
-- [ ] Add `private.is_active_session()` with fixed search path and explicit execute rights; private policies reject revoked/deleting sessions. Do not expose token vault internals through RPCs/views.
+- [x] Add `private.is_active_session()` with fixed search path and explicit execute rights. Profile policies reject revoked/deleting sessions. New private tables/functions have no browser-role grants.
 - [ ] Define atomic RPCs/transactions for quota+queue, job finalization, cancel, Closet sources, quote consumption/order/attempt, payment+outbox, funding and deletion. Any authenticated RPC callable through Data API must enforce ownership/limits independently of Fastify.
-- [ ] Replace pending DB scripts with isolated real migration/RLS/concurrency checks; guard environment identity before any reset/migration. No automatic destructive schema reset/migration at API startup.
+- [x] Replay all numbered migrations and run real role/RLS and multi-session transaction checks in disposable PostgreSQL. Use an explicit development project reference for hosted changes.
 
 **Verify:** empty-stack migration replay; generated types; anon vs user A/B vs worker; cross-owner direct Data API denial; forbidden credit/owner/state mutation; direct Storage writes denied; PUBLIC function execute revoked where required; failed transaction leaves no half job/charge/reservation. Existing root check remains green. Document the actual local/CI database setup and forbidden production reset behavior.
 
@@ -175,7 +177,7 @@ Canonical selection is `{productId, variantId, bodyPhotoId}`. Both render entry 
 - [ ] Enforce three daily requests on Free or 12 total daily with active paid membership through the same atomic reservation path. One combined search + generation job uses one allowance unit. Verify downgrade, expiry, simultaneous renewal and quota usage. Store immutable entitlement terms and separate membership and provider spend ledgers.
 - [ ] Keep states queued/running/succeeded/failed/no_results/cancelled, truthful step labels and optional known progress. Finalization creates private output/look/mapping and consumes allowance once in the same transaction; terminal failure/cancel releases once.
 - [ ] Each claim increments fence token; dispatch/progress/finalization/cancel/deletion compare it. Renew queue visibility/lease and acknowledge after committed terminal state. Stale workers cannot publish/spend.
-- [ ] The operator provider-spend ledger tracks search/embedding and generation as separate stages. Reserve a conservative maximum before each billable call or retry. Record the owner estimates (0.01 search and 0.02 generation) separately from measured charges and do not infer currency or caps from the estimate. Unknown outcomes stay reserved; failures/cancels still count actual vendor spend. No defensible maximum ->no dispatch. Kill switch is durable and does not pause money reconciliation/privacy work.
+- [ ] The operator provider-spend ledger tracks search/embedding and generation as separate stages. Reserve a conservative maximum before each billable call or retry. Record the owner estimates (R$0.01 search and R$0.02 generation) separately from measured charges. Set hard caps from an approved budget. Unknown outcomes stay reserved; failures/cancels still count actual vendor spend. No defensible maximum ->no dispatch. Kill switch is durable and does not pause money reconciliation/privacy work.
 - [ ] Active-job recovery after reload uses server truth; bounded history cursors preserve private resource ownership. Mutations never auto-retry with a new key after timeout.
 
 **Verify:** concurrent enqueue, direct RPC bypass, exact 3/12 quota boundaries, double key, midnight rollover, rollback, duplicate delivery/finalize, stale fence, cancellation racing success, queued photo/account deletion, no-match skipping generation, generation retry reusing completed search, per-stage spend reconciliation, global cost cap under concurrency and unknown-cost retention. Only real DB concurrency tests establish these invariants.
