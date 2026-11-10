@@ -1,5 +1,7 @@
 # IDM-VTON access, rights and evaluation record
 
+> Historical model reference. Use the [Try-On Diffusion evaluation](try-on-diffusion.md) for current collection, rights and acceptance.
+
 Updated 2026-11-10. Selected provider/model: **Segmind IDM-VTON**. Owner confirms no Segmind account yet. No API key inspected, image uploaded, paid call made or measured quality/cost result exists. All people remain unassigned and evaluation spend is not approved.
 
 ## Access and rights evidence

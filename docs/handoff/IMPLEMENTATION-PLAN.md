@@ -1,8 +1,10 @@
 # StylAI MVP — complete successor implementation plan
 
+> Apply the [Owner launch decisions](../decisions/2026-11-10-launch-answers.md) before older specs or task breakdowns.
+
 > Read [CONTEXT.md](CONTEXT.md) first. This plan is designed for a developer/coding agent who has no chat history. Execute task-by-task; record actual evidence and unresolved dependencies. It is not permission to call incomplete integrations done or to spend/publish without the relevant authorization.
 
-**Goal:** complete the actual web MVP using Supabase, Segmind IDM-VTON, **Asaas**, and AliExpress/Shopee/TikTok Shop sources, preserving the current frontend's visual system and building a trustworthy purchase/fulfillment journey.
+**Goal:** complete the actual web MVP using Supabase, Segmind Try-On Diffusion, **Asaas**, and AliExpress/Shopee/TikTok Shop sources, preserving the current frontend's visual system and building a trustworthy purchase/fulfillment journey.
 
 **Starting state:** monorepo foundations plus Supabase isolated clients, starter SQL/RLS/private buckets, real PostgreSQL tests and a bounded schema RPC probe exist. Hosted apply/connection and generated public types are complete. Full domain schema and feature/provider integrations remain pending. Worker stays idle. Read [hosted setup](../SUPABASE-SETUP.md) and [current verification](../qa/2026-11-10-node26-supabase-foundation.md).
 
@@ -10,7 +12,7 @@
 
 ## A. Read, run and preserve
 
-1. Read `docs/START-HERE.md`, this plan, CONTEXT, the [design](../superpowers/specs/2026-11-10-supabase-mvp-design.md), [API matrix](../superpowers/plans/2026-11-10-supabase-mvp-api-matrix.md), [Asaas](../integrations/asaas.md), [Segmind](../integrations/segmind-idm-vton.md) and [marketplace plan](../superpowers/plans/2026-11-10-marketplace-connectors.md).
+1. Read `docs/START-HERE.md`, this plan, CONTEXT, the [design](../superpowers/specs/2026-11-10-supabase-mvp-design.md), [API matrix](../superpowers/plans/2026-11-10-supabase-mvp-api-matrix.md), [Asaas](../integrations/asaas.md), [Segmind](../integrations/segmind-try-on-diffusion.md) and [marketplace plan](../superpowers/plans/2026-11-10-marketplace-connectors.md).
 2. Inspect Git status/branch/origin before editing. Respect uncommitted work. Origin must be `https://github.com/LeandroJerse/stylai`. Do not assume remote is empty, reset history or force-push inherited frontend tracking refs.
 3. Use Node 26.13.0 LTS and Bun 1.3.12. Run frozen install, doctor, check, and browser E2E (install Chromium first). Record failures with environment/output; do not attribute a failed baseline to your next change.
 4. Preserve `apps/web/src/assets`, tokens, responsive design, reduced motion, navigation/back/focus behavior and honest missing-data states. Do not rewrite to Next.js/native mobile or add Redis/Qdrant/local GPUs solely because the reference diagram lists them.
@@ -61,17 +63,17 @@ External approvals and real data collection may run in parallel with code; the t
 
 ## Phase 1 — Establish baseline and access facts
 
-**Files:** existing root tooling; `docs/qa/scaffold-progress.md`; `docs/decisions/mvp-decisions.md`; new `docs/decisions/source-capabilities.md`, `docs/evaluations/idm-vton.md`, `docs/operations/owners.md`.
+**Files:** existing root tooling; `docs/qa/scaffold-progress.md`; `docs/decisions/mvp-decisions.md`; new `docs/decisions/source-capabilities.md`, `docs/evaluations/try-on-diffusion.md`, `docs/operations/owners.md`.
 
-**Execution status (2026-11-10):** repository baseline verified and all fact registers created. [Readiness/access ledger](../decisions/phase-1-readiness.md) and [verification evidence](../qa/2026-11-10-phase-1-baseline.md) are authoritative for this phase. The owner chose all people unassigned, confirms an Asaas account (environment/access unverified), no Segmind account and no marketplace developer accounts; business settings are not defined. External requirements below remain open, so the full phase is not declared complete.
+**Execution status (2026-11-10):** repository baseline verified and all fact registers created. [Readiness/access ledger](../decisions/phase-1-readiness.md) and [verification evidence](../qa/2026-11-10-phase-1-baseline.md) are authoritative for this phase. People remain unassigned. Asaas production/sandbox accounts exist per owner, with integration access unverified. Segmind and source accounts remain pending. The launch record captures confirmed business choices. External requirements below remain open, so the full phase is not declared complete.
 
 - [x] Run the existing commands and verify built API/worker liveness and credential-free readiness 503; the configured API foundation is separately verified ready against hosted Supabase. Worker stays idle/nonready. Preserve that distinction and the completed frontend move.
 - [x] Create role coverage, provider/access capability, business-decision and Segmind evaluation/rights registers with current owner answers and evidence; no invented assignments or account permissions.
 - [ ] Assign roles for product/business, platform, catalog/source authorization, Asaas merchant/payment operations, procurement funding, privacy/support and technical review. No names are implied by a role table.
 - [ ] Obtain actual Supabase dev/staging projects or local stack; Asaas sandbox; Segmind access/commercial-use confirmation/test budget; all three marketplace account/region/program grants and supplier/image permissions. Do not put secrets in docs/Git or ask for them in a public issue.
-  Supabase development foundation is verified; remaining environments/providers/grants in this item are open. Existing Asaas account is not assumed to be sandbox.
-- [ ] Record enabled payment methods, currency/destinations, seller identity, shipping/tax/returns/support obligations, procurement funding and source capabilities. Asaas itself is settled; Pix/card/one-off are proposals pending merchant capability.
-- [ ] Verify licenses and provider data handling before real customer images. IDM-VTON's listing has a noncommercial license; get actual hosted commercial rights evidence rather than assuming API credits solve it.
+  Supabase development foundation is verified. Paid staging is deferred by owner choice. Verify the chosen existing Asaas sandbox before integration.
+- [ ] Record enabled payment methods, currency/destinations, seller identity, shipping/tax/returns/support obligations, procurement funding and source capabilities. Asaas itself is settled; Pix, credit card and boleto are required for merchandise. Verify merchant capabilities and approve installment rules.
+- [ ] Verify licenses and provider data handling before real customer images. Obtain written commercial hosted-use and output rights for Try-On Diffusion and confirm actual data handling.
 
 **Verify:** frozen install/root check/fixture browser baseline; no secret outputs; no false vendor-access claims. Missing provider access blocks only the relevant real integration/launch gate, not schema or UI work.
 
@@ -92,6 +94,8 @@ External approvals and real data collection may run in parallel with code; the t
 | Saved data | Owner preferences/default and versioned validated rules; saved looks/products; explicit-favorite plus look-source relations |
 | Jobs/results | Job/user/idempotency key/payload hash/status/fence/lease/attempt/input snapshot/provider IDs/error; looks and product/variant snapshot/mapping/hotspot provenance |
 | User rendering allowance | Period/user uniqueness, granted/reserved/spent nonnegative counters, unique job/event kind and snapshot period |
+| AI membership | Versioned plan terms and billing periods, provider subscription/payment correlation, idempotent grants/revocations and user-tier quota snapshots. Separate entitlement and provider spend records |
+| Admin settings | Restricted actor role grants, versioned pricing/shipping/membership/render settings, publication review and append-only audit events. Snapshot accepted settings in quotes and orders |
 | Provider spend | Private conservative reservation/actual cost/currency per billable attempt; unknown outcome retained; budgets/kill switch/concurrency |
 | Commerce | Cart/items, address/terms snapshots, quotes, orders with unique quote association, one active attempt/order, provider event inbox, payment/refund events, outbox, supplier orders/shipments |
 | Procurement | Private approved funding references, budget/FX policy, atomic reservations, supplier payment state and actual purchase evidence |
@@ -106,6 +110,8 @@ External approvals and real data collection may run in parallel with code; the t
 
 **Verify:** empty-stack migration replay; generated types; anon vs user A/B vs worker; cross-owner direct Data API denial; forbidden credit/owner/state mutation; direct Storage writes denied; PUBLIC function execute revoked where required; failed transaction leaves no half job/charge/reservation. Existing root check remains green. Document the actual local/CI database setup and forbidden production reset behavior.
 
+**Admin foundations:** define restricted roles, versioned pricing/shipping/membership/AI settings and audit records in forward migrations. Follow [admin and operations](../operations/commerce-and-admin.md) for phase mapping and authorization tests.
+
 ## Phase 3 — Supabase Auth, sessions, verification and safe account switching
 
 **Files:** API `modules/auth/*`, `plugins/auth.ts`, `modules/account/*`; private vault/refresh functions; Supabase email templates; web `AuthProvider.tsx`, Auth screen/routes, HTTP/parsers/queries/store reset.
@@ -116,7 +122,7 @@ External approvals and real data collection may run in parallel with code; the t
 - [ ] Verify JWT signature/sub/session binding and active app-session state; no trust in client profile metadata for email verification/role. Coordinate refresh across instances by lease/version; test external rotation succeeded but vault commit died.
 - [ ] Implement confirmation-required signup, generic existing-email/forgot/resend behavior, explicit purpose-bound token-hash confirmation/recovery, strict next-route allowlist and secret removal from browser history. Avoid GET link scanners consuming a verification token automatically.
 - [ ] Implement password-change reauthentication/session invalidation and logout. Reset pending/stale private requests, user-specific query state, private drafts and object URLs. Personalized hero/catalog favorites must not leak across accounts.
-- [ ] Keep Google hidden unless separately implemented and verified with correct audience/nonce/linking. No auto-link solely by unverified matching email.
+- [ ] Implement Google login for launch using a verified Supabase flow. Configure Google OAuth consent and environment-specific callbacks, protect state/PKCE or nonce as appropriate, and test account linking, replay, invalid audience and app-vault session creation. Account identity must be verified before linking. See [Supabase Google setup](https://supabase.com/docs/guides/auth/social-sign-in/auth-google).
 
 **Verify:** pending signup has no access token; actual staging email round trip; invalid/expired/reused/wrong-purpose tokens; generic recovery; two-tab/two-instance refresh; old revocation works even with unexpired JWT; A->logout->B with A request late arrival; invalid Origin; private responses/no Set-Cookie caching; password-reset other-session invalidation. No production SMTP/key assumption.
 
@@ -132,6 +138,8 @@ External approvals and real data collection may run in parallel with code; the t
 - [ ] Add actual shipping/availability revalidation for prepayment quotes. Browse staleness may be shown honestly; unknown required stock/shipping/price cannot be charged as zero/free.
 
 **Verify:** source conformance fixtures; repeated/interrupted/revoked sync; namespaced duplicate IDs; missing data; no wholesale secrets in public DTOs; deterministic page ties/nulls/boundaries; invalid cursor and all four sorts; approved real products and current quote for every enabled source. All three remain final planned scope unless the user explicitly accepts a reduction.
+
+**Curated intake:** use [the intake template](../catalog/README.md) for variant, shipping and rights evidence. Implement draft review and pricing/shipping configuration within the secured admin module.
 
 ## Phase 5 — Consent, photo validation and private Storage
 
@@ -163,15 +171,16 @@ Canonical selection is `{productId, variantId, bodyPhotoId}`. Both render entry 
 **Files:** job/usage/spend/queue SQL; studio jobs/status/history/cancel routes; worker claim/finalization RPCs; web stable request key/active-job query.
 
 - [ ] Submission takes Idempotency-Key, normalized input and payload hash. Same user/key/body ->existing job; changed body ->409; atomic quota reservation+job+queue. Enforce one active job/user in DB, not only UI.
-- [ ] Snapshot user/photo/variant/rules/consent/source/model/input versions and free-allowance period at submission. UTC rollover cannot move a charge into another period accidentally.
-- [ ] Keep states queued/running/succeeded/failed/no_results/cancelled, truthful step labels and optional known progress. Finalization creates private output/look/mapping and spends free units once in the same transaction; terminal failure/cancel releases once.
+- [ ] Snapshot user/photo/variant/rules/consent/source/model/input versions and allowance period and membership entitlement at submission. UTC rollover cannot move a charge into another period accidentally.
+- [ ] Enforce three free or up to 20 total daily for active AI membership through the same atomic reservation path. Verify downgrade, expiry, simultaneous renewal and quota usage. Store immutable entitlement terms and separate membership and provider spend ledgers.
+- [ ] Keep states queued/running/succeeded/failed/no_results/cancelled, truthful step labels and optional known progress. Finalization creates private output/look/mapping and consumes allowance once in the same transaction; terminal failure/cancel releases once.
 - [ ] Each claim increments fence token; dispatch/progress/finalization/cancel/deletion compare it. Renew queue visibility/lease and acknowledge after committed terminal state. Stale workers cannot publish/spend.
 - [ ] Separate operator provider-spend ledger reserves conservative maximum before every billable call/localization/retry. Unknown outcomes stay reserved; failures/cancels still count actual vendor spend. No defensible maximum ->no dispatch. Kill switch is durable and does not pause money reconciliation/privacy work.
 - [ ] Active-job recovery after reload uses server truth; bounded history cursors preserve private resource ownership. Mutations never auto-retry with a new key after timeout.
 
 **Verify:** concurrent enqueue, direct RPC bypass, exhausted quota, double key, midnight rollover, rollback, duplicate delivery/finalize, stale fence, cancellation racing success, queued photo/account deletion, global cost cap under concurrency and unknown-cost retention. Only real DB concurrency tests establish these invariants.
 
-## Phase 8 — Real Segmind IDM-VTON execution and evaluation
+## Phase 8 — Real Segmind Try-On Diffusion execution and evaluation
 
 **Files:** ai `provider/segmind/garment-input/evaluate`; worker consumer/generation; output store; evaluation report. Evolve initial package interfaces deliberately rather than pretending stubs are an SDK.
 
@@ -179,7 +188,7 @@ Canonical selection is `{productId, variantId, bodyPhotoId}`. Both render entry 
 - [ ] Persist stable provider request key before async submit; save returned ID and status/result URLs after allowlist validation. Reuse the same provider key across process restart within documented semantics. Do not guess per-request callbacks/cancellation or a universal deduplication lifetime.
 - [ ] Poll durably with bounded backoff/timeouts. Completed external job becomes internal succeeded only after result image validation, private binary copy and final DB transaction. Retrieve before vendor expiry; result 404 alone does not prove no billable work happened.
 - [ ] Handle rejected/invalid bytes, provider credit exhaustion/rate limit/outage, ambiguous submit, fetch failure/orphan object and late cancel/delete. Reconcile unknown paid submission instead of blind resubmit under another key.
-- [ ] Evaluate >=20 consented rights-cleared category/pose/variant cases. Proposed acceptance: >=18/20 human-acceptable identity/garment previews, no unsafe output, p95<120s and separately approved cost ceiling. Record actual results; change scope/provider only through a reviewed decision if it fails.
+- [ ] Evaluate the prepared [24-case pilot](../evaluations/try-on-diffusion.md) with verified rights, approved budget, category quality gates, latency and actual cost. Capture results and confirm launch thresholds before using customer photos.
 
 **Verify:** actual approved test render, real output copied private, SDK contract/error fixtures, same-key retry/restoration, process crash stages, fencing/cost behavior, signed input expiry and deletion. A fake provider only verifies orchestration; never close integration based on fixtures.
 
@@ -192,7 +201,7 @@ Canonical selection is `{productId, variantId, bodyPhotoId}`. Both render entry 
 - [ ] Refresh signed result links once while preserving state; safe retry and session expiry messaging. Restore focus/back navigation; support reduced motion and keyboard/touch.
 - [ ] Add normalized verified hotspot rectangles plus provenance. Scale to the real image geometry/letterboxing/crop transform, not container coordinates guessed from screen size. Correct product detail/list works without discovering hotspots.
 - [ ] Automatic localization is unproven. Use an authorized operator-review path or withhold unverified regions; do not invent locations. The promised clickable clothing interaction must pass actual evaluated-result acceptance before release.
-- [ ] Hide edit/Match/paid AI plans/unsupported photo angles/measurements/criteria. Primary sellable product CTA adds a selected eligible variant to StylAI cart, not only supplier redirect.
+- [ ] Hide edit/Match/unsupported photo angles/measurements/criteria. Primary sellable product CTA adds a selected eligible variant to StylAI cart, not only supplier redirect.
 
 **Verify:** model/render/display state coverage, expired account/link, two-user switching, double tap/lost submit/reload, absent capability fail closed, hotspot geometry across mobile/desktop/portrait/landscape, screen reader/keyboard/list fallback and no browser token/photo persistence. Fixture E2E updated alongside separate real-staging journeys.
 
@@ -202,7 +211,8 @@ Canonical selection is `{productId, variantId, bodyPhotoId}`. Both render entry 
 
 - [ ] Implement owner cart with actual variant quantities and source/seller fulfillment grouping. Server validates amount/currency/stock/address/shipping/tax/terms and produces an immutable expiring quote. Proposed quote lifetime10min must align with supplier/provider constraints.
 - [ ] Consume quote with DB unique association to one order; one active payment attempt/order. Caller key cannot bypass uniqueness. Snapshot customer-approved terms and selling price independently of later catalog edits; procurement cost stays private.
-- [ ] Create server-owned Asaas hosted one-off checkout using actual sandbox contract. Store intent/key/body hash before submit and provider checkout/reference/expiry afterward. Handle ambiguous create by reconciliation, not a guessed generic idempotency header or blind second charge.
+- [ ] Create server-owned Asaas payment attempts using the actual sandbox contract. Use hosted Checkout for Pix/card and the documented boleto payment/invoice flow. Reconcile delayed boleto settlement and test instrument expiry before issuing a replacement. Store intent/key/body hash before submit and provider checkout/reference/expiry afterward. Handle ambiguous create by reconciliation, not a guessed generic idempotency header or blind second charge.
+- [ ] Add separate membership checkout/renewal/cancellation/refund and entitlement reconciliation. Enforce server-owned plan terms and keep membership event routing separate from merchandise fulfillment. Configure installments only after the approved account and fee policy are verified.
 - [ ] Configure secure customer return routes and actual provider callback endpoint separately. Browser return shows pending and fetches actual order; never marks paid or dispatches.
 - [ ] Authenticate `asaas-access-token` with dedicated webhook token, durable unique event inbox, ACK200 only after persistence, atomically queue processing. Do not implement Stripe HMAC for Asaas. Handle checkout/payment event families and same-sale representation explicitly.
 - [ ] Verify resource/merchant/environment/amount/currency/provider state. Distinguish authorized/capture/risk pending, confirmed paid, available balance, refund/dispute/reversal. Paid status and procurement available funds are separate decisions.
@@ -227,7 +237,7 @@ Canonical selection is `{productId, variantId, bodyPhotoId}`. Both render entry 
 
 **Files:** deletion/cleanup/reporting API/worker; DB tombstones/retention policies; profile/settings/privacy UI; operator docs and integration deletion tests.
 
-- [ ] Confirm retention/public notice with responsible owners. Proposed temporary24h/body+unsaved30days/saved-until-deletion defaults are not legal conclusions. Verify external provider/backup retention and deletion limits.
+- [ ] Confirm retention/public notice with responsible owners. Apply seven-day original/unsaved expiry and saved-until-deleted policy. Apply cleanup independently to inputs and outputs. Verify external provider/backup retention and deletion limits.
 - [ ] Make original photo vs generated derivative removal explicit. Delete object binaries through Storage APIs, not only database rows. Signed links may live to expiry; avoid false instant-revocation statements.
 - [ ] Account deletion recent reauth ->202accepted, immediate app revoke/new-work block, durable retryable Storage/provider/Auth cleanup and visible operator backlog. Late job completion cannot republish removed assets.
 - [ ] Keep minimized paid-order/refund/dispute/shipping obligations separate from auth-user cascades under approved retention. Support former customer without recreating a deleted account or exposing public order data.

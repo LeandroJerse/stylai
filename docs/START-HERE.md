@@ -4,11 +4,13 @@ This repository is intended to be sufficient for a new developer or coding agent
 
 ## Read in this order
 
+Start with the [current launch decisions and prepared artifacts](decisions/2026-11-10-launch-answers.md). Earlier design and task documents retain historical detail. Where scope differs, use the current launch record and master plan.
+
 1. [Current context and decisions](handoff/CONTEXT.md): product, scope, architecture, existing behavior, constraints and superseded assumptions.
 2. [Complete implementation plan](handoff/IMPLEMENTATION-PLAN.md): ordered phases, files, acceptance tests, dependencies and completion evidence.
 3. [Asaas integration specification](integrations/asaas.md): selected payment processor, checkout/events, money states and verification.
 4. [API and frontend change matrix](superpowers/plans/2026-11-10-supabase-mvp-api-matrix.md): disposition of each current route and source file.
-5. [Detailed architecture/security design](superpowers/specs/2026-11-10-supabase-mvp-design.md), [Segmind spec](integrations/segmind-idm-vton.md), [source adapters](superpowers/plans/2026-11-10-marketplace-connectors.md) and [commerce tasks](superpowers/plans/2026-11-10-supabase-mvp-commerce.md).
+5. [Detailed architecture/security design](superpowers/specs/2026-11-10-supabase-mvp-design.md), [Segmind spec](integrations/segmind-try-on-diffusion.md), [source adapters](superpowers/plans/2026-11-10-marketplace-connectors.md) and [commerce tasks](superpowers/plans/2026-11-10-supabase-mvp-commerce.md).
 6. [Current verification record](qa/2026-11-10-node26-supabase-foundation.md) and [architecture diagram/workstreams](ARCHITECTURE-REFERENCE.md).
 7. Optional: [copyable next-developer kickoff prompt](handoff/NEXT-DEVELOPER-PROMPT.md).
 
@@ -49,10 +51,10 @@ Follow [hosted Supabase setup](SUPABASE-SETUP.md). The target is hosted Supabase
 
 ## Repository/publication
 
-Origin: https://github.com/LeandroJerse/stylai. Keep `.git` at root and no nested repositories. The owner committed the monorepo baseline as `a096c92` on `chore/monorepo-mvp-handoff`; the frontend move is already tracked. Phase 1 changes remain uncommitted for review; this execution made no commit/push. Do not stage `node_modules`, outputs, keys or actual environment files.
+Origin: https://github.com/LeandroJerse/stylai. Keep `.git` at root and no nested repositories. The owner committed the monorepo baseline as `a096c92` on `chore/monorepo-mvp-handoff`; the frontend move is already tracked. Phase 1 was recorded in commit `43f956e`. The owner handles pushes. Do not stage `node_modules`, outputs, keys or actual environment files.
 
 Inherited tracking refs can describe the previous frontend remote. Before first push, inspect the actual new remote's history and reconcile non-destructively. Do not force-push based on a copied repository's old refs. The sibling `stylai_frontend` and prototype remain outside the new monorepo and are not required by this handoff.
 
 ## First implementation assignment
 
-Phase 1's baseline and fact registers are implemented; see [Phase 1 readiness](decisions/phase-1-readiness.md) and [its verification](qa/2026-11-10-phase-1-baseline.md). People remain unassigned by explicit owner choice; Asaas account exists but environment/access is unverified; Segmind/marketplace developer accounts and business settings remain open. Full Phase 1 external acceptance is not complete. Continue the independent Phase 2 schema/transaction work, extending the applied Supabase foundation. Do not let missing accounts become fake successful integrations or silently close launch gates.
+Phase 1's baseline and fact registers are implemented; see [Phase 1 readiness](decisions/phase-1-readiness.md) and [its verification](qa/2026-11-10-phase-1-baseline.md). People remain unassigned. The owner reports existing Asaas production and sandbox accounts, with integration access still unverified. The current launch record lists the confirmed business settings and remaining account dependencies. Full Phase 1 external acceptance is not complete. Continue the independent Phase 2 schema/transaction work, extending the applied Supabase foundation. Do not let missing accounts become fake successful integrations or silently close launch gates.

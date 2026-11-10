@@ -10,7 +10,7 @@ The existing React frontend is under apps/web. Runnable Fastify API and idle Nod
 
 The Supabase foundation includes isolated SDK clients, a starter SQL/RLS migration, private buckets and a bounded database readiness probe. The starter foundation is applied and verified on `stylai-dev`; follow [hosted setup](docs/SUPABASE-SETUP.md). App auth, catalog endpoints, Segmind, Asaas and fulfillment remain future implementation. Business API routes return unavailable. API readiness is 200 only when the expected schema RPC succeeds; the idle worker stays nonready.
 
-Confirmed stack: React/Vite + TypeScript/Fastify + Supabase + Segmind IDM-VTON + **Asaas** + AliExpress/Shopee/TikTok Shop adapters. The project architecture reference is documented, not a requirement to adopt every illustrated technology.
+Confirmed stack: React/Vite + TypeScript/Fastify + Supabase + Segmind Try-On Diffusion + **Asaas** + AliExpress/Shopee/TikTok Shop adapters. The project architecture reference is documented, not a requirement to adopt every illustrated technology.
 
 ## Structure
 
@@ -42,10 +42,11 @@ The root check verifies imports, types, tests, builds and real built Node servic
 - [Complete context](docs/handoff/CONTEXT.md)
 - [Detailed implementation plan and verification inventory](docs/handoff/IMPLEMENTATION-PLAN.md)
 - [Asaas protocol, money invariants and acceptance tests](docs/integrations/asaas.md)
-- [Segmind and commercial-use/data/quality gates](docs/integrations/segmind-idm-vton.md)
+- [Segmind and commercial-use/data/quality gates](docs/integrations/segmind-try-on-diffusion.md)
 - [Three marketplace connector plan](docs/superpowers/plans/2026-11-10-marketplace-connectors.md)
 - [Current scaffold verification](docs/qa/scaffold-progress.md)
 - [Phase 1 readiness and current access facts](docs/decisions/phase-1-readiness.md)
+- [Current launch decisions and prepared artifacts](docs/decisions/2026-11-10-launch-answers.md)
 - [Phase 1 verification](docs/qa/2026-11-10-phase-1-baseline.md)
 
-The owner committed the monorepo baseline as `a096c92`; the frontend move is tracked. Phase 1 changes remain uncommitted for review, and no commit/push was performed by this execution. Do not stage node_modules, build outputs or actual environment values. Verify new-remote history before the first push; inherited tracking refs may describe the old frontend repository.
+The owner committed the monorepo baseline as `a096c92`; the frontend move is tracked. Phase 1 and subsequent launch decisions are maintained in focused local commits. The owner handles pushes. Do not stage node_modules, build outputs or actual environment values. Verify new-remote history before the first push; inherited tracking refs may describe the old frontend repository.

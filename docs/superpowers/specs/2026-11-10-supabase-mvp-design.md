@@ -1,5 +1,7 @@
 # StylAI — Supabase MVP design
 
+> Earlier design reference. Apply the [current launch decisions](../../decisions/2026-11-10-launch-answers.md) and [master implementation plan](../../handoff/IMPLEMENTATION-PLAN.md) first for model, Google sign-in, retention, admin, membership, payments and staging.
+
 Date: 2026-11-10. Status: proposed architecture and MVP scope, prepared at the user's request; planning only, not authorization to deploy or purchase services.
 
 Supersedes `2026-11-10-monorepo-design.md`. Supabase replaces the standalone local PostgreSQL setup. The monorepo, API/idle-worker foundations and package boundaries are now implemented. Domain backend, Supabase project/schema and paid integrations are not. Read docs/START-HERE.md and the successor handoff for actual current status.

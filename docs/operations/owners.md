@@ -19,7 +19,7 @@ One person may eventually cover several roles, but must explicitly accept each r
 
 ## Decisions still open
 
-Brazil/BRL, Pix/card, seller identity, procurement budget, support/refund ownership and deadlines are **not defined**. Portuguese copy and a BRL schema default do not constitute business approval. No numeric spending ceiling or service deadline has been authorized. Do not advertise delivery, refund or support promises based on a placeholder.
+Brazil/BRL and Pix/card/boleto are confirmed and a CNPJ exists. Exact merchant/seller verification, procurement budget, support/refund ownership and deadlines remain open. See [launch decisions](../decisions/2026-11-10-launch-answers.md) and [operations](commerce-and-admin.md).
 
 ## Assignment and handover procedure
 

@@ -1,5 +1,7 @@
 # Segmind IDM-VTON — planned integration
 
+> Historical model reference. Implement [Segmind Try-On Diffusion](segmind-try-on-diffusion.md) under the current scope.
+
 Updated 2026-11-10. User-selected provider, replacing the earlier Luna suggestion. Planning only: no credentials read, account inspected, image uploaded, or billable call made.
 
 ## Verified documentation and limits

@@ -14,6 +14,8 @@ Current target runtime: **Node 26.13.0 LTS**, Bun 1.3.12. Supabase remains the h
 
 Project `stylai-dev` (`yekhpfwxuiuakxznxaew`) is hosted in `us-east-1` (the region selected at creation). CLI login works. Preflight found no app tables, buckets, users or conflicting functions. Migration `20261110000100` is applied through the migration ledger. `supabase:check` returns `ready`; the actual local API returns readiness 200 against this hosted database. Public types were generated from it and wired into clients. Hosted RLS/grants/private bucket metadata and anonymous read behavior were checked; security advisor returned no warning/error findings. Full Auth/email/Storage upload/deletion workflows are not yet implemented or validated. See [current verification](qa/2026-11-10-node26-supabase-foundation.md).
 
+The owner chose to keep only `stylai-dev` on the Free plan for now. Paid staging is deferred. Use an explicit target when it is later provisioned and keep its data, Auth redirect settings and credentials isolated.
+
 ## 1. Sign in and identify the hosted project
 
 The workspace currently uses authenticated CLI access; the plugin is optional and was not used for this application. Install it, sign in to the account owning the project, and allow the requested project access. Do not paste a personal access token or service-role key into chat.

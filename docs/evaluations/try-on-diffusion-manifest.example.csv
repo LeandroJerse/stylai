@@ -1,0 +1,1 @@
+case_id,dataset_version,category,expected_variant_ref,participant_consent_ref,person_asset_ref,garment_asset_ref,garment_rights_ref,expires_at,model_slug,preset_version,outcome,quality_review,queue_ms,inference_ms,total_ms,billed_gpu_seconds,provider_charge_minor,provider_currency,deletion_status

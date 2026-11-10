@@ -4,7 +4,9 @@ Updated 2026-11-10. This is the execution record for Phase 1 of [the implementat
 
 **Status: repository baseline and fact registers implemented/verified; external access and business decisions remain open.** The owner explicitly chose to keep all people unassigned. No new provider account, paid call, supplier purchase, public deployment or Git publication was made during this phase.
 
-## Confirmed facts
+The tables below preserve the original Phase 1 checkpoint. Use [the later owner launch answers](2026-11-10-launch-answers.md) for current scope, account status and hosting policy.
+
+## Facts at the initial checkpoint
 
 | Item | State and evidence | What this does not prove |
 | --- | --- | --- |
@@ -51,8 +53,8 @@ No business choice above is filled by an engineering recommendation. Keep techni
 ## Next actions, in useful order
 
 1. Continue Phase 2 remaining schema and transaction tests; it does not require Segmind/marketplace credentials. Do not recreate the applied bootstrap migration.
-2. Inspect the existing Asaas account with its owner, determine whether it is production or sandbox, and establish a separate sandbox if needed. [Official sandbox onboarding](https://docs.asaas.com/docs/sandbox) states the environments have separate accounts/keys. Keep actual credentials in ignored API env/secret manager, never chat or docs. Payment routes remain unavailable until Phase 10 implements them.
-3. Create Segmind access when the owner is ready, obtain hosted commercial-use/data-processing evidence and approve an evaluation ceiling before any billable render or customer-image transfer. Use [the prepared evaluation protocol](../evaluations/idm-vton.md).
+2. Verify integration access and payment capabilities in the owner-reported Asaas sandbox. [Official sandbox onboarding](https://docs.asaas.com/docs/sandbox) states the environments have separate accounts/keys. Keep actual credentials in ignored API env/secret manager, never chat or docs. Payment routes remain unavailable until Phase 10 implements them.
+3. Create Segmind access when the owner is ready, obtain hosted commercial-use/data-processing evidence and approve an evaluation ceiling before any billable render or customer-image transfer. Use [the current evaluation protocol](../evaluations/try-on-diffusion.md).
 4. Establish developer accounts/app types/markets for each marketplace, then fill per-connection evidence in [source capabilities](source-capabilities.md). Treat missing buying/fulfillment rights separately from catalog access.
 5. Assign people only when explicitly accepted; resolve business settings with evidence before public launch. Account registration, legal acceptances and paid commitments need the actual owner's participation.
 

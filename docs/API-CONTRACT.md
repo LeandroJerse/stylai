@@ -1,6 +1,6 @@
 # StylAI — contrato da API REST (frontend)
 
-> Contrato do frontend existente, preservado durante a migração para `apps/web`. O backend de domínio ainda não está implementado. As mudanças planejadas (Supabase, cadastro pendente de confirmação, uma peça/variante/foto por IDM-VTON e checkout Asaas) estão em [START-HERE](START-HERE.md), [plano completo](handoff/IMPLEMENTATION-PLAN.md) e [matriz de alterações](superpowers/plans/2026-11-10-supabase-mvp-api-matrix.md). Atualizar contratos, parsers, telas e testes juntos ao implementar; não tratar esta descrição histórica como entrega do servidor.
+> Contrato do frontend existente, preservado durante a migração para `apps/web`. O backend de domínio ainda não está implementado. As mudanças planejadas (Supabase, cadastro pendente de confirmação, uma peça/variante/foto por Try-On Diffusion e checkout Asaas) estão em [START-HERE](START-HERE.md), [plano completo](handoff/IMPLEMENTATION-PLAN.md) e [matriz de alterações](superpowers/plans/2026-11-10-supabase-mvp-api-matrix.md). Atualizar contratos, parsers, telas e testes juntos ao implementar; não tratar esta descrição histórica como entrega do servidor.
 
 Contrato que o frontend (`src/api/`) espera do backend. É a fonte de verdade para implementar o servidor; os parsers em `src/api/parse.ts` são tolerantes (campo opcional malformado vira `null`/vazio), mas campos **obrigatórios** ausentes geram erro `bad_response`.
 

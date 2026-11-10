@@ -1,5 +1,7 @@
 # AliExpress, Shopee and TikTok Shop Connector Implementation Plan
 
+> Earlier design reference. Apply the [current launch decisions](../../decisions/2026-11-10-launch-answers.md) and [master implementation plan](../../handoff/IMPLEMENTATION-PLAN.md) first for model, Google sign-in, retention, admin, membership, payments and staging.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Integrate the three user-requested commerce sources with correct product/variant data and an authorized fulfillment path for StylAI's own paid orders.

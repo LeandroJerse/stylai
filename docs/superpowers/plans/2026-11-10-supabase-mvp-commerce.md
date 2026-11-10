@@ -1,5 +1,7 @@
 # StylAI MVP Commerce Implementation Plan
 
+> Earlier design reference. Apply the [current launch decisions](../../decisions/2026-11-10-launch-answers.md) and [master implementation plan](../../handoff/IMPLEMENTATION-PLAN.md) first for model, Google sign-in, retention, admin, membership, payments and staging.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Processor decision:** Asaas is confirmed; docs/integrations/asaas.md defines the selected protocol. Future references to provider verification concern actual merchant/configuration/access, not choosing another gateway. No live payment code exists yet.

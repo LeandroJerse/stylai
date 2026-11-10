@@ -1,6 +1,6 @@
 # Asaas — selected payment processor and implementation specification
 
-Updated 2026-11-10. Asaas selection is confirmed by the user and supersedes earlier processor comparisons. This file is a plan; the scaffold implements no Asaas API calls or webhook acknowledgment.
+Updated 2026-11-10. Asaas is the selected processor. The owner reports existing production and sandbox accounts. Verify the target account's business identity, methods and terms in sandbox. See the [current launch decisions](../decisions/2026-11-10-launch-answers.md) and [commerce/admin workstream](../operations/commerce-and-admin.md).
 
 ## Official protocol facts to verify when implementing
 
@@ -13,9 +13,9 @@ Updated 2026-11-10. Asaas selection is confirmed by the user and supersedes earl
 
 These facts do not prove merchant eligibility, enabled payment methods, idempotency semantics of every endpoint, or an actual account's commercial terms. Capture sanitized contract fixtures from the chosen account/sandbox before implementation is called integrated.
 
-## 1. Proposed checkout scope
+## 1. Checkout and membership scope
 
-Use hosted checkout first: customer cart/quote/order remains in StylAI, payment details are entered only at Asaas. Proposed initial methods: Pix and one-off card, only after merchant capability verification. Do not add installments, recurrence, subscription/AI credits, marketplace split or multiple payment providers without an explicit requirement. Processor selection is settled; methods/merchant configuration remain open.
+Merchandise must support Pix, credit card and boleto in BRL. Use [hosted Checkout](https://docs.asaas.com/docs/checkout-asaas) for Pix/card and the [boleto payment/invoice flow](https://docs.asaas.com/docs/cobrancas-via-boleto). Maintain one order/payment state machine with explicit provider resource types. Card installments need an approved limit, fee policy and verified settlement terms. Plan a separate AI membership subscription with independently reconciled renewals and entitlements. Recommend recurring card first for membership and verify alternative renewal methods before offering them.
 
 Use a fixed allowlisted base selected by `ASAAS_ENVIRONMENT`:
 
@@ -50,7 +50,7 @@ Define all referenced types in contracts/private commerce modules in the impleme
 1. Authenticate actor and require active account. Validate quote owner, immutable source/seller/region/currency group, variant quantities, current stock/shipping/price and quote expiry.
 2. In a transaction, consume quote exactly once (`orders.quote_id UNIQUE`), create/reuse one order and one active payment intent/attempt. Two tabs with different client keys still return the same payable order/attempt.
 3. Persist operation key, payload hash and submission state before the external call. Client key/different payload ->409. Use an immutable order reference as provider `externalReference`; it is correlation, not assumed provider-side uniqueness.
-4. Build server-owned one-off checkout payload. Item totals/shipping/tax must equal the accepted immutable order total in an explicitly supported currency; apply tested decimal conversion only at the provider boundary. Do not hide shipping in an unexplained charge or send invalid tax placeholders.
+4. Build the method-specific server-owned payment payload. Item totals, shipping and tax must equal the accepted immutable order total in BRL. Apply tested decimal conversion at the provider boundary. Make shipping and installment costs explicit.
 5. Submit once using the endpoint's verified retry/idempotency mechanism, if available. Do not assume a Stripe-style Idempotency-Key works with Asaas. On accepted response persist actual checkout ID/URL/expiry and let the user visit the hosted page.
 6. If transport times out after the provider might have accepted, keep `submission_unknown`; reconcile via known identifiers/current supported reference lookup. If absence cannot be proven, operator review rather than a blind second charge.
 7. On retry reuse active attempt. Replacement is permitted only after authoritative nonpayable terminal state or a documented provider atomic replacement. Expiring a local quote does not prove an old external checkout is impossible to pay.

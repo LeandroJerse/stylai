@@ -1,5 +1,7 @@
 # StylAI MVP — API coverage and frontend change matrix
 
+> Earlier design reference. Apply the [current launch decisions](../../decisions/2026-11-10-launch-answers.md) and [master implementation plan](../../handoff/IMPLEMENTATION-PLAN.md) first for model, Google sign-in, retention, admin, membership, payments and staging.
+
 Status: planned, not implemented. Read with [design](../specs/2026-11-10-supabase-mvp-design.md) and [execution plan](2026-11-10-supabase-mvp.md). Routes below are relative to `/v1` except operational health checks. The current `docs/API-CONTRACT.md` must be updated during implementation, not silently treated as already satisfied.
 
 ## Response conventions and cross-cutting changes

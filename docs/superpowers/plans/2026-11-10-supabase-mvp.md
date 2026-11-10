@@ -1,5 +1,7 @@
 # StylAI Supabase MVP Implementation Plan
 
+> Earlier design reference. Apply the [current launch decisions](../../decisions/2026-11-10-launch-answers.md) and [master implementation plan](../../handoff/IMPLEMENTATION-PLAN.md) first for model, Google sign-in, retention, admin, membership, payments and staging.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Current handoff:** The workspace and service foundations now exist. Extend them; do not rerun the frontend move blindly. Asaas is confirmed. Use docs/handoff/IMPLEMENTATION-PLAN.md as the current execution guide, with this file as detailed task reference.

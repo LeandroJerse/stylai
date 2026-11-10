@@ -16,13 +16,13 @@ Desired launch journey: public catalog -> choose garment/variant -> verified acc
 
 - Repository root is `stylai`, origin https://github.com/LeandroJerse/stylai. Original sibling frontend/prototype stay untouched.
 - Supabase provides Postgres, Auth and private object Storage. Standalone native PostgreSQL was replaced; local Supabase is optional dev/CI infrastructure.
-- Segmind IDM-VTON is the virtual try-on provider. Earlier tentative GPT Luna/OpenAI image orchestration is superseded.
+- Segmind Try-On Diffusion is the virtual try-on provider. The current model supersedes IDM-VTON and the earlier GPT Luna proposal.
 - Integrated merchandise payments are required for the MVP, not only supplier redirects. **Asaas is the selected processor**. Do not build Stripe or ask to choose a processor again.
 - AliExpress, Shopee and TikTok Shop are the three requested commerce API targets. Interpret TikTok as Shop commerce, not generic videos. API operation/account/region capabilities remain to be verified.
 - Use the user's layered diagram as architecture/management context. It does not select every example technology shown.
 - Current request implements the monorepo, detailed successor plan, Node 26 pin and Supabase foundation/hosted connection. The owner created `stylai-dev`; starter migration, hosted readiness and public schema type generation are verified. It does not authorize pretending the whole MVP exists, spending on live integrations, publishing or sending external outreach.
 
-Phase 1 baseline and fact registers are implemented; see [Phase 1 readiness](../decisions/phase-1-readiness.md). All people remain unassigned by explicit choice; Asaas account exists with environment/access unverified, Segmind and marketplace developer accounts do not yet exist, and business settings are not defined.
+Phase 1 baseline and fact registers are implemented; see [Phase 1 readiness](../decisions/phase-1-readiness.md). People remain unassigned. The owner reports production and sandbox Asaas accounts, with access and capabilities unverified. Brazil/Portuguese/BRL, three garment categories, three marketplaces, Google login, paid AI membership and admin pricing/shipping are launch scope. Only `stylai-dev` is hosted for now. See [Owner launch decisions](../decisions/2026-11-10-launch-answers.md).
 
 See [decision register](../decisions/mvp-decisions.md) for open owner responsibilities. New merchant/source facts must be recorded with evidence.
 
@@ -31,13 +31,13 @@ See [decision register](../decisions/mvp-decisions.md) for open owner responsibi
 These limits are engineering proposals to validate, not vendor guarantees or newly approved commercial terms:
 
 - One front photo and one real garment/variant per initial render. Set future `maxChosenPieces=1`, personalized preview on, unrestricted outfit/text-to-image off.
-- Garments must map to an evaluated supported IDM-VTON category. Shoes/accessories may be sellable but not renderable; do not label them try-on supported without evidence.
+- Garments must map to an evaluated supported Try-On Diffusion category. Shoes/accessories may be sellable but not renderable; do not label them try-on supported without evidence.
 - All three source adapters are planned; activate only approved source/account/region operations. Sequence onboarding if useful, but a reduced final source scope requires a user decision.
 - One source/authorized connection/seller/region/currency fulfillment group per order. Mixed-source carts require separate orders at first; multi-supplier split shipments/payouts are later work.
-- Proposed free rendering allowance: three units per UTC day, one active job/user, one unit/render. Merchandise purchase is real payment; free rendering credits are not money or subscription entitlements.
-- Email/password, verification and recovery first. Google stays hidden until actually implemented/configured. Public exploration; private generation/Closet/profile require account.
+- Verified accounts get three free generations daily. Active AI members get up to 20 total per day. One active job per account. UTC rollover is a proposed implementation choice. Merchandise and membership use distinct billing and entitlement records.
+- Email/password with verification and recovery, plus verified Google sign-in, are required at launch. Public exploration; private generation/Closet/profile require account.
 - Basic data-supported style/budget/size choices. Hide rating/review/delivery/measurement criteria the supplier data cannot support.
-- Hide Match, edits, unrestricted references, multi-angle photos, measurements, paid AI plans, public sharing and native mobile wrappers until supported.
+- Hide Match, edits, unrestricted references, multi-angle photos, measurements, public sharing and native mobile wrappers until supported.
 
 ## 4. Actual scaffold inventory
 
@@ -70,7 +70,7 @@ Node service builds bundle internal workspace source and leave Fastify/vendor de
 - Current image tap enlarges; the React result has no clothing hotspot geometry. Implement verified normalized regions plus equivalent accessible product list. Do not fabricate a hotspot.
 - Current product copy tolerates “found corresponding product after generation.” Replace with accurate selected-variant provenance and a qualified fidelity notice.
 - Current Profile assumes three body angles/measurements; limit to the approved initial photo flow and capability-gate the rest.
-- Current token/plan UI is not approval for paid AI subscriptions. Merchandise Asaas checkout needs its own cart/order/refund screens and DTOs.
+- The existing plan UI needs real server-verified subscription entitlements and quota. Merchandise checkout needs its own cart/order/refund screens and DTOs.
 - Query clearing on logout must also cancel stale requests, clear private UI drafts and release object URLs; include personalized catalog/hero favorite flags. A late A-account result cannot repopulate B-account state.
 - Private result URLs expire. Store object keys; refresh one authorized resource on expiry without infinite broken-image retries.
 
@@ -110,7 +110,7 @@ AliExpress historical dropshipping documentation found during research is marked
 
 ## 9. Privacy, operations and completion
 
-Proposed beta retention: unreferenced uploads 24 hours; body photos/unsaved previews 30 days; saved outputs until deletion. Confirm before public launch. Signed links can remain usable briefly until expiry; do not promise instant revocation of already issued URLs. Original photo deletion and derivative preview deletion must be explicit.
+Confirmed retention: original uploads and unsaved previews expire after seven days. Saved looks persist until deleted, independently of original-photo expiry. Review disclosure and provider/backup lifecycle before launch. Signed links can remain usable briefly until expiry; do not promise instant revocation of already issued URLs. Original photo deletion and derivative preview deletion must be explicit.
 
 Account deletion immediately revokes access/stops new work but completes durable Storage/Auth/provider cleanup asynchronously. Return 202 accepted while pending. Retain minimized order/refund/dispute obligations under approved policy and deletion-aware FKs, not blanket user cascades. DB backup does not establish object binary recovery; test both as applicable.
 

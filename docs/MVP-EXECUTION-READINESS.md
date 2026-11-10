@@ -51,7 +51,7 @@ Expose worker state/health without leaking queue payloads. Inference failure/kil
 
 ## Selected payment processor: Asaas
 
-Asaas is confirmed. Read [Asaas specification](integrations/asaas.md) and [current successor context](handoff/CONTEXT.md). Merchant onboarding, enabled Pix/card methods, one-off checkout configuration, webhook setup, refund/reconciliation and supplier funding still need real evidence. Do not implement Stripe or reopen processor selection. Hosted checkout is compatible with integrated payments; the browser return never marks paid.
+Asaas is confirmed. Read [Asaas specification](integrations/asaas.md) and [current successor context](handoff/CONTEXT.md). Merchant onboarding, enabled Pix/card/boleto methods, installment policy and separate membership billing, webhook setup, refund/reconciliation and supplier funding still need real evidence. Do not implement Stripe or reopen processor selection. Hosted checkout is compatible with integrated payments; the browser return never marks paid.
 
 ## Release gates and minimum evidence
 
