@@ -39,7 +39,7 @@ Updated 2026-11-10. Latest explicit user decisions supersede earlier proposals. 
 
 Owners below are roles to assign, not named people who have accepted responsibility. No external outreach is authorized by this register.
 
-Latest decisions for launch, membership, retention, payment, admin and environment policy are in [the launch answers](2026-11-10-launch-answers.md).
+Latest decisions for launch, retention, payment, admin and environment policy are in [the launch answers](2026-11-10-launch-answers.md). The [AI plans and unit cost](2026-11-10-ai-plans-and-request-cost.md) record defines the combined search and generation request and daily allowances.
 
 Current Phase 1 facts and next actions are maintained in [phase-1-readiness.md](phase-1-readiness.md), [source-capabilities.md](source-capabilities.md), [owners](../operations/owners.md) and [Try-On Diffusion evaluation](../evaluations/try-on-diffusion.md). Provider selection stays settled; these records concern access and actual capability.
 

@@ -15,8 +15,8 @@ This record supersedes earlier Phase 1 statements that all launch settings were 
 | Pricing | Admin panel required to configure pricing/shipping | Add secured admin workstream; no hardcoded markup/shipping or public settings mutation |
 | Catalog | No suppliers/products yet; prepare curated workflow | Intake and rights/variant verification templates, publication review, no production sample catalog |
 | Model | Segmind **Try-On Diffusion** at `/models/try-on-diffusion/api` | Replaces IDM-VTON as target; different payload/category strings and separate rights evidence |
-| Free usage | Logged-in users: 3 generations daily | Verified active account and atomic server quota; no anonymous render allowance |
-| Paid usage | AI membership/subscription: up to 20 daily | Separately billed AI entitlement, not a benefit granted forever by a clothing purchase. 20 is total daily limit, not 20+3 |
+| Free usage | Logged-in users: 3 combined AI requests daily | Each request includes category-based catalog search with embedding verification and one preview image |
+| Paid usage | AI membership: 12 combined requests daily in total | Separately billed AI entitlement. See [AI plans and unit cost](2026-11-10-ai-plans-and-request-cost.md) for quotas and the 0.03 estimate |
 | Rendering | One garment/front photo and one active job accepted | Preserve product-first ownership/consent/variant mapping and DB concurrency limit |
 | Evaluation | Prepare dataset collection | Protocol and manifest only; no test photos received, billable run or benchmark result |
 | Authentication | Email/password plus Google required at launch | Google implementation/configuration becomes required Phase 3 work, not a permanently hidden feature |

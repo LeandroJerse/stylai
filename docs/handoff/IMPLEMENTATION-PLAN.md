@@ -1,6 +1,6 @@
 # StylAI MVP — complete successor implementation plan
 
-> Apply the [Owner launch decisions](../decisions/2026-11-10-launch-answers.md) before older specs or task breakdowns.
+> Apply the [owner launch decisions](../decisions/2026-11-10-launch-answers.md) and [AI request and quota decision](../decisions/2026-11-10-ai-plans-and-request-cost.md) before older specs or task breakdowns.
 
 > Read [CONTEXT.md](CONTEXT.md) first. This plan is designed for a developer/coding agent who has no chat history. Execute task-by-task; record actual evidence and unresolved dependencies. It is not permission to call incomplete integrations done or to spend/publish without the relevant authorization.
 
@@ -155,11 +155,11 @@ External approvals and real data collection may run in parallel with code; the t
 
 ## Phase 6 — Canonical selection, preferences and Closet provenance
 
-**Files:** contracts runtime schemas; API studio selection, preferences/Closet; SQL provenance functions; web preference controls/result copy.
+**Files:** contracts runtime schemas; API studio selection and catalog search; preferences/Closet; catalog embeddings and SQL provenance; web preference controls/result copy.
 
 Canonical selection is `{productId, variantId, bodyPhotoId}`. Both render entry points normalize to it. Require exactly one product, matching selectable variant/source/category, owned ready photo, current consent, personalized mode and empty references. `/studio/try-ons` compatibility input explicitly identifies a garment from an authorized source look; no “pick first garment” fallback.
 
-- [ ] Use deterministic real-data selection; prompt/style helps choose an actual garment, not invent product IDs. Derive provider description/category from trusted bounded catalog metadata.
+- [ ] Run AI search over approved catalog candidates in the requested category and verify candidate relevance with embeddings. Evaluate embedding model, similarity thresholds and catalog coverage. Persist candidate provenance and eligible variant choice before generation. Preserve explicit variant selection and return `no_results` without calling the generator when there is no eligible match.
 - [ ] Reject unsupported multiple garments/category/variant before quota or cost reservation. Keep product browse/Closet collections separate from what the render represented.
 - [ ] Implement one idempotent default preference and only rules the source can support. Hard vs prefer vs off semantics and missing-data policy must be testable; strict budget uses known currency/prices.
 - [ ] Save products/looks idempotently and preserve explicit favorites vs pieces inherited from each saved look. Removing a look cannot remove independent favorites or another look's associations.
@@ -172,13 +172,13 @@ Canonical selection is `{productId, variantId, bodyPhotoId}`. Both render entry 
 
 - [ ] Submission takes Idempotency-Key, normalized input and payload hash. Same user/key/body ->existing job; changed body ->409; atomic quota reservation+job+queue. Enforce one active job/user in DB, not only UI.
 - [ ] Snapshot user/photo/variant/rules/consent/source/model/input versions and allowance period and membership entitlement at submission. UTC rollover cannot move a charge into another period accidentally.
-- [ ] Enforce three free or up to 20 total daily for active AI membership through the same atomic reservation path. Verify downgrade, expiry, simultaneous renewal and quota usage. Store immutable entitlement terms and separate membership and provider spend ledgers.
+- [ ] Enforce three daily requests on Free or 12 total daily with active paid membership through the same atomic reservation path. One combined search + generation job uses one allowance unit. Verify downgrade, expiry, simultaneous renewal and quota usage. Store immutable entitlement terms and separate membership and provider spend ledgers.
 - [ ] Keep states queued/running/succeeded/failed/no_results/cancelled, truthful step labels and optional known progress. Finalization creates private output/look/mapping and consumes allowance once in the same transaction; terminal failure/cancel releases once.
 - [ ] Each claim increments fence token; dispatch/progress/finalization/cancel/deletion compare it. Renew queue visibility/lease and acknowledge after committed terminal state. Stale workers cannot publish/spend.
-- [ ] Separate operator provider-spend ledger reserves conservative maximum before every billable call/localization/retry. Unknown outcomes stay reserved; failures/cancels still count actual vendor spend. No defensible maximum ->no dispatch. Kill switch is durable and does not pause money reconciliation/privacy work.
+- [ ] The operator provider-spend ledger tracks search/embedding and generation as separate stages. Reserve a conservative maximum before each billable call or retry. Record the owner estimates (0.01 search and 0.02 generation) separately from measured charges and do not infer currency or caps from the estimate. Unknown outcomes stay reserved; failures/cancels still count actual vendor spend. No defensible maximum ->no dispatch. Kill switch is durable and does not pause money reconciliation/privacy work.
 - [ ] Active-job recovery after reload uses server truth; bounded history cursors preserve private resource ownership. Mutations never auto-retry with a new key after timeout.
 
-**Verify:** concurrent enqueue, direct RPC bypass, exhausted quota, double key, midnight rollover, rollback, duplicate delivery/finalize, stale fence, cancellation racing success, queued photo/account deletion, global cost cap under concurrency and unknown-cost retention. Only real DB concurrency tests establish these invariants.
+**Verify:** concurrent enqueue, direct RPC bypass, exact 3/12 quota boundaries, double key, midnight rollover, rollback, duplicate delivery/finalize, stale fence, cancellation racing success, queued photo/account deletion, no-match skipping generation, generation retry reusing completed search, per-stage spend reconciliation, global cost cap under concurrency and unknown-cost retention. Only real DB concurrency tests establish these invariants.
 
 ## Phase 8 — Real Segmind Try-On Diffusion execution and evaluation
 

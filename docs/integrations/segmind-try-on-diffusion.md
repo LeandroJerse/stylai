@@ -21,11 +21,11 @@ Retain the existing provider-neutral workflow: product/variant + owned ready pho
 
 ## Membership and quota requirements
 
-Free: 3/day; active paid AI membership: up to 20/day total. One active job/user. Daily periods initially UTC as an engineering proposal; disclose reset time locally and confirm before marketing. Membership is not inferred from a merchandise payment, client flag, email metadata or checkout redirect.
+Free accounts get three requests per day. Active paid AI members get 12 per day in total. Each combined request checks catalog candidates and embeddings before one image generation. One active job per user. Daily periods initially UTC as an engineering proposal; disclose reset time locally and confirm before marketing. Membership is not inferred from a merchandise payment, client flag, email metadata or checkout redirect.
 
 Separate immutable ledgers for user usage and provider spend. Provider failures can cost money even when user units are returned. Global limits reserve conservatively under concurrency across all workers/instances. Missing defensible per-attempt ceiling means no dispatch. Budget pausing must not stop payment reconciliation or deletion work.
 
-Membership price/monthly allowance/spending caps remain proposals in [budget recommendations](../operations/budget-and-hosting.md). Do not sell 20/day while implementing a hidden monthly cap. Entitlement activation/expiry/revocation is controlled by reconciled membership billing and server validity period, with a job-time snapshot and consistent refund/cancel race policy.
+Membership price/monthly allowance/spending caps remain proposals in [budget recommendations](../operations/budget-and-hosting.md). Disclose any approved monthly limit alongside the daily allowance. See [the AI request decision](../decisions/2026-11-10-ai-plans-and-request-cost.md). Entitlement activation/expiry/revocation is controlled by reconciled membership billing and server validity period, with a job-time snapshot and consistent refund/cancel race policy.
 
 ## Acceptance evidence
 

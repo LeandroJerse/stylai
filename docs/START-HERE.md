@@ -6,6 +6,8 @@ This repository is intended to be sufficient for a new developer or coding agent
 
 Start with the [current launch decisions and prepared artifacts](decisions/2026-11-10-launch-answers.md). Earlier design and task documents retain historical detail. Where scope differs, use the current launch record and master plan.
 
+The [AI request and quota decision](decisions/2026-11-10-ai-plans-and-request-cost.md) defines category search with embedding verification followed by generation, plus the 3/12 daily allowances and estimated unit costs.
+
 1. [Current context and decisions](handoff/CONTEXT.md): product, scope, architecture, existing behavior, constraints and superseded assumptions.
 2. [Complete implementation plan](handoff/IMPLEMENTATION-PLAN.md): ordered phases, files, acceptance tests, dependencies and completion evidence.
 3. [Asaas integration specification](integrations/asaas.md): selected payment processor, checkout/events, money states and verification.

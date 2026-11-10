@@ -33,7 +33,7 @@ If no source has an approved automated or assisted fulfillment path, disable pay
 | Pricing | Percentage markup, fixed markup, manual selling-price override, minimum contribution floor and scoped rules | Integer minor units, BRL launch, version/effective time and audit; procurement cost private |
 | Shipping | Supplier/destination shipping quote, separate customer shipping, subsidy/free-shipping threshold if approved | Estimate vs guaranteed time explicit; prevent double-counting freight and stale quotes |
 | Payment settings | Enable methods, installment maximum/minimum, fee/interest policy per verified account | Provider capability bound; server creates trusted amounts/callbacks; no raw PAN/CVV |
-| Membership | Plan price/period, 3/20 daily limits, approved monthly allowance, pause/new-sale controls | No arbitrary entitlement edit; audited grant/revoke with reason; separate money/usage ledgers |
+| Membership | Plan price/period, 3/12 daily limits, approved monthly allowance, pause/new-sale controls | No arbitrary entitlement edit; audited grant/revoke with reason; separate money/usage ledgers |
 | AI operations | Daily/monthly total spend, concurrency/presets/model/category enablement and kill switch | Reserve before dispatch; limit reductions don't invalidate paid promises without a defined remedy |
 | Orders/procurement | Exceptions, authorized manual workflow, funding reservations and tracking | No duplicate supplier purchase; never override settlement/funding truth |
 | Support/privacy | Cases, refunds/returns and deletion progress | Least necessary customer data; no public photo links or permanent image download grants |

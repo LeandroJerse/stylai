@@ -10,18 +10,16 @@ For an illustrative ten-order pilot at up to R$100 landed supplier cost per orde
 
 ## AI spend and membership
 
-Segmind lists US$0.0072 per GPU-second. At an assumed eight billed seconds, the cost is US$0.0576 per attempt. This is a sensitivity assumption. Measure billed seconds, retries and failures in the actual account. [Segmind pricing](https://www.segmind.com/models/try-on-diffusion/pricing).
+The owner estimates **0.01 for AI catalog search and embedding verification** and **0.02 for generating one image**. A complete request therefore costs an estimated **0.03** in either plan. The currency of this calculation is pending. These figures describe operating cost. The monthly subscription price is an open decision. [AI plans and request cost](../decisions/2026-11-10-ai-plans-and-request-cost.md).
 
-| Scenario | Attempts | Illustrative GPU cost |
-| --- | ---: | ---: |
-| One evaluation batch | 50 | US$2.88 |
-| 100 free users render three times on one day | 300 | US$17.28 |
-| One member uses 20/day for 30 days | 600 | US$34.56 |
-| One member uses 100 renders/month | 100 | US$5.76 |
+| Plan | Requests/day | Cost/day at full use | Requests in 30 days | Cost in 30 days at full use |
+| --- | ---: | ---: | ---: | ---: |
+| Free | 3 | 0.09 | 90 | 2.70 |
+| Paid | 12 total | 0.36 | 360 | 10.80 |
 
-Recommend a US$10 evaluation ceiling with up to 50 attempts, whichever is reached first, followed by a US$50/month invite-only pilot with a US$5/day ceiling. These are proposed controls, subject to provider minimum top-up and an approved per-attempt reservation limit. Raise caps based on measured cost and actual customer demand. Enforce budgets transactionally at dispatch, account for unknown outcomes and alert at 50%, 80% and 100%. Pause new inference when the cap is reached and keep order, refund and deletion work running. Decide how paid entitlements will be honored or remedied before taking membership payments.
+A paid member using the full daily allowance in a 31-day month makes 372 requests at an estimated cost of 11.16. Compare per-stage actual charges, retries, failures and catalog index refresh costs before setting financial limits. Account separately for taxes, fees, storage and support when pricing the subscription.
 
-The free tier allows three generations per day and active AI membership allows up to 20 daily. If the offer permits full daily use, model up to 620 in a 31-day month. At the illustrative unit cost that is US$35.71 before FX, taxes, failed attempts, payment fees, storage and support. Recommend testing a clearly advertised monthly included allowance with 20/day as the rate limit, subject to owner approval. If the offer guarantees 20/day, price and reserve for that usage instead. Price in BRL after measuring the loaded cost and testing demand. Treat clothing contribution as a measured subsidy for acquisition, with a capped budget until attributable conversion and net margin justify more.
+The earlier USD scenario used US$0.0072 per billed GPU-second and an assumed eight seconds, or US$0.0576 for generation alone. Keep it as a separate sensitivity check until the generation estimate, billing basis and currency are reconciled with actual account charges. The earlier US$10 evaluation and US$50 monthly pilot figures are proposals. Set enforceable caps after confirming the currency, measured cost, available credits and how to honor paid entitlements during a budget pause. [Segmind pricing](https://www.segmind.com/models/try-on-diffusion/pricing).
 
 ## Hetzner deployment proposal
 

@@ -34,7 +34,7 @@ These limits are engineering proposals to validate, not vendor guarantees or new
 - Garments must map to an evaluated supported Try-On Diffusion category. Shoes/accessories may be sellable but not renderable; do not label them try-on supported without evidence.
 - All three source adapters are planned; activate only approved source/account/region operations. Sequence onboarding if useful, but a reduced final source scope requires a user decision.
 - One source/authorized connection/seller/region/currency fulfillment group per order. Mixed-source carts require separate orders at first; multi-supplier split shipments/payouts are later work.
-- Verified accounts get three free generations daily. Active AI members get up to 20 total per day. One active job per account. UTC rollover is a proposed implementation choice. Merchandise and membership use distinct billing and entitlement records.
+- StylAI has two AI plans. Verified accounts get three requests daily on Free and 12 total per day with active paid membership. A request includes category-scoped AI catalog search with embedding verification and one preview image. Estimated cost is 0.03 per request (0.01 search, 0.02 generation), with currency pending. One active job per account. See [the AI decision](../decisions/2026-11-10-ai-plans-and-request-cost.md).
 - Email/password with verification and recovery, plus verified Google sign-in, are required at launch. Public exploration; private generation/Closet/profile require account.
 - Basic data-supported style/budget/size choices. Hide rating/review/delivery/measurement criteria the supplier data cannot support.
 - Hide Match, edits, unrestricted references, multi-angle photos, measurements, public sharing and native mobile wrappers until supported.

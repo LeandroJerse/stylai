@@ -10,7 +10,7 @@ Updated 2026-11-10. The monorepo/app scaffold now exists; domain backend and ext
 - AliExpress, Shopee and TikTok Shop as the three commerce integration targets.
 - The user-supplied architecture diagram informs project layers and workstreams; its technology examples are alternatives, not automatic selections.
 
-Target journey: real garment -> owned photo and consent -> actual virtual try-on -> inspect/save the real product -> StylAI checkout -> verified payment -> supplier fulfillment/tracking -> support/refund when needed.
+Target journey: approved category catalog search and embedding check -> real garment variant -> owned photo and consent -> actual virtual try-on -> inspect/save the real product -> StylAI checkout -> verified payment -> supplier fulfillment/tracking -> support/refund when needed.
 
 ## Milestones
 
@@ -29,7 +29,7 @@ Target journey: real garment -> owned photo and consent -> actual virtual try-on
 
 Curate real approved products rather than expose an unreviewed entire marketplace. Implement all three source adapters with account/region-specific capability gates. Onboard sequentially if useful, but removing a requested source from launch needs an explicit scope decision.
 
-Use one source/seller fulfillment group per checkout and one garment per Try-On Diffusion render initially. These are proposed limits to validate. Multi-source catalogs do not require mixed-source shipments in a single paid order. Free AI allowance is distinct from merchandise payment.
+Use one source/seller fulfillment group per checkout and one garment per Try-On Diffusion render initially. These are proposed limits to validate. Multi-source catalogs do not require mixed-source shipments in a single paid order. Free AI allows three combined requests per day. Paid AI membership allows 12 total per day. See [AI plans and request cost](decisions/2026-11-10-ai-plans-and-request-cost.md).
 
 Defer or hide unrestricted multi-garment/text-to-image generation, Match, free-form edits, multi-angle photos, body measurements, unsupported catalog criteria, public social sharing and native mobile wrappers. Do not defer required integrated payments.
 
