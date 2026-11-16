@@ -51,7 +51,7 @@ try {
   const migrations = readdirSync(resolve(root, "supabase/migrations"))
     .filter((file) => /^\d{14}_.+\.sql$/.test(file)).sort()
     .map((file) => `supabase/migrations/${file}`)
-  const files = ["supabase/tests/bootstrap-postgres.sql", ...migrations, "supabase/tests/foundation.sql", "supabase/tests/domain.sql", "supabase/tests/commerce.sql", "supabase/tests/concurrency-fixtures.sql"]
+  const files = ["supabase/tests/bootstrap-postgres.sql", ...migrations, "supabase/tests/foundation.sql", "supabase/tests/domain.sql", "supabase/tests/commerce.sql", "supabase/tests/server-boundary.sql", "supabase/tests/concurrency-fixtures.sql"]
   const input = files.map((file) => readFileSync(resolve(root,file), "utf8")).join("\n")
   const test = docker(["exec", "-i", name, "psql", "-U", "postgres", "-d", "stylai_test", "-v", "ON_ERROR_STOP=1"], { input })
   if (test.status !== 0) throw new Error("Migration/RLS assertion failed:\n" + test.stderr)

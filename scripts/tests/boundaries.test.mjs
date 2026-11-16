@@ -13,6 +13,8 @@ test("browser boundary rejects server packages and dynamic imports", () => {
     expect(checkBrowserBoundaries(directory).length).toBeGreaterThan(0)
     writeFileSync(join(directory, "apps/web/src/main.ts"), 'import type { ApiErrorBody } from "@stylai/contracts"')
     expect(checkBrowserBoundaries(directory)).toEqual([])
+    writeFileSync(join(directory, "apps/web/src/main.ts"), 'import("pg/lib/client.js")')
+    expect(checkBrowserBoundaries(directory).length).toBeGreaterThan(0)
     writeFileSync(join(directory, "apps/web/package.json"), JSON.stringify({ dependencies: { "@stylai/supabase": "workspace:*" } }))
     expect(checkBrowserBoundaries(directory).length).toBeGreaterThan(0)
   } finally {

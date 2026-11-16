@@ -2,6 +2,8 @@
 
 Updated 2026-11-10. This is the current intent and technical handoff. Read [implementation plan](IMPLEMENTATION-PLAN.md) after this file.
 
+2026-11-15 continuation: [actual current implementation/evidence](../qa/2026-11-15-mvp-continuation.md) supersedes the historical scaffold inventory below. Four domain migrations were previously applied to hosted dev; a fifth local-only server-role migration plus real Node private-transaction transport is now implemented and locally verified. Auth, private photo binaries, actual catalog/AI/commerce and deployment remain pending. Do not rebuild the schema or frontend.
+
 ## 1. Product and user journey
 
 StylAI helps a shopper see a clothing preview on their own photo, inspect the actual garment, save it and buy through StylAI. Core promise: “Veja um look em você e encontre as peças para comprar.” The preview is generated imagery, not proof of physical fit or exact garment fidelity.
@@ -48,10 +50,10 @@ These limits are engineering proposals to validate, not vendor guarantees or new
 | `apps/worker` | Idle HTTP health server and shutdown | Queue polling, generation, procurement, source sync or cleanup |
 | `packages/contracts` | Minimal browser-safe errors/health/garment/source/money interfaces | Full runtime schemas/generated clients; web still uses its current types |
 | `packages/config` | Scaffold runtime host/ports/origin validation | Real integration credential validation |
-| `packages/supabase` | Typed isolated public/user/admin SDK clients, actual generated public types and verified hosted schema RPC | Full domain adapters |
+| `packages/supabase` | Typed isolated SDK clients, generated public types, foundation RPC and restricted Node private-transaction transport | Hosted runtime-role provisioning, session/read/ingestion adapters and complete domain features |
 | `packages/ai` | Server-only provider interface | Segmind network calls, evaluation or license/account proof |
 | `packages/commerce` | Server-only source/checkout interfaces, Asaas selection and per-source directories | Asaas operations, source authorization or supplier purchasing |
-| `supabase` | Applied starter migration and isolated PostgreSQL role/RLS tests | Remaining domain schema and email templates |
+| `supabase` | Four historical hosted domain/transaction migrations; fifth local-only restricted-role migration; SQL/RLS/role/concurrency and Node-driver tests | Additional validated feature mutations/read models, Auth templates and hosted boundary acceptance |
 | `scripts`, CI | Import guard, doctor, built-service smoke, foundation SQL tests/probe and Linux CI | Full provider/transaction integration suite or deployment pipeline |
 
 Health behavior is intentional: `/health/live` 200 means process responds; API `/health/ready` is 200 only when the expected Supabase foundation RPC succeeds, otherwise 503. Worker readiness remains 503. Foundation readiness does not certify the full MVP. All unimplemented `/v1` routes return 503 envelope, including the webhook: an unpersisted money event must not receive a fake 200 acknowledgment. Unknown non-API paths return 404.

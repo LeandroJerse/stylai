@@ -23,6 +23,7 @@
     "test:smoke": "node scripts/smoke-built.mjs",
     "test:integration": "bun run supabase:check",
     "test:db": "node scripts/test-foundation-db.mjs",
+    "test:db:private": "node --conditions=development --import tsx scripts/test-private-db.ts",
     "check": "bun run lint && bun run typecheck && bun run test && bun run build && bun run test:smoke",
     "supabase": "supabase",
     "supabase:start": "supabase start",

@@ -4,6 +4,8 @@ This repository is intended to be sufficient for a new developer or coding agent
 
 ## Read in this order
 
+Latest continuation: [2026-11-15 implementation/status evidence](qa/2026-11-15-mvp-continuation.md) and [private server boundary contract/runbook](operations/private-database-boundary.md). They supersede older statements that the domain schema or all server access remains unimplemented. The first four migrations are historical hosted work; the fifth server-role migration is local only, with no hosted provisioning performed.
+
 Start with the [current launch decisions and prepared artifacts](decisions/2026-11-10-launch-answers.md). Earlier design and task documents retain historical detail. Where scope differs, use the current launch record and master plan.
 
 The [AI request and quota decision](decisions/2026-11-10-ai-plans-and-request-cost.md) defines category search with embedding verification followed by generation, plus the 3/12 daily allowances and estimated unit costs.
@@ -22,8 +24,8 @@ Authoritative order: actual source/verification evidence for current behavior; c
 
 - Frontend moved from root into `apps/web`; its domain implementation/UI is preserved.
 - Runnable API and idle worker foundations exist, along with package boundaries, config examples, Supabase local config and CI.
-- API live health is 200; readiness probes the real Supabase schema RPC and is 503 until configured with the expected reachable schema. Business routes remain unimplemented 503 errors. Worker consumes no queue.
-- Supabase SDK clients, starter schema/RLS/private buckets and isolated PostgreSQL tests exist. Hosted connection and generated public schema types are verified. App auth, catalog endpoints, Asaas, Segmind, source orders and privacy workflows remain pending.
+- API live health is 200; readiness requires both the foundation RPC and restricted private database access. It returns 503 if either is missing/unavailable. Business routes remain unimplemented 503 errors. Worker consumes no queue.
+- Supabase SDK clients, private schema/RLS/buckets and four historical hosted domain/transaction migrations exist. A fifth local forward migration and real Node PostgreSQL transport add distinct API/AI/payment/procurement function permissions, bounded connections, privilege checks and explicit unknown outcomes. Hosted runtime-role provisioning is pending. App auth, catalog endpoints, Asaas, Segmind, source orders and binary privacy workflows remain pending.
 - Asaas is confirmed and the owner has an account; its environment, merchant capability, payment methods and commercial settings remain unverified. Do not reopen processor selection.
 - The owner created hosted `stylai-dev`; the starter migration is applied and the API uses ignored local Supabase configuration. No credentials are committed. Segmind and marketplace developer accounts do not yet exist. No real purchase, paid image call or app deployment has been performed.
 
@@ -45,7 +47,7 @@ Copy an app's `.env.example` to its ignored `.env.local` only when needed. No se
 
 Root `check` runs the browser/server import guard, TypeScript checks, unit tests, builds and real built-Node health smoke tests. `lint` is the narrow dependency/import guard, not a full ESLint/style/security audit. Frontend E2E uses a test-only fake backend; it does not prove real Supabase/AI/payments.
 
-`test:db` runs real PostgreSQL 17 role/RLS tests in an ephemeral Docker container. `test:integration` currently runs only the hosted foundation probe. `db:types` generates from an actual migrated authenticated project and fails if access/configuration is missing.
+`test:db` runs real PostgreSQL 17 role/RLS tests in an ephemeral network-isolated Docker container. `test:db:private` runs the actual Node driver against a separate disposable PostgreSQL container exposed only on a random loopback port; it does not read app env files or contact hosted Supabase. `test:integration` currently runs only the hosted foundation probe. `db:types` generates from an actual migrated authenticated project and fails if access/configuration is missing.
 
 ## Supabase
 
@@ -57,6 +59,6 @@ Origin: https://github.com/LeandroJerse/stylai. Keep `.git` at root and no neste
 
 Inherited tracking refs can describe the previous frontend remote. Before first push, inspect the actual new remote's history and reconcile non-destructively. Do not force-push based on a copied repository's old refs. The sibling `stylai_frontend` and prototype remain outside the new monorepo and are not required by this handoff.
 
-## First implementation assignment
+## Next implementation assignment
 
-Phase 1's baseline and fact registers are implemented; see [Phase 1 readiness](decisions/phase-1-readiness.md) and [its verification](qa/2026-11-10-phase-1-baseline.md). People remain unassigned. The owner reports existing Asaas production and sandbox accounts, with integration access still unverified. The current launch record lists the confirmed business settings and remaining account dependencies. Full Phase 1 external acceptance is not complete. Continue the independent Phase 2 schema/transaction work, extending the applied Supabase foundation. Do not let missing accounts become fake successful integrations or silently close launch gates.
+The Phase 2 schema/transaction foundation and local restricted server transport are implemented; see [Phase 2 evidence](qa/2026-11-10-phase-2-database.md) and [current continuation](qa/2026-11-15-mvp-continuation.md). Next implement the encrypted session vault, verified actor boundary, real email/password and Google auth, then private photo ingestion/cleanup. The new transport trusts server-derived actor UUIDs and is not authentication. Hosted role apply/credential provisioning follows the [runbook](operations/private-database-boundary.md), with no project reset. People remain unassigned; Asaas/Segmind/source access and business/operating gates remain open. Continue independent implementation without fake successes.

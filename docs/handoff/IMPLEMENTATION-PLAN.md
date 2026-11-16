@@ -6,7 +6,7 @@
 
 **Goal:** complete the actual web MVP using Supabase, Segmind Try-On Diffusion, **Asaas**, and AliExpress/Shopee/TikTok Shop sources, preserving the current frontend's visual system and building a trustworthy purchase/fulfillment journey.
 
-**Starting state:** monorepo foundations plus Supabase isolated clients, starter SQL/RLS/private buckets, real PostgreSQL tests and a bounded schema RPC probe exist. Hosted apply/connection and generated public types are complete. Full domain schema and feature/provider integrations remain pending. Worker stays idle. Read [hosted setup](../SUPABASE-SETUP.md) and [current verification](../qa/2026-11-10-node26-supabase-foundation.md).
+**Starting state (updated 2026-11-15):** monorepo and frontend foundations, four historical hosted private-domain/transaction migrations and a fifth local restricted server-role migration exist. Node can execute allowlisted private transactions using distinct credentials with role/ACL checks; hosted runtime provisioning is pending. Actual Auth, photo lifecycle, catalog, worker and commerce/provider features remain pending. Worker stays idle. Read [current continuation evidence](../qa/2026-11-15-mvp-continuation.md) and [server-boundary contract](../operations/private-database-boundary.md). Preserve completed foundations rather than rebuilding them.
 
 **Authority:** latest confirmed decisions in CONTEXT/decision register > this current handoff/design > older execution plans > original context snapshots. Actual code/tests establish delivered behavior. Older plans describe future files as “create”; preserve existing scaffold files and extend them instead of regenerating/deleting the work. Asaas is selected; gateway selection is no longer an open task.
 

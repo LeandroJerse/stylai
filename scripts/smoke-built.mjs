@@ -13,10 +13,13 @@ async function freePort() {
   return port
 }
 const children = []
+// Do not inherit real private database URLs or CA material into offline smoke.
+const offlineEnvironment = { ...process.env }
+for (const key of Object.keys(offlineEnvironment)) if (/^STYLAI_(API|AI_WORKER|PAYMENTS|PROCUREMENT)_DATABASE_/.test(key)) delete offlineEnvironment[key]
 try {
   for (const service of ["api", "worker"]) {
     const port = await freePort()
-    const child = spawn(process.execPath, [`apps/${service}/dist/server.js`], { cwd: root, env: { ...process.env, SUPABASE_URL: "", SUPABASE_PUBLISHABLE_KEY: "", SUPABASE_SECRET_KEY: "", SUPABASE_ANON_KEY: "", SUPABASE_SERVICE_ROLE_KEY: "", NODE_ENV: "test", SERVICE_HOST: "127.0.0.1", APP_ORIGIN: "http://localhost:5190", [service === "api" ? "API_PORT" : "WORKER_PORT"]: String(port) }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true })
+    const child = spawn(process.execPath, [`apps/${service}/dist/server.js`], { cwd: root, env: { ...offlineEnvironment, SUPABASE_URL: "", SUPABASE_PUBLISHABLE_KEY: "", SUPABASE_SECRET_KEY: "", SUPABASE_ANON_KEY: "", SUPABASE_SERVICE_ROLE_KEY: "", NODE_ENV: "test", SERVICE_HOST: "127.0.0.1", APP_ORIGIN: "http://localhost:5190", [service === "api" ? "API_PORT" : "WORKER_PORT"]: String(port) }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true })
     children.push(child)
     let output = ""
     child.stdout.on("data", (data) => { output = (output + data).slice(-4000) })

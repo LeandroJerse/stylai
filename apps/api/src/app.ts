@@ -3,9 +3,9 @@ import cors from "@fastify/cors"
 import helmet from "@fastify/helmet"
 import rateLimit from "@fastify/rate-limit"
 import { apiError, type HealthStatus } from "@stylai/contracts"
-import type { FoundationProbe } from "@stylai/supabase"
+import type { FoundationProbe, PrivateDatabaseStatus } from "@stylai/supabase"
 
-export interface AppDependencies { appOrigin: string; logger?: boolean; probeSupabase?: () => Promise<FoundationProbe> }
+export interface AppDependencies { appOrigin: string; logger?: boolean; probeSupabase?: () => Promise<FoundationProbe>; probePrivateDatabase?: () => Promise<PrivateDatabaseStatus> }
 
 /** Testable foundation. Business routes and dependency readiness remain unimplemented. */
 export async function buildApp(deps: AppDependencies) {
@@ -29,9 +29,11 @@ export async function buildApp(deps: AppDependencies) {
   app.get("/health/live", async (): Promise<HealthStatus> => ({ status: "ok", service: "api" }))
   app.get("/health/ready", async (_request, reply) => {
     let probe: FoundationProbe = { status: "not_configured" }
+    let privateDatabase: PrivateDatabaseStatus|"not_configured" = "not_configured"
     try { if (deps.probeSupabase) probe = await deps.probeSupabase() } catch { probe = { status: "unreachable" } }
-    const ready = probe.status === "ready"
-    return reply.code(ready ? 200 : 503).send({ status: ready ? "ok" : "not_ready", service: "api", dependencies: { supabase: probe.status } })
+    try { if (deps.probePrivateDatabase) privateDatabase = await deps.probePrivateDatabase() } catch { privateDatabase = "unavailable" }
+    const ready = probe.status === "ready" && privateDatabase === "ready"
+    return reply.code(ready ? 200 : 503).send({ status: ready ? "ok" : "not_ready", service: "api", dependencies: { supabase: probe.status, privateDatabase } })
   })
   app.setNotFoundHandler((request, reply) => {
     const path = request.url.split("?")[0] ?? ""

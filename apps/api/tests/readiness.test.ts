@@ -3,12 +3,21 @@ import { buildApp } from "../src/app"
 
 test("API readiness is 200 only after a real dependency probe reports ready", async () => {
   let status: "ready" | "unreachable" = "ready"
-  const app = await buildApp({ appOrigin: "http://localhost:5190", probeSupabase: async () => ({ status }) })
+  const app = await buildApp({ appOrigin: "http://localhost:5190", probeSupabase: async () => ({ status }), probePrivateDatabase: async () => "ready" })
   try {
     expect((await app.inject("/health/ready")).statusCode).toBe(200)
     status = "unreachable"
     expect((await app.inject("/health/ready")).statusCode).toBe(503)
     expect((await app.inject("/health/live")).statusCode).toBe(200)
+  } finally { await app.close() }
+})
+
+test("foundation success alone cannot claim private transaction readiness", async () => {
+  const app = await buildApp({ appOrigin: "http://localhost:5190", probeSupabase: async () => ({ status: "ready" }) })
+  try {
+    const response = await app.inject('/health/ready')
+    expect(response.statusCode).toBe(503)
+    expect(response.json().dependencies.privateDatabase).toBe('not_configured')
   } finally { await app.close() }
 })
 

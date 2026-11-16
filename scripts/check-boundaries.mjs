@@ -3,7 +3,7 @@ import { dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import ts from "typescript"
 
-const forbidden = (name) => /^@stylai\/(ai|commerce|config|supabase)(\/|$)/.test(name) || /^(node:|bun:|fastify$|pg$|segmind$|@supabase\/)/.test(name)
+const forbidden = (name) => /^@stylai\/(ai|commerce|config|supabase)(\/|$)/.test(name) || /^(node:|bun:|fastify$|pg(?:\/|$)|pg-(?:pool|protocol|connection-string|types)(?:\/|$)|segmind$|@supabase\/)/.test(name)
 
 /** A narrow import/dependency guardrail, not a complete security audit. */
 export function checkBrowserBoundaries(root) {
