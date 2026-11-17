@@ -32,6 +32,7 @@ import type {
   PreferenceRules,
   Preferences,
   Product,
+  ProductOffer,
   RuleMode,
   Session,
   StudioConfig,
@@ -102,17 +103,40 @@ const rating = (v: unknown): number | null => {
   return n === null || n < 0 || n > 5 ? null : n
 }
 
+/** One store's offer; null when the store id is missing (the offer is then dropped). */
+function offer(raw: unknown): ProductOffer | null {
+  if (!isObj(raw) || !isObj(raw.partner)) return null
+  const id = str(raw.partner.id)
+  if (!id) return null
+  const links = isObj(raw.links) ? raw.links : {}
+  return {
+    partner: { id, name: str(raw.partner.name) ?? id },
+    price: money(raw.price),
+    links: { affiliateUrl: safeExternalUrl(links.affiliateUrl), productUrl: safeExternalUrl(links.productUrl) },
+  }
+}
+
 export function parseProduct(raw: unknown): Product {
   const o = obj(raw, "product")
   const partner = obj(o.partner, "product.partner")
   const category = isObj(o.category) && str(o.category.id) ? { id: String(o.category.id), label: str(o.category.label) ?? String(o.category.id) } : null
   const links = isObj(o.links) ? o.links : {}
+  const own: ProductOffer = {
+    partner: { id: reqStr(partner.id, "partner.id"), name: str(partner.name) ?? String(partner.id) },
+    price: money(o.price),
+    links: { affiliateUrl: safeExternalUrl(links.affiliateUrl), productUrl: safeExternalUrl(links.productUrl) },
+  }
+  // Own store first, then one offer per other store (repeated stores are ignored).
+  const offers: ProductOffer[] = [own]
+  for (const extra of arr(o.offers).map(offer)) {
+    if (extra && !offers.some((x) => x.partner.id === extra.partner.id)) offers.push(extra)
+  }
   return {
     id: reqStr(o.id, "product.id"),
     name: reqStr(o.name, "product.name"),
     category,
-    partner: { id: reqStr(partner.id, "partner.id"), name: str(partner.name) ?? String(partner.id) },
-    price: money(o.price),
+    partner: own.partner,
+    price: own.price,
     images: images(o.images),
     rating: rating(o.rating),
     reviewsCount: num(o.reviewsCount),
@@ -132,7 +156,8 @@ export function parseProduct(raw: unknown): Product {
       .filter((m) => m.label && m.value),
     styles: strs(o.styles),
     updatedAt: str(o.updatedAt),
-    links: { affiliateUrl: safeExternalUrl(links.affiliateUrl), productUrl: safeExternalUrl(links.productUrl) },
+    links: own.links,
+    offers,
     favorite: bool(o.favorite),
   }
 }
@@ -270,6 +295,9 @@ export function parsePreferences(raw: unknown): Preferences {
 
 /* ------------------------------------------------------------------ studio */
 
+/** Base pieces per request when the server does not say (product decision 2026-11-11). */
+export const DEFAULT_MAX_CHOSEN = 6
+
 export function parseStudioConfig(raw: unknown): StudioConfig {
   const o = obj(raw, "studioConfig")
   const costs = obj(o.costs, "studioConfig.costs")
@@ -282,7 +310,7 @@ export function parseStudioConfig(raw: unknown): StudioConfig {
   return {
     costs: { generate: need(costs.generate, "costs.generate"), edit: need(costs.edit, "costs.edit"), tryOn: need(costs.tryOn, "costs.tryOn") },
     maxReferences: num(o.maxReferences) ?? 0,
-    maxChosenPieces: num(o.maxChosenPieces) ?? 0,
+    maxChosenPieces: num(o.maxChosenPieces) ?? DEFAULT_MAX_CHOSEN,
     maxPromptLength: num(o.maxPromptLength) ?? 500,
     budget: { min: need(budget.min, "budget.min"), max: need(budget.max, "budget.max"), step: num(budget.step) ?? 1, currency: str(budget.currency) ?? "BRL" },
     acceptedImageTypes: strs(o.acceptedImageTypes),

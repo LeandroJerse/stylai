@@ -14,6 +14,8 @@ export type Overlay =
   | { kind: "product"; productId: string; back?: Overlay }
   | { kind: "goToPiece"; product: Product; back?: Overlay }
   | { kind: "viewer"; image: ImageAsset; alt: string; back?: Overlay }
+  /** Full-screen look: image, title and description, with arrows through the generated looks. */
+  | { kind: "lookViewer"; lookId: string }
   | { kind: "edit" }
   | { kind: "match" }
   | { kind: "acervo" }
@@ -37,9 +39,16 @@ export interface ExploreQuery {
 
 export const DEFAULT_EXPLORE: ExploreQuery = { text: "", category: null, partner: null, price: { min: null, max: null }, favoritesOnly: false, sort: "relevance" }
 
+/**
+ * Estúdio modes. "procurar": the prompt drives a catalog search and the person is shown wearing the
+ * result. "vestir": no search; the chosen pieces and uploaded references are worn exactly as picked.
+ */
+export type StudioMode = "procurar" | "vestir"
+
 export interface StudioDraft {
+  mode: StudioMode
   prompt: string
-  /** Catalog pieces carried from Explorar into the request (kept whole for display). */
+  /** Base pieces of the request, from Explorar or the search catalog (kept whole for display). */
   chosen: Product[]
   references: UploadedImage[]
   preferenceId: string | null
@@ -50,11 +59,23 @@ export interface StudioDraft {
   lookId: string | null
   /** Job being followed (generation, edit or try-on). */
   jobId: string | null
-  /** Pieces selected in the search pool for a try-on. */
+  /**
+   * Look whose search pool is the Acervo. Kept across modes, edits and try-ons; only a new search
+   * result (a generated look with candidates) replaces it.
+   */
+  acervoLookId: string | null
+  /** Pieces selected in the Acervo for a try-on (kept while the Acervo stays the same). */
   acervoSelection: string[]
 }
 
-export const EMPTY_DRAFT: StudioDraft = { prompt: "", chosen: [], references: [], preferenceId: null, sessionRules: null, composerOpen: true, lookId: null, jobId: null, acervoSelection: [] }
+/** Draft patch that shows a look; it becomes the Acervo only when it is a search result. */
+export function showLookPatch(d: StudioDraft, look: { id: string; origin?: string; candidatesCount: number }): Partial<StudioDraft> {
+  const isSearch = (look.origin === undefined || look.origin === "generate") && look.candidatesCount > 0
+  if (!isSearch || look.id === d.acervoLookId) return { lookId: look.id }
+  return { lookId: look.id, acervoLookId: look.id, acervoSelection: [] }
+}
+
+export const EMPTY_DRAFT: StudioDraft = { mode: "procurar", prompt: "", chosen: [], references: [], preferenceId: null, sessionRules: null, composerOpen: true, lookId: null, jobId: null, acervoLookId: null, acervoSelection: [] }
 
 interface Store {
   route: Route
@@ -75,6 +96,9 @@ interface Store {
   draft: StudioDraft
   setDraft: (patch: Partial<StudioDraft> | ((d: StudioDraft) => Partial<StudioDraft>)) => void
   resetDraft: () => void
+  /** Store chosen per product (productId -> partnerId). Absent = the product's own store. */
+  offerChoice: Record<string, string>
+  chooseOffer: (productId: string, partnerId: string) => void
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -107,6 +131,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastState | null>(null)
   const [explore, setExploreState] = useState<ExploreQuery>(DEFAULT_EXPLORE)
   const [draft, setDraftState] = useState<StudioDraft>(EMPTY_DRAFT)
+  const [offerChoice, setOfferChoice] = useState<Record<string, string>>({})
+  const chooseOffer = useCallback((productId: string, partnerId: string) => setOfferChoice((c) => (c[productId] === partnerId ? c : { ...c, [productId]: partnerId })), [])
 
   useEffect(() => {
     const q = window.matchMedia("(prefers-color-scheme: dark)")
@@ -206,8 +232,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       draft,
       setDraft,
       resetDraft,
+      offerChoice,
+      chooseOffer,
     }),
-    [route, prevTab, go, theme, systemDark, setTheme, overlay, open, close, toast, notify, dismissToast, explore, setExplore, draft, setDraft, resetDraft],
+    [route, prevTab, go, theme, systemDark, setTheme, overlay, open, close, toast, notify, dismissToast, explore, setExplore, draft, setDraft, resetDraft, offerChoice, chooseOffer],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

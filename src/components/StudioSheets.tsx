@@ -12,6 +12,7 @@ import { useStudio } from "../app/useStudio"
 import { formatDay, formatMoney, plural } from "../lib/format"
 import { summarizeRules } from "../lib/rules"
 import { priceText } from "./pieces"
+import { withOffer } from "../lib/offers"
 import { PreferenceEditorSheet } from "./PreferenceEditor"
 import { ErrorState, Hint, LoadingState, Notice, Photo, Segmented, Sheet } from "./ui"
 
@@ -110,9 +111,10 @@ export function EditSheet() {
 type PoolFilter = "todas" | "fora" | "usadas"
 
 export function AcervoSheet() {
-  const { draft, setDraft, close, open } = useStore()
+  const { draft, setDraft, close, open, offerChoice } = useStore()
   const studio = useStudio()
-  const query = useCandidates(draft.lookId)
+  // The Acervo stays on the last search result, whatever the mode or the look on screen.
+  const query = useCandidates(draft.acervoLookId ?? draft.lookId)
   const [filter, setFilter] = useState<PoolFilter>("todas")
   const [review, setReview] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -128,17 +130,21 @@ export function AcervoSheet() {
     const confirm = async (): Promise<void> => {
       if (short || studio.starting) return
       const out = await studio.tryOn(selection)
-      if (out.ok) close()
+      // Wearing pieces from the Acervo is the Vestir mode.
+      if (out.ok) {
+        setDraft({ mode: "vestir" })
+        close()
+      }
       else setMessage(out.message)
     }
     return (
       <Sheet
-        title="Revisar prova"
+        title="Vestir seleção"
         onClose={close}
         footer={
           <div className="grid gap-2">
             <button type="button" className="sa-btn sa-btn-primary sa-btn-block" aria-disabled={short || studio.starting || undefined} onClick={() => void confirm()}>
-              {studio.starting ? "Enviando…" : `Confirmar prova${cost !== null ? ` · ${cost} tokens` : ""}`}
+              {studio.starting ? "Enviando…" : `Vestir${cost !== null ? ` · ${cost} tokens` : ""}`}
             </button>
             <button type="button" className="sa-btn sa-btn-secondary sa-btn-block" onClick={() => setReview(false)}>
               Voltar à seleção
@@ -155,7 +161,7 @@ export function AcervoSheet() {
                   <Photo image={p.images[0] ?? null} alt="" className="h-full w-full" />
                 </div>
                 <span className="sa-body-sm min-w-0 flex-1">{p.name}</span>
-                <span className="sa-body-sm sa-num font-semibold">{priceText(p)}</span>
+                <span className="sa-body-sm sa-num font-semibold">{priceText(withOffer(p, offerChoice[p.id]))}</span>
               </li>
             ))}
           </ul>
@@ -174,7 +180,7 @@ export function AcervoSheet() {
   return (
     <Sheet
       title="Acervo da busca"
-      description="Peças encontradas para este pedido, inclusive as que não entraram no look. O acervo não é o Closet: nada aqui fica guardado sem você favoritar."
+      description="Peças que a última busca encontrou, inclusive as que não entraram no look. Selecione para vestir no look atual. A seleção fica guardada ao trocar de modo; o Closet só guarda o que você favoritar."
       onClose={close}
       footer={
         <div>
@@ -188,7 +194,7 @@ export function AcervoSheet() {
             </button>
           </div>
           <button type="button" className="sa-btn sa-btn-primary sa-btn-block mt-2" aria-disabled={selection.length === 0 || undefined} onClick={() => selection.length > 0 && setReview(true)}>
-            Revisar prova{cost !== null ? ` · ${cost} tokens` : ""}
+            Vestir seleção{cost !== null ? ` · ${cost} tokens` : ""}
           </button>
         </div>
       }
@@ -243,7 +249,7 @@ export function AcervoSheet() {
                         <span className="min-w-0 flex-1">
                           <span className="sa-body-sm sa-truncate block font-semibold">{p.name}</span>
                           <span className="sa-caption sa-muted block">
-                            <span className="sa-num">{priceText(p)}</span> · {p.partner.name}
+                            <span className="sa-num">{priceText(withOffer(p, offerChoice[p.id]))}</span> · {withOffer(p, offerChoice[p.id]).partner.name}
                             {p.category ? ` · ${p.category.label}` : ""}
                           </span>
                           <span className={`sa-caption block ${blocked && !isSel ? "sa-warning-text" : "sa-muted"}`}>{blocked && !isSel ? blocked : c.usedInLook ? "No look atual" : "Não usada no look"}</span>

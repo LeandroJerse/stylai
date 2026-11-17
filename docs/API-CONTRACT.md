@@ -112,9 +112,20 @@ Query de `/catalog/products`: `q`, `category` (id), `partner` (id), `priceMin`, 
   "deliveryDays": 5, "measurements": [{ "label": "Comprimento", "value": "72 cm" }],
   "styles": ["alfaiataria"], "updatedAt": "2026-11-07T12:00:00Z",
   "links": { "affiliateUrl": "https://...", "productUrl": "https://..." },
+  "offers": [ProductOffer],
   "favorite": false
 }
+// ProductOffer: a mesma peça em OUTRA loja (obrigatório: partner.id)
+{ "partner": { "id": "loja-b", "name": "Loja B" },
+  "price": { "amount": 349.9, "currency": "BRL" },
+  "links": { "affiliateUrl": "https://...", "productUrl": "https://..." } }
 ```
+
+**Mesma peça em várias lojas.** O agente de busca encontra duplicatas do mesmo produto em lojas diferentes (marketplaces incluídos), com preços e links próprios. A API deve **agrupar** essas duplicatas num único `Product`: `partner`/`price`/`links` descrevem a loja principal e `offers` lista as **outras** lojas, uma por loja (`offers` ausente ou vazio = só a loja principal). No app:
+- cada loja vira uma tag; tocar troca o preço exibido, o total do look e o link de "Ver na <loja>";
+- a loja de menor preço aparece em vermelho com seta ↓ ("Menor preço") e a de maior preço em âmbar com seta ↑ ("Maior preço"), só quando os preços diferem e estão na mesma moeda;
+- uma oferta repetida para a mesma loja, ou sem `partner.id`, é descartada; os links seguem as mesmas regras de segurança (só `https`).
+A loja escolhida é estado de interface (não é enviada ao servidor nesta versão).
 Ausência de dado é `null`, nunca zero. Nota `null` aparece como "sem avaliações", não como nota zero. Preço `null` aparece como "Preço não informado". `updatedAt` com mais de 7 dias é marcado no Closet como possivelmente desatualizado.
 
 ## 5. Closet
@@ -155,24 +166,30 @@ Ausência de dado é `null`, nunca zero. Nota `null` aparece como "sem avaliaç�
 |---|---|---|
 | `GET /studio/config` | — | `StudioConfig` (público) |
 | `POST /uploads/references` | multipart `file` | `{ id, image: Image, sizeBytes, mime }` |
-| `POST /studio/generations` | `{ prompt, productIds[], referenceIds[], preferenceId, rules \| null }` | `202 Job` |
+| `POST /studio/generations` | `{ mode, prompt, productIds[], referenceIds[], preferenceId, rules \| null }` | `202 Job` |
 | `POST /studio/looks/{lookId}/edits` | `{ instruction }` | `202 Job` |
 | `POST /studio/try-ons` | `{ sourceLookId, productIds[] }` | `202 Job` |
 | `GET /studio/jobs/{id}` | — | `Job` |
 | `POST /studio/jobs/{id}/cancel` | — | `Job` |
 | `GET /studio/looks?limit=12` | — | `{ items: Look[] }`, mais recentes primeiro |
 | `GET /studio/looks/{id}` | — | `Look` |
-| `GET /studio/looks/{id}/candidates` | — | `{ items: [{ product, usedInLook, failed: ["Nota mínima"] }] }` |
+| `GET /studio/looks/{id}/candidates` | — | `{ items: [{ product, usedInLook, failed: ["Nota mínima"] }] }`: o catálogo completo que a busca retornou, **um item por produto** (duplicatas de lojas agrupadas em `product.offers`). O app mostra no painel "Catálogo da busca" (retrátil, 6 por página) e no Acervo. |
 | `GET /studio/match/deck?lookId=` | — | `{ items: Look[] }` |
 | `POST /studio/match/decisions` | `{ lookId, decision: "save\|pass" }` | `{ id, lookId, decision }` |
 | `DELETE /studio/match/decisions/{id}` | — | `204` (desfazer) |
+
+`mode` em `POST /studio/generations` (ausente = `"search"`):
+- `"search"` (modo **Procurar** no app): o `prompt` guia a busca no catálogo dos parceiros com a preferência (`preferenceId`/`rules`) e a pessoa aparece vestindo o resultado. `referenceIds` vai vazio. O look volta com `candidatesCount` > 0 quando a busca trouxe candidatos; esse look vira o **Acervo** no app.
+- `"dress"` (modo **Vestir**): **sem busca**. A pessoa aparece vestindo exatamente `productIds[]` + `referenceIds[]` (fotos de roupa enviadas pelo celular). Exige ao menos um dos dois (senão `422 validation`). `prompt` é opcional e só ajusta o caimento/estilo ("camisa por dentro da calça"). `preferenceId` e `rules` vão `null` e são ignorados. O look volta com as peças em `role: "chosen"` e `candidatesCount: 0`. Custo: `costs.generate`.
+
+`productIds[]` em `POST /studio/generations` são as **peças base** escolhidas pela pessoa (no Explorar ou no painel "Catálogo da busca"), no máximo `maxChosenPieces` (padrão do app quando ausente: 6). Elas voltam no look com `role: "chosen"`.
 
 `rules: null` = usar a preferência salva como está. Um objeto em `rules` vale só para essa busca e **não** altera a preferência.
 
 ```json
 // StudioConfig (obrigatórios: costs.*, budget.min, budget.max)
 { "costs": { "generate": 6, "edit": 2, "tryOn": 4 },
-  "maxReferences": 3, "maxChosenPieces": 4, "maxPromptLength": 280,
+  "maxReferences": 3, "maxChosenPieces": 6, "maxPromptLength": 280,
   "budget": { "min": 100, "max": 3000, "step": 50, "currency": "BRL" },
   "acceptedImageTypes": ["image/jpeg", "image/png", "image/webp"],
   "maxImageBytes": 12582912, "minImageHeight": 600,

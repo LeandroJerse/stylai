@@ -15,6 +15,7 @@ import {
 import { useStore } from "../app/store"
 import { ExploreFiltersSheet } from "../screens/Explore"
 import { GoToPieceSheet, ProductDetailSheet } from "./pieces"
+import { LookViewer } from "./LookViewer"
 import { Viewer } from "./Viewer"
 
 /** Lazy sheets are usually prefetched already; while a chunk is still downloading nothing is shown. */
@@ -35,6 +36,8 @@ export function OverlayHost() {
       return <GoToPieceSheet product={overlay.product} back={overlay.back} />
     case "viewer":
       return <Viewer image={overlay.image} alt={overlay.alt} />
+    case "lookViewer":
+      return <LookViewer lookId={overlay.lookId} />
     case "exploreFilters":
       return <ExploreFiltersSheet />
     case "edit":

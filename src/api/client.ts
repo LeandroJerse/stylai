@@ -47,6 +47,8 @@ export interface CatalogQuery {
 }
 
 export interface GenerateInput {
+  /** "search": the prompt drives a catalog search. "dress": wear productIds + referenceIds as picked, no search. */
+  mode: "search" | "dress"
   prompt: string
   productIds: string[]
   referenceIds: string[]

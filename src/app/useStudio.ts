@@ -9,7 +9,7 @@ import { messageOf } from "../api/errors"
 import { isJobDone, keys, useBalance, useJob, useLook, usePreferences, useStartJob, useStudioConfig } from "../api/queries"
 import type { Job, JobKind, Preference, PreferenceRules } from "../api/types"
 import { useAuth } from "../auth/AuthProvider"
-import { useStore } from "./store"
+import { useStore, type StudioMode } from "./store"
 
 export type StartResult = { ok: true } | { ok: false; message: string }
 
@@ -70,16 +70,14 @@ export function useStudio() {
     starting: start.isPending,
     costOf,
     shortBy,
-    generate: () =>
+    /** Starts a generation in the given mode (defaults to the Estúdio's current mode). */
+    generate: (mode: StudioMode = draft.mode) =>
       run({
         kind: "generate",
-        data: {
-          prompt: draft.prompt.trim(),
-          productIds: draft.chosen.map((p) => p.id),
-          referenceIds: draft.references.map((r) => r.id),
-          preferenceId: activePreference?.id ?? null,
-          rules: draft.sessionRules,
-        },
+        data:
+          mode === "vestir"
+            ? { mode: "dress", prompt: draft.prompt.trim(), productIds: draft.chosen.map((p) => p.id), referenceIds: draft.references.map((r) => r.id), preferenceId: null, rules: null }
+            : { mode: "search", prompt: draft.prompt.trim(), productIds: draft.chosen.map((p) => p.id), referenceIds: [], preferenceId: activePreference?.id ?? null, rules: draft.sessionRules },
       }),
     edit: (instruction: string) => (draft.lookId ? run({ kind: "edit", lookId: draft.lookId, instruction }) : Promise.resolve<StartResult>({ ok: false, message: "Não há imagem para editar." })),
     tryOn: (productIds: string[]) => (draft.lookId ? run({ kind: "tryon", lookId: draft.lookId, productIds }) : Promise.resolve<StartResult>({ ok: false, message: "Não há look de origem." })),
@@ -103,7 +101,8 @@ export function JobWatcher() {
     void qc.invalidateQueries({ queryKey: keys.balance })
     if (j.status === "succeeded" && j.lookId) {
       void qc.invalidateQueries({ queryKey: keys.looks })
-      setDraft({ lookId: j.lookId, composerOpen: false, acervoSelection: [] })
+      // The Acervo follows the look only when it is a search result (StudioScreen, showLookPatch).
+      setDraft({ lookId: j.lookId, composerOpen: false })
       if (tab !== "estudio") notify(j.kind === "tryon" ? "Sua prova ficou pronta" : "Seu look ficou pronto", { label: "Ver", run: () => go("estudio") })
     } else if (j.status === "failed" && tab !== "estudio") {
       notify("O pedido do Estúdio falhou. Nada foi cobrado.", { label: "Ver", run: () => go("estudio") })

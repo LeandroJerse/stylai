@@ -56,3 +56,9 @@ scripts/e2e.mjs        E2E com page.route (fixtures só de teste)
 ## Pendências conhecidas
 
 - Troca de plano e pagamento ainda não existem na API; a folha de planos avisa isso.
+
+## Lojas por peça, Match na foto e catálogo da busca (2026-11-11)
+
+- **Mesma peça, várias lojas**: a API agrupa as duplicatas em `Product.offers` (contrato §4). `src/lib/offers.ts` ordena as ofertas (menor/maior preço) e aplica a loja escolhida (`withOffer`); `src/components/offers.tsx` mostra as tags (grupo de rádio, setas ←/→). A escolha fica em `offerChoice` no store de UI e muda preço, total do look, Acervo, Closet e o botão "Ver na <loja>" com o link daquela loja. Menor preço: vermelho + ↓; maior: âmbar + ↑ (sem marca com empate, moeda mista ou loja única).
+- **Match**: dentro da foto do resultado, embaixo e centralizado. Tocar na foto oculta/reexibe o botão; "Ampliar" fica no canto superior direito.
+- **Catálogo da busca**: painel retrátil no Estúdio com tudo o que a busca retornou (`GET /studio/looks/{id}/candidates`, carregado ao abrir), um produto por bloco, 6 por página. Até `maxChosenPieces` (padrão 6) peças viram a base da próxima geração (`draft.chosen`, o mesmo do "Levar ao Estúdio") e vão em `productIds` de `POST /studio/generations`.

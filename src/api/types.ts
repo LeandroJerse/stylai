@@ -41,6 +41,16 @@ export interface ProductLinks {
   productUrl: string | null
 }
 
+/**
+ * The same product sold by one store: its own price and links. The search agent finds duplicates
+ * across stores (marketplaces included); the API groups them under one Product.
+ */
+export interface ProductOffer {
+  partner: PartnerRef
+  price: Money | null
+  links: ProductLinks
+}
+
 export interface Product {
   id: string
   name: string
@@ -62,6 +72,11 @@ export interface Product {
   styles: string[]
   updatedAt: string | null
   links: ProductLinks
+  /**
+   * Every store selling this product. offers[0] is always the product's own store
+   * (partner/price/links above); the rest come from `offers` in the API, one per store.
+   */
+  offers: ProductOffer[]
   /** Whether the signed-in person saved it to the Closet (false when signed out). */
   favorite: boolean
 }
@@ -187,7 +202,7 @@ export interface Preferences {
 export interface StudioConfig {
   costs: { generate: number; edit: number; tryOn: number }
   maxReferences: number
-  /** Catalog pieces that can be carried from Explorar into one request. */
+  /** Base pieces per request (from Explorar or the search catalog panel). */
   maxChosenPieces: number
   maxPromptLength: number
   budget: { min: number; max: number; step: number; currency: string }

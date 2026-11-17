@@ -6,12 +6,13 @@
 import { useEffect, useId, useRef, useState } from "react"
 import type { ChangeEvent } from "react"
 import { useMutation } from "@tanstack/react-query"
-import { Archive, ArrowsClockwise, CircleNotch, CoatHanger, Coins, Compass, CornersOut, PencilSimpleLine, Plus, SquaresFour, Trash, X } from "@phosphor-icons/react"
+import { Archive, ArrowsClockwise, CaretDown, CaretLeft, CaretRight, Check, CircleNotch, CoatHanger, Coins, Compass, CornersOut, Info, MagnifyingGlass, PencilSimpleLine, Plus, SquaresFour, TShirt, Trash, X } from "@phosphor-icons/react"
 import { api } from "../api/client"
 import { messageOf } from "../api/errors"
-import { useCancelJob, useLooks, useToggleSavedLook } from "../api/queries"
-import type { Job, Look, UploadedImage } from "../api/types"
-import { useStore } from "../app/store"
+import { useCancelJob, useCandidates, useLooks, useToggleSavedLook } from "../api/queries"
+import type { Job, Look, Product, UploadedImage } from "../api/types"
+import { showLookPatch, useStore, type StudioMode } from "../app/store"
+import { CardSwap, useCardDrag, useLookDeck, type SwapDir } from "../components/LookDeck"
 import { useStudio } from "../app/useStudio"
 import { plural } from "../lib/format"
 import { checkImageFile } from "../lib/images"
@@ -19,7 +20,9 @@ import { relaxRule } from "../lib/rules"
 import { FavButton, PieceCard, priceText, ROLE_LABEL } from "../components/pieces"
 import { CriterionQuick } from "../components/CriterionQuick"
 import { EmptyState, ErrorState, Notice, Photo, Skeleton, useReducedMotion } from "../components/ui"
-import { ORIGIN_LABEL, sumLook } from "../lib/looks"
+import { ORIGIN_LABEL } from "../lib/looks"
+import { sumLookWith, withOffer } from "../lib/offers"
+import { OfferPrice, StoreTags } from "../components/offers"
 
 /* ------------------------------------------------------------------ references */
 
@@ -71,13 +74,13 @@ function ReferencePicker() {
     <div role="group" aria-labelledby={headId}>
       <div className="flex items-baseline justify-between gap-3">
         <p id={headId} className="sa-title-sm">
-          Referências de roupa ou acessório
+          Fotos do seu celular
         </p>
         <span className="sa-caption sa-muted sa-num" aria-live="polite">
           {count} de {max}
         </span>
       </div>
-      <p className="sa-caption sa-muted mt-1">Opcional. Não são fotos do seu corpo; essas ficam no Perfil.</p>
+      <p className="sa-caption sa-muted mt-1">Roupas ou acessórios que você quer vestir. Não são fotos do seu corpo; essas ficam no Perfil.</p>
       <input ref={inputRef} type="file" accept={config.acceptedImageTypes.join(",") || "image/*"} multiple className="sa-sr" tabIndex={-1} aria-hidden="true" onChange={(e) => void onChange(e)} />
       <ul className="mt-3 flex flex-wrap gap-3">
         {draft.references.map((r, i) => (
@@ -140,12 +143,31 @@ function ReferencePicker() {
 /* ------------------------------------------------------------------ pieces from Explorar */
 
 function ChosenPieces() {
-  const { draft, setDraft, go, open } = useStore()
+  const { draft, setDraft, go, open, offerChoice } = useStore()
   const studio = useStudio()
   const headId = useId()
   const max = studio.config.data?.maxChosenPieces ?? 0
   const count = draft.chosen.length
+  const dressing = draft.mode === "vestir"
   if (count === 0) {
+    if (dressing) {
+      return (
+        <div>
+          <p className="sa-title-sm">Peças das lojas</p>
+          <p className="sa-caption sa-muted mt-1">Escolha no Explorar ou no Acervo da última busca. Elas são vestidas como estão, com a loja e o link escolhidos.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm" onClick={() => go("explorar")}>
+              <Compass size={18} aria-hidden="true" /> Escolher no Explorar
+            </button>
+            {draft.acervoLookId ? (
+              <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm" onClick={() => open({ kind: "acervo" })}>
+                <SquaresFour size={18} aria-hidden="true" /> Abrir Acervo
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )
+    }
     return (
       <button type="button" className="sa-btn-quiet sa-body-sm -ml-2 flex items-center gap-2 font-semibold" onClick={() => go("explorar")}>
         <Compass size={18} aria-hidden="true" /> Partir de uma peça do Explorar
@@ -156,7 +178,7 @@ function ChosenPieces() {
     <div role="group" aria-labelledby={headId}>
       <div className="flex items-baseline justify-between gap-3">
         <p id={headId} className="sa-title-sm">
-          Peças escolhidas no Explorar
+          {dressing ? "Peças para vestir" : "Peças base do look"}
         </p>
         {max > 0 ? (
           <span className="sa-caption sa-muted sa-num">
@@ -164,9 +186,11 @@ function ChosenPieces() {
           </span>
         ) : null}
       </div>
-      <p className="sa-caption sa-muted mt-1">Entram no look como estão no catálogo, com a mesma loja e o mesmo link.</p>
+      <p className="sa-caption sa-muted mt-1">{dressing ? "Vestidas como estão, com a loja e o link escolhidos." : "A busca completa o look em volta delas, com a loja e o link escolhidos."}</p>
       <ul className="mt-3 grid gap-2">
-        {draft.chosen.map((p) => (
+        {draft.chosen.map((base) => {
+          const p = withOffer(base, offerChoice[base.id])
+          return (
           <li key={p.id} className="sa-chosen">
             <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => open({ kind: "product", productId: p.id })} aria-label={`${p.name}, ${p.partner.name}. Ver detalhes`}>
               <div className="sa-photo sa-thumb flex-none" style={{ width: 48, height: 60 }}>
@@ -183,7 +207,8 @@ function ChosenPieces() {
               <X size={18} />
             </button>
           </li>
-        ))}
+          )
+        })}
       </ul>
       {count < max ? (
         <button type="button" className="sa-btn-quiet sa-body-sm mt-1 flex items-center gap-2" onClick={() => go("explorar")}>
@@ -203,20 +228,15 @@ function PreferenceRow() {
   const limits = studio.config.data?.budget
   if (prefs.isPending) return <Skeleton style={{ height: 64 }} />
   if (prefs.isError) return <ErrorState error={prefs.error} onRetry={() => void prefs.refetch()} compact />
-  const active = studio.activePreference
+  // Brief 2026-11-12: no preset names and no "Trocar" here; the criteria themselves are shown and edited.
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <p className="sa-title-sm min-w-0 flex-1">
-          Preferência de compra: {active?.name ?? "padrão do servidor"}
-          {draft.sessionRules ? <span className="sa-badge sa-badge-quiet ml-2 align-middle">Ajustada nesta busca</span> : null}
+          Preferências de compra
+          {draft.sessionRules ? <span className="sa-badge sa-badge-quiet ml-2 align-middle">Ajustadas nesta busca</span> : null}
         </p>
         <div className="flex gap-1">
-          {prefs.data.items.length > 1 ? (
-            <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm" onClick={() => open({ kind: "preferencePicker" })}>
-              Trocar
-            </button>
-          ) : null}
           {studio.rules ? (
             <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm" onClick={() => open({ kind: "preferenceEditor" })} aria-label="Editar preferências desta busca (opções avançadas)">
               Editar
@@ -241,8 +261,10 @@ function PreferenceRow() {
   )
 }
 
+const ACTION_LABEL: Record<StudioMode, string> = { procurar: "Procurar e vestir", vestir: "Vestir peças" }
+
 function CostRow({ onGenerate }: { onGenerate: () => void }) {
-  const { open } = useStore()
+  const { open, draft } = useStore()
   const studio = useStudio()
   const cost = studio.costOf("generate")
   const short = studio.shortBy("generate")
@@ -278,7 +300,10 @@ function CostRow({ onGenerate }: { onGenerate: () => void }) {
             <CircleNotch size={18} className="sa-spin" aria-hidden="true" /> Gerando…
           </>
         ) : (
-          <>Gerar look{cost !== null ? ` · ${plural(cost, "token", "tokens")}` : ""}</>
+          <>
+            {ACTION_LABEL[draft.mode]}
+            {cost !== null ? ` · ${plural(cost, "token", "tokens")}` : ""}
+          </>
         )}
       </button>
       <p id={hintId} className="sa-caption sa-muted mt-2">
@@ -299,6 +324,44 @@ function CostRow({ onGenerate }: { onGenerate: () => void }) {
   )
 }
 
+/** Vestir / Procurar. The draft (pieces, photos, Acervo) is kept when switching. */
+function ModeSwitch() {
+  const { draft, setDraft } = useStore()
+  const options: { id: StudioMode; label: string; Icon: typeof TShirt }[] = [
+    { id: "procurar", label: "Procurar", Icon: MagnifyingGlass },
+    { id: "vestir", label: "Vestir", Icon: TShirt },
+  ]
+  return (
+    <div className="grid gap-2">
+      <div role="radiogroup" aria-label="Modo do Estúdio" className="sa-segmented sa-segmented-block sa-modeswitch">
+        {options.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            type="button"
+            role="radio"
+            aria-checked={draft.mode === id}
+            tabIndex={draft.mode === id ? 0 : -1}
+            onClick={() => setDraft({ mode: id })}
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
+              e.preventDefault()
+              setDraft({ mode: draft.mode === "procurar" ? "vestir" : "procurar" })
+              const group = e.currentTarget.parentElement
+              window.requestAnimationFrame(() => group?.querySelector<HTMLButtonElement>("[aria-checked=true]")?.focus())
+            }}
+          >
+            <Icon size={18} aria-hidden="true" weight={draft.mode === id ? "bold" : "regular"} />
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="sa-caption sa-muted sa-pretty">
+        {draft.mode === "procurar" ? "Diga o que procura: buscamos nas lojas parceiras e mostramos você vestindo o resultado." : "Escolha peças nossas ou fotos do seu celular e veja você vestindo exatamente isso, sem busca."}
+      </p>
+    </div>
+  )
+}
+
 function Composer() {
   const { draft, setDraft } = useStore()
   const studio = useStudio()
@@ -307,10 +370,16 @@ function Composer() {
   const [error, setError] = useState<string | null>(null)
   const max = studio.config.data?.maxPromptLength ?? 500
   const hasResult = draft.lookId !== null
+  const dressing = draft.mode === "vestir"
+  useEffect(() => setError(null), [draft.mode])
 
   const submit = async (): Promise<void> => {
-    if (!draft.prompt.trim() && draft.references.length === 0 && draft.chosen.length === 0) {
-      setError("Descreva o look, escolha uma peça no Explorar ou adicione uma referência para começar.")
+    if (dressing && draft.references.length === 0 && draft.chosen.length === 0) {
+      setError("Escolha uma peça no Explorar ou no Acervo, ou adicione uma foto, para vestir.")
+      return
+    }
+    if (!dressing && !draft.prompt.trim() && draft.chosen.length === 0) {
+      setError("Diga o que você procura, por exemplo a ocasião ou a estação.")
       document.getElementById(fieldId)?.focus()
       return
     }
@@ -319,51 +388,64 @@ function Composer() {
     if (!out.ok) setError(out.message)
   }
 
-  return (
-    <section aria-label="Compositor" className="sa-panel sa-composer sa-enter grid gap-5 p-4 md:p-5">
-      <div>
-        <div className="flex items-center justify-between">
-          <label htmlFor={fieldId} className="sa-title-sm">
-            O que você quer vestir?
-          </label>
-          {hasResult ? (
-            <button type="button" className="sa-btn-quiet sa-body-sm" onClick={() => setDraft({ composerOpen: false })}>
-              Recolher
-            </button>
-          ) : null}
-        </div>
-        <textarea
-          id={fieldId}
-          name="prompt"
-          autoComplete="off"
-          className="sa-field mt-2"
-          rows={3}
-          maxLength={max}
-          value={draft.prompt}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={counterId}
-          placeholder="Ocasião, sensação, peças que você já imagina…"
-          onChange={(e) => {
-            setDraft({ prompt: e.target.value.slice(0, max) })
-            if (error) setError(null)
-          }}
-        />
-        <div id={counterId} className="mt-1 flex justify-between gap-3 sa-caption sa-muted">
-          <span className={error ? "sa-error-text" : ""} role={error ? "alert" : undefined}>
-            {error ?? "Ex.: “jantar de inverno, até R$ 500” ou o nome de uma loja."}
-          </span>
-          <span className="sa-num flex-none">
-            {draft.prompt.length}/{max}
-          </span>
-        </div>
+  const prompt = (
+    <div>
+      <div className="flex items-center justify-between">
+        <label htmlFor={fieldId} className="sa-title-sm">
+          {dressing ? "Algum ajuste? (opcional)" : "O que você quer vestir?"}
+        </label>
+        {hasResult ? (
+          <button type="button" className="sa-btn-quiet sa-body-sm" onClick={() => setDraft({ composerOpen: false })}>
+            Recolher
+          </button>
+        ) : null}
       </div>
+      <textarea
+        id={fieldId}
+        name="prompt"
+        autoComplete="off"
+        className="sa-field mt-2"
+        rows={dressing ? 2 : 3}
+        maxLength={max}
+        value={draft.prompt}
+        aria-invalid={error && !dressing ? true : undefined}
+        aria-describedby={counterId}
+        placeholder={dressing ? "Camisa por dentro da calça, mangas dobradas" : "Me vista com roupas de verão"}
+        onChange={(e) => {
+          setDraft({ prompt: e.target.value.slice(0, max) })
+          if (error) setError(null)
+        }}
+      />
+      <div id={counterId} className="mt-1 flex justify-between gap-3 sa-caption sa-muted">
+        <span>{dressing ? "Ex.: “barra da calça dobrada”" : "Ex.: “moda italiana para o inverno”"}</span>
+        <span className="sa-num flex-none">
+          {draft.prompt.length}/{max}
+        </span>
+      </div>
+    </div>
+  )
 
-      <ChosenPieces />
-      <ReferencePicker />
-
-      <div className="sa-rule" />
-      <PreferenceRow />
-
+  return (
+    <section aria-label={dressing ? "Vestir" : "Procurar"} className="sa-panel sa-composer sa-enter grid gap-5 p-4 md:p-5">
+      {dressing ? (
+        <>
+          <ChosenPieces />
+          <ReferencePicker />
+          {prompt}
+        </>
+      ) : (
+        <>
+          {prompt}
+          <ChosenPieces />
+          <div className="sa-rule" />
+          <PreferenceRow />
+        </>
+      )}
+      {error ? (
+        <p className="sa-caption sa-error-text" role="alert">
+          {error}
+        </p>
+      ) : null}
       <div className="sa-rule" />
       <CostRow onGenerate={() => void submit()} />
     </section>
@@ -372,20 +454,25 @@ function Composer() {
 
 function ComposerSummary() {
   const { draft, setDraft } = useStore()
-  const studio = useStudio()
+  const dressing = draft.mode === "vestir"
+  // A fresh request: the result, the mode and the Acervo stay; what was asked is cleared.
+  const startNew = (): void => {
+    setDraft({ prompt: "", chosen: [], references: [], sessionRules: null, composerOpen: true })
+    window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".sa-composer textarea")?.focus())
+  }
   return (
     <section aria-label="Pedido atual" className="sa-summary sa-enter flex items-start gap-3">
       <div className="min-w-0 flex-1">
-        <p className="sa-body-sm sa-pretty sa-clamp2">{draft.prompt.trim() || (draft.chosen.length > 0 ? "Pedido a partir das peças escolhidas" : draft.references.length > 0 ? "Pedido só com referências" : "Pedido vazio")}</p>
+        <p className="sa-body-sm sa-pretty sa-clamp2">{draft.prompt.trim() || (draft.chosen.length > 0 ? "Pedido a partir das peças escolhidas" : draft.references.length > 0 ? "Pedido só com fotos" : "Pedido vazio")}</p>
         <p className="sa-caption sa-muted mt-1">
-          {draft.chosen.length > 0 ? `${plural(draft.chosen.length, "peça escolhida", "peças escolhidas")} · ` : ""}
-          {plural(draft.references.length, "referência", "referências")}
-          {studio.activePreference ? ` · ${studio.activePreference.name}` : ""}
-          {draft.sessionRules ? " (ajustado)" : ""}
+          {dressing ? "Vestir" : "Procurar"}
+          {draft.chosen.length > 0 ? ` · ${plural(draft.chosen.length, "peça", "peças")}` : ""}
+          {dressing ? ` · ${plural(draft.references.length, "foto", "fotos")}` : ""}
+          {!dressing && draft.sessionRules ? " · preferências ajustadas" : ""}
         </p>
       </div>
-      <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm flex-none" onClick={() => setDraft({ composerOpen: true })} aria-expanded={false}>
-        <PencilSimpleLine size={18} aria-hidden="true" /> Editar pedido
+      <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm flex-none" onClick={startNew}>
+        <Plus size={18} aria-hidden="true" /> Novo pedido
       </button>
     </section>
   )
@@ -520,8 +607,8 @@ function JobPanel() {
         </ul>
       ) : null}
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm" onClick={() => open({ kind: "preferencePicker" })}>
-          Trocar preferência
+        <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm" onClick={() => open({ kind: "preferenceEditor" })}>
+          Editar preferências
         </button>
         <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm" onClick={clear}>
           Fechar
@@ -559,7 +646,7 @@ function VersionStrip({ look }: { look: Look }) {
   return (
     <div role="radiogroup" aria-label="Versões desta imagem" className="sa-segmented">
       {chain.map((l) => (
-        <button key={l.id} type="button" role="radio" aria-checked={l.id === look.id} onClick={() => setDraft({ lookId: l.id, acervoSelection: [] })}>
+        <button key={l.id} type="button" role="radio" aria-checked={l.id === look.id} onClick={() => setDraft({ lookId: l.id })}>
           v{l.version}
         </button>
       ))}
@@ -567,30 +654,118 @@ function VersionStrip({ look }: { look: Look }) {
   )
 }
 
+/** Look ids this arrow/swipe navigation selected: the screen must not move focus or scroll for them. */
+const browsedIds = new Set<string>()
+
+/**
+ * Pages through the deck (generated looks, then the search's other prepared looks). A generated
+ * look becomes the current one; a suggestion is only previewed on the photo.
+ */
+function useStageDeck(look: Look) {
+  const { setDraft } = useStore()
+  const cards = useLookDeck(look)
+  const [viewKey, setViewKey] = useState<string | null>(null)
+  const [dir, setDir] = useState<SwapDir>("next")
+  // A new or picked look (not by browsing) brings the photo back to it.
+  useEffect(() => setViewKey(null), [look.id])
+  const ownIndex = Math.max(0, cards.findIndex((c) => c.key === look.id))
+  const viewIndex = viewKey ? cards.findIndex((c) => c.key === viewKey) : -1
+  const index = viewIndex >= 0 ? viewIndex : ownIndex
+  const card = cards[index] ?? null
+  const goTo = (i: number): void => {
+    const c = cards[i]
+    if (!c) return
+    setDir(i > index ? "next" : "prev")
+    if (c.kind === "result") {
+      browsedIds.add(c.look.id)
+      setDraft({ lookId: c.look.id })
+      setViewKey(null)
+    } else setViewKey(c.key)
+  }
+  return {
+    card,
+    dir,
+    count: cards.length,
+    index,
+    hasPrev: index > 0,
+    hasNext: index < cards.length - 1,
+    neighbor: (d: SwapDir) => cards[d === "next" ? index + 1 : index - 1] ?? null,
+    prev: () => index > 0 && goTo(index - 1),
+    next: () => index < cards.length - 1 && goTo(index + 1),
+  }
+}
+
 function ResultHero({ look }: { look: Look }) {
   const { open, overlay } = useStore()
+  const deck = useStageDeck(look)
+  const drag = useCardDrag({ canPrev: deck.hasPrev, canNext: deck.hasNext, onPrev: deck.prev, onNext: deck.next })
+  // After a card thrown by hand lands, later swaps animate normally again.
+  useEffect(() => drag.settle(), [deck.card?.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  const neighbour = drag.peek ? deck.neighbor(drag.peek) : null
+  const shown = deck.card?.look ?? look
+  const isSuggestion = deck.card?.kind === "suggestion"
+  // Try-on images have no prepared looks to compare, so Match is not offered for them.
   const canMatch = look.origin !== "tryon"
-  const viewing = overlay?.kind === "viewer"
+  const viewing = overlay?.kind === "viewer" || overlay?.kind === "lookViewer"
+  // Tapping the photo hides the title and Match so the whole look can be seen; tapping again brings them back.
+  const [matchHidden, setMatchHidden] = useState(false)
+  useEffect(() => setMatchHidden(false), [look.id])
+  const showMatch = canMatch && !viewing && !matchHidden
+  const viewerOpen = (): void => open({ kind: "lookViewer", lookId: shown.id })
   return (
-    <div>
-      <div className="sa-photo sa-photo-lg sa-stage-photo relative">
-        <button type="button" className="absolute inset-0 block h-full w-full" aria-label={`Ampliar imagem: ${look.title}`} onClick={() => open({ kind: "viewer", image: look.image, alt: look.title })}>
-          <Photo key={look.id} image={look.image} alt="" className="sa-appear h-full w-full" eager sizes="(min-width: 1024px) 45vw, 100vw" />
-        </button>
-        <span className="sa-badge sa-badge-photo absolute" style={{ left: 10, top: 10 }}>
-          {look.origin === "tryon" ? "Prova no corpo" : "Imagem gerada"} · v{look.version}
-        </span>
-        <button type="button" className="sa-iconbtn sa-photo-ctrl absolute" style={{ right: 10, bottom: 10 }} aria-label="Ampliar imagem" onClick={() => open({ kind: "viewer", image: look.image, alt: look.title })}>
-          <CornersOut size={22} />
-        </button>
+    <div className="sa-photo sa-photo-lg sa-stage-photo relative" data-match={canMatch ? "" : undefined} data-browse={deck.count > 1 ? "" : undefined} {...drag.handlers}>
+      <CardSwap
+        cardKey={shown.id}
+        dir={deck.dir}
+        instant={drag.flung}
+        topRef={drag.topRef}
+        under={neighbour ? <Photo image={neighbour.look.image} alt="" className="h-full w-full" /> : null}
+        className="absolute inset-0"
+      >
+        <Photo image={shown.image} alt="" className="h-full w-full" eager sizes="(min-width: 1024px) 45vw, 100vw" />
+      </CardSwap>
+      {canMatch ? (
+        <button type="button" className="sa-photo-tap absolute inset-0 block h-full w-full" aria-pressed={matchHidden} aria-label={`${shown.title}: ocultar título e Match`} onClick={() => !drag.dragged() && setMatchHidden((h) => !h)} />
+      ) : (
+        <button type="button" className="absolute inset-0 block h-full w-full" aria-label={`Abrir look: ${shown.title}`} onClick={() => !drag.dragged() && viewerOpen()} />
+      )}
+      <span className="sa-badge sa-badge-photo absolute" style={{ left: 10, top: 10 }}>
+        {isSuggestion ? "Sugestão da busca" : `${look.origin === "tryon" ? "Prova no corpo" : "Imagem gerada"} · v${look.version}`}
+      </span>
+      <button type="button" className="sa-iconbtn sa-photo-ctrl absolute" style={{ right: 10, top: 10 }} aria-label="Ampliar imagem" onClick={viewerOpen}>
+        <CornersOut size={22} />
+      </button>
+      {deck.count > 1 ? (
+        <>
+          <button type="button" className="sa-stagenav" data-side="prev" aria-label={`Look anterior (${deck.index + 1} de ${deck.count})`} aria-disabled={!deck.hasPrev || undefined} onClick={deck.prev}>
+            <CaretLeft size={16} weight="bold" aria-hidden="true" />
+          </button>
+          <button type="button" className="sa-stagenav" data-side="next" aria-label={`Próximo look (${deck.index + 1} de ${deck.count})`} aria-disabled={!deck.hasNext || undefined} onClick={deck.next}>
+            <CaretRight size={16} weight="bold" aria-hidden="true" />
+          </button>
+          <span className="sa-badge sa-badge-photo sa-stagecount sa-num" aria-hidden="true">
+            {deck.index + 1} de {deck.count}
+          </span>
+        </>
+      ) : null}
+      {/* The title lives on the image; the rest of the description opens with the look. */}
+      <div className="sa-phototitle" data-hidden={matchHidden || viewing ? "" : undefined}>
+        <h2 id="result-title" tabIndex={-1} className="sa-phototitle-text sa-clamp2" aria-live="polite">
+          <span key={shown.id} className="sa-appear inline-block">
+            {shown.title}
+          </span>
+        </h2>
       </div>
       {canMatch && !viewing ? (
-        <div className="sa-matchcta-row">
+        <div className="sa-matchcta-row" data-hidden={showMatch ? undefined : ""}>
           <button
             type="button"
             className="sa-matchcta"
             aria-label="Abrir Match: looks preparados para guardar ou passar"
+            tabIndex={showMatch ? undefined : -1}
+            aria-hidden={showMatch ? undefined : true}
             onClick={(e) => {
+              // Only Match opens: never the photo toggle behind it.
               e.stopPropagation()
               open({ kind: "match" })
             }}
@@ -605,11 +780,11 @@ function ResultHero({ look }: { look: Look }) {
 }
 
 function ResultDetails({ look }: { look: Look }) {
-  const { open, notify, go } = useStore()
+  const { open, notify, go, offerChoice, draft } = useStore()
   const toggle = useToggleSavedLook()
   const pending = toggle.isPending && toggle.variables?.lookId === look.id
   const saved = pending ? (toggle.variables?.save ?? look.saved) : look.saved
-  const total = sumLook({ ...look, pieces: look.pieces.filter((p) => p.role !== "similar") })
+  const total = sumLookWith({ ...look, pieces: look.pieces.filter((p) => p.role !== "similar") }, offerChoice)
 
   const save = (): void => {
     if (saved) {
@@ -622,15 +797,8 @@ function ResultDetails({ look }: { look: Look }) {
 
   return (
     <div className="grid gap-5">
-      <div>
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="sa-heading min-w-0 flex-1" tabIndex={-1} id="result-title">
-            {look.title}
-          </h2>
-          <VersionStrip look={look} />
-        </div>
-        {look.note ? <p className="sa-body-sm sa-muted mt-2 sa-pretty">{look.note}</p> : null}
-        <p className="sa-caption sa-muted mt-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="sa-caption sa-muted min-w-0 flex-1">
           {ORIGIN_LABEL[look.origin]}
           {total ? (
             <>
@@ -639,6 +807,12 @@ function ResultDetails({ look }: { look: Look }) {
             </>
           ) : null}
         </p>
+        {look.note ? (
+          <button type="button" className="sa-btn-quiet sa-body-sm font-semibold" onClick={() => open({ kind: "lookViewer", lookId: look.id })}>
+            Ler descrição
+          </button>
+        ) : null}
+        <VersionStrip look={look} />
       </div>
       <div className="flex flex-wrap gap-2">
         <button type="button" className="sa-btn sa-btn-primary flex-1" onClick={save} style={{ minWidth: 150 }} aria-disabled={pending || undefined}>
@@ -651,13 +825,14 @@ function ResultDetails({ look }: { look: Look }) {
           </button>
         ) : null}
       </div>
-      {look.candidatesCount > 0 ? (
+      {/* The Acervo is the last search's pool and stays available in both modes and after try-ons. */}
+      {draft.acervoLookId ? (
         <button type="button" className="sa-btn sa-btn-secondary sa-btn-block justify-between" onClick={() => open({ kind: "acervo" })}>
           <span className="flex items-center gap-2">
             <SquaresFour size={18} aria-hidden="true" />
             Acervo da busca
           </span>
-          <span className="sa-caption sa-muted">{plural(look.candidatesCount, "peça", "peças")}</span>
+          <span className="sa-caption sa-muted">{draft.acervoSelection.length > 0 ? `${plural(draft.acervoSelection.length, "selecionada", "selecionadas")} · vestir` : "Escolher peças para vestir"}</span>
         </button>
       ) : null}
     </div>
@@ -686,7 +861,7 @@ function PiecesGrid({ look }: { look: Look }) {
 
 /** Wide screens: the look's pieces sit next to the image they belong to. */
 function ResultPiecesStrip({ look }: { look: Look }) {
-  const { open } = useStore()
+  const { open, offerChoice } = useStore()
   if (look.pieces.length === 0) return null
   return (
     <aside className="sa-stage-side sa-only-xl" aria-labelledby="strip-title">
@@ -697,28 +872,210 @@ function ResultPiecesStrip({ look }: { look: Look }) {
         <span className="sa-caption sa-muted">{look.pieces.length}</span>
       </div>
       <ul className="mt-3 grid gap-2">
-        {look.pieces.map(({ product: p, role, warnings }) => (
-          <li key={p.id} className="sa-striprow">
-            <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => open({ kind: "product", productId: p.id })} aria-label={`${p.name}, ${priceText(p)}, ${p.partner.name}. Ver detalhes`}>
-              <span className="sa-photo sa-thumb flex-none" style={{ width: 52, height: 66 }}>
-                <Photo image={p.images[0] ?? null} alt="" className="h-full w-full" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="sa-caption block font-semibold" style={{ color: "var(--text1)" }}>
-                  {p.name}
-                </span>
-                <span className="sa-caption sa-muted block">
-                  <span className="sa-num">{priceText(p)}</span> · {p.partner.name}
-                </span>
-                {look.origin !== "tryon" ? <span className="sa-caption sa-accent-text block">{ROLE_LABEL[role]}</span> : null}
-                {warnings[0] ? <span className="sa-caption sa-warning-text block">{warnings[0]}</span> : null}
-              </span>
-            </button>
-            <FavButton product={p} />
-          </li>
-        ))}
+        {look.pieces.map(({ product: p, role, warnings }) => {
+          const shown = withOffer(p, offerChoice[p.id])
+          return (
+            <li key={p.id} className="sa-striprow">
+              <div className="flex items-center gap-1">
+                <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => open({ kind: "product", productId: p.id })} aria-label={`${p.name}, ${priceText(shown)}, ${shown.partner.name}. Ver detalhes`}>
+                  <span className="sa-photo sa-thumb flex-none" style={{ width: 52, height: 66 }}>
+                    <Photo image={p.images[0] ?? null} alt="" className="h-full w-full" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="sa-caption block font-semibold" style={{ color: "var(--text1)" }}>
+                      {p.name}
+                    </span>
+                    {look.origin !== "tryon" ? <span className="sa-caption sa-accent-text block">{ROLE_LABEL[role]}</span> : null}
+                    {warnings[0] ? <span className="sa-caption sa-warning-text block">{warnings[0]}</span> : null}
+                  </span>
+                </button>
+                <FavButton product={p} />
+              </div>
+              <div className="sa-striprow-offers">
+                <OfferPrice product={p} />
+                <StoreTags product={p} className="mt-1" />
+              </div>
+            </li>
+          )
+        })}
       </ul>
     </aside>
+  )
+}
+
+/* ------------------------------------------------------------------ search catalog */
+
+const CATALOG_PAGE_SIZE = 6
+
+/**
+ * Everything the search agent returned for this look (GET /studio/looks/{id}/candidates), one
+ * tile per product: the same piece in several stores arrives as one Product with offers and shows
+ * store tags. Collapsible (loads on first open) and paged; up to `maxChosenPieces` products become
+ * the base of the next generation (draft.chosen, shared with Explorar's "Levar ao Estúdio").
+ */
+function SearchCatalogPanel({ look }: { look: Look }) {
+  const { draft, setDraft, open } = useStore()
+  const studio = useStudio()
+  const [expanded, setExpanded] = useState(false)
+  const [page, setPage] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const bodyId = useId()
+  const titleId = useId()
+  const candidates = useCandidates(expanded ? look.id : null)
+  useEffect(() => setPage(0), [look.id])
+
+  // One tile per product id, look pieces first.
+  const items: { product: Product; usedInLook: boolean; failed: string[] }[] = []
+  for (const c of [...(candidates.data ?? [])].sort((a, b) => Number(b.usedInLook) - Number(a.usedInLook))) {
+    if (!items.some((x) => x.product.id === c.product.id)) items.push(c)
+  }
+  const pages = Math.max(1, Math.ceil(items.length / CATALOG_PAGE_SIZE))
+  const current = Math.min(page, pages - 1)
+  const visible = items.slice(current * CATALOG_PAGE_SIZE, current * CATALOG_PAGE_SIZE + CATALOG_PAGE_SIZE)
+  const max = studio.config.data?.maxChosenPieces ?? 0
+  const selection = draft.chosen
+  const full = selection.length >= max
+  const cost = studio.costOf("generate")
+  const short = studio.shortBy("generate")
+  const busy = studio.running || studio.starting
+  const total = candidates.data ? items.length : look.candidatesCount
+
+  const toggle = (product: Product): void => {
+    setError(null)
+    if (selection.some((p) => p.id === product.id)) setDraft((d) => ({ chosen: d.chosen.filter((p) => p.id !== product.id) }))
+    else if (!full) setDraft((d) => ({ chosen: [...d.chosen, product] }))
+  }
+  // Picking pieces from the search to wear them is the Vestir mode.
+  const generate = async (): Promise<void> => {
+    if (selection.length === 0 || busy || short !== null) return
+    setDraft({ mode: "vestir" })
+    const out = await studio.generate("vestir")
+    setError(out.ok ? null : out.message)
+  }
+
+  return (
+    <section className="sa-searchcat" aria-labelledby={titleId}>
+      <h2 id={titleId} className="m-0">
+        <button type="button" className="sa-searchcat-toggle" aria-expanded={expanded} aria-controls={bodyId} onClick={() => setExpanded((v) => !v)}>
+          <SquaresFour size={20} aria-hidden="true" className="flex-none" />
+          <span className="min-w-0 flex-1 text-left">
+            <span className="sa-title-sm block">Catálogo da busca</span>
+            <span className="sa-caption sa-muted sa-num block">
+              {plural(total, "produto", "produtos")}
+              {max > 0 ? ` · ${selection.length} de ${max} na base` : ""}
+            </span>
+          </span>
+          <CaretDown size={20} aria-hidden="true" className="sa-caret flex-none" />
+        </button>
+      </h2>
+      <div id={bodyId} hidden={!expanded} className="sa-searchcat-body">
+        {candidates.isError ? (
+          <ErrorState error={candidates.error} onRetry={() => void candidates.refetch()} />
+        ) : candidates.isPending ? (
+          <ul className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 lg:grid-cols-2" aria-busy="true">
+            {Array.from({ length: 4 }, (_, i) => (
+              <li key={i} aria-hidden="true">
+                <Skeleton className="w-full" style={{ aspectRatio: "3 / 4", borderRadius: "var(--r-card)" }} />
+                <Skeleton className="mt-2" style={{ height: 14, width: "80%" }} />
+              </li>
+            ))}
+          </ul>
+        ) : items.length === 0 ? (
+          <p className="sa-body-sm sa-muted">A busca não trouxe outras peças para este look.</p>
+        ) : (
+          <>
+            <ul className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 lg:grid-cols-2">
+              {visible.map(({ product: p, usedInLook, failed }) => {
+                const selected = selection.some((x) => x.id === p.id)
+                const blocked = !selected && full
+                return (
+                  <li key={p.id} className="relative min-w-0">
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={selected}
+                      aria-disabled={blocked || undefined}
+                      aria-label={`Usar ${p.name} como base${blocked ? `: limite de ${max} peças atingido` : ""}`}
+                      className="sa-cardbtn sa-pick block w-full text-left"
+                      onClick={() => toggle(p)}
+                    >
+                      <span className="sa-photo relative block" style={{ aspectRatio: "3 / 4" }}>
+                        <Photo image={p.images[0] ?? null} alt="" className="absolute inset-0 h-full w-full" sizes="(min-width: 1024px) 15vw, 45vw" />
+                        <span className="sa-pick-mark absolute" aria-hidden="true">
+                          {selected ? <Check size={16} weight="bold" /> : null}
+                        </span>
+                      </span>
+                      <span className="sa-title-sm sa-clamp2 block pt-2">{p.name}</span>
+                    </button>
+                    <button type="button" className="sa-iconbtn sa-photo-ctrl absolute" style={{ top: 6, right: 6 }} aria-label={`Detalhes de ${p.name}`} onClick={() => open({ kind: "product", productId: p.id })}>
+                      <Info size={18} />
+                    </button>
+                    <OfferPrice product={p} />
+                    <StoreTags product={p} className="mt-2" />
+                    <p className={`sa-caption mt-2 ${failed.length ? "sa-warning-text" : "sa-muted"}`}>{failed.length ? `Fora das preferências: ${failed[0]}` : usedInLook ? "No look atual" : "Não usada no look"}</p>
+                  </li>
+                )
+              })}
+            </ul>
+            {pages > 1 ? (
+              <nav className="sa-pager" aria-label="Páginas do catálogo">
+                <button type="button" className="sa-iconbtn" aria-label="Página anterior" aria-disabled={current === 0 || undefined} onClick={() => current > 0 && setPage(current - 1)}>
+                  <CaretLeft size={20} />
+                </button>
+                <ol className="sa-pager-list">
+                  {Array.from({ length: pages }, (_, i) => (
+                    <li key={i}>
+                      <button type="button" className="sa-pager-num sa-num" aria-current={i === current ? "page" : undefined} aria-label={`Página ${i + 1}`} onClick={() => setPage(i)}>
+                        {i + 1}
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+                <button type="button" className="sa-iconbtn" aria-label="Próxima página" aria-disabled={current >= pages - 1 || undefined} onClick={() => current < pages - 1 && setPage(current + 1)}>
+                  <CaretRight size={20} />
+                </button>
+              </nav>
+            ) : null}
+            <p className="sa-sr" aria-live="polite">
+              Página {current + 1} de {pages}
+            </p>
+          </>
+        )}
+
+        <div className="sa-searchcat-foot">
+          <div className="flex items-center justify-between gap-3 sa-body-sm">
+            <span aria-live="polite" className="sa-num">
+              {selection.length} de {max} na base{full ? " · limite atingido" : ""}
+            </span>
+            <button type="button" className="sa-btn-quiet" aria-disabled={selection.length === 0 || undefined} onClick={() => selection.length && setDraft({ chosen: [] })}>
+              Limpar
+            </button>
+          </div>
+          <button type="button" className="sa-btn sa-btn-primary sa-btn-block mt-2" aria-disabled={selection.length === 0 || busy || short !== null || cost === null || undefined} onClick={() => void generate()}>
+            {studio.starting ? (
+              <>
+                <CircleNotch size={18} className="sa-spin" aria-hidden="true" /> Enviando…
+              </>
+            ) : studio.running && studio.job.data?.kind === "generate" ? (
+              <>
+                <CircleNotch size={18} className="sa-spin" aria-hidden="true" /> Gerando…
+              </>
+            ) : (
+              <>
+                Vestir {plural(selection.length, "peça", "peças")}
+                {cost !== null ? ` · ${plural(cost, "token", "tokens")}` : ""}
+              </>
+            )}
+          </button>
+          {short !== null ? <p className="sa-caption sa-error-text mt-2">Sem saldo para gerar com estas peças: faltam {plural(short, "token", "tokens")}.</p> : null}
+          {error ? (
+            <p className="sa-caption sa-error-text mt-2" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -737,7 +1094,7 @@ function RecentLooks({ variant }: { variant: "strip" | "grid" }) {
         <ul className="mt-2 flex flex-wrap gap-2">
           {items.slice(0, 8).map((l) => (
             <li key={l.id}>
-              <button type="button" className="sa-historybtn" aria-pressed={l.id === draft.lookId} aria-label={`Retomar ${l.title}, versão ${l.version}`} onClick={() => setDraft({ lookId: l.id, acervoSelection: [] })}>
+              <button type="button" className="sa-historybtn" aria-pressed={l.id === draft.lookId} aria-label={`Retomar ${l.title}, versão ${l.version}`} onClick={() => setDraft({ lookId: l.id })}>
                 <Photo image={l.image} alt="" className="h-full w-full" />
               </button>
             </li>
@@ -755,7 +1112,7 @@ function RecentLooks({ variant }: { variant: "strip" | "grid" }) {
       <ul className="mt-4 grid grid-cols-2 gap-x-3 gap-y-5 md:grid-cols-4">
         {items.slice(0, 8).map((l) => (
           <li key={l.id} className="min-w-0">
-            <button type="button" className="sa-cardbtn block w-full text-left" onClick={() => setDraft({ lookId: l.id, composerOpen: false, acervoSelection: [] })}>
+            <button type="button" className="sa-cardbtn block w-full text-left" onClick={() => setDraft({ lookId: l.id, composerOpen: false })}>
               <span className="sa-photo sa-card-photo relative block" style={{ aspectRatio: "4 / 5" }}>
                 <Photo image={l.image} alt="" className="h-full w-full" />
               </span>
@@ -783,7 +1140,7 @@ function EmptyStage() {
 }
 
 export function StudioScreen() {
-  const { draft } = useStore()
+  const { draft, setDraft } = useStore()
   const studio = useStudio()
   const reduced = useReducedMotion()
   const look = studio.look.data ?? null
@@ -791,11 +1148,18 @@ export function StudioScreen() {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const lastShown = useRef<string | null>(null)
 
+  // A search result on screen becomes the Acervo; edits, try-ons and Vestir results keep the last one.
+  useEffect(() => {
+    if (look) setDraft((d) => (d.lookId === look.id ? showLookPatch(d, look) : {}))
+  }, [look, setDraft])
+
   // A new look moves focus to its title; the page scrolls only when the image is out of view.
   useEffect(() => {
     const id = look?.id
     if (!id || id === lastShown.current) return
     lastShown.current = id
+    // Browsing with the arrows or a swipe keeps the person where they are.
+    if (browsedIds.delete(id)) return
     const el = stageRef.current
     if (!el || el.offsetParent === null) return
     const header = window.innerWidth < 1024 ? 64 : 80
@@ -809,7 +1173,7 @@ export function StudioScreen() {
     <div className="sa-page sa-page-studio">
       <header className="sa-studio-head">
         <h1 className="sa-display">Estúdio</h1>
-        <p className="sa-body-sm sa-muted mt-2 sa-pretty">Descreva a ocasião ou parta de uma peça do Explorar. O Estúdio monta um look com peças de parceiros, e você compra na loja.</p>
+        <p className="sa-body-sm sa-muted mt-2 sa-pretty">Procure um look pelo que você imagina ou vista peças que já escolheu. Tudo vem de lojas parceiras, e a compra acontece na loja.</p>
       </header>
 
       <div className={`sa-studio ${draft.lookId ? "sa-studio-result" : "sa-studio-empty"}`}>
@@ -835,11 +1199,13 @@ export function StudioScreen() {
           )}
         </div>
         <div className="sa-studio-controls grid content-start gap-6">
+          <ModeSwitch />
           {showComposer ? <Composer /> : <ComposerSummary />}
           <JobPanel />
           {look ? (
             <>
               <ResultDetails look={look} />
+              {look.candidatesCount > 0 ? <SearchCatalogPanel look={look} /> : null}
               <div className="sa-hide-xl">
                 <PiecesGrid look={look} />
               </div>

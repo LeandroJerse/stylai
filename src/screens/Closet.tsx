@@ -10,7 +10,8 @@ import type { Product } from "../api/types"
 import { useStore, type Overlay } from "../app/store"
 import { useAuth } from "../auth/AuthProvider"
 import { formatDay, plural } from "../lib/format"
-import { ORIGIN_LABEL, sumLook } from "../lib/looks"
+import { ORIGIN_LABEL } from "../lib/looks"
+import { sumLookWith, withOffer } from "../lib/offers"
 import { PieceCard, PieceCardSkeletons, priceText, ROLE_LABEL } from "../components/pieces"
 import { EmptyState, ErrorState, Notice, Photo, Segmented, Sheet, Skeleton } from "../components/ui"
 
@@ -149,7 +150,7 @@ export function ClosetScreen() {
 }
 
 export function ClosetLookSheet({ lookId }: { lookId: string }) {
-  const { close, notify, open } = useStore()
+  const { close, notify, open, offerChoice } = useStore()
   const closet = useCloset(true)
   const toggle = useToggleSavedLook()
   const look = closet.data?.looks.find((l) => l.id === lookId)
@@ -161,7 +162,7 @@ export function ClosetLookSheet({ lookId }: { lookId: string }) {
     )
   }
   const self: Overlay = { kind: "closetLook", lookId }
-  const total = sumLook(look)
+  const total = sumLookWith(look, offerChoice)
   const created = formatDay(look.createdAt)
 
   const remove = (): void => {
@@ -218,11 +219,11 @@ export function ClosetLookSheet({ lookId }: { lookId: string }) {
                   </div>
                   <span className="min-w-0 flex-1">
                     <span className="sa-body-sm sa-truncate block font-semibold">{p.product.name}</span>
-                    <span className="sa-caption sa-muted block">{p.product.partner.name}</span>
+                    <span className="sa-caption sa-muted block">{withOffer(p.product, offerChoice[p.product.id]).partner.name}</span>
                     {look.origin !== "tryon" ? <span className="sa-caption sa-accent-text block">{ROLE_LABEL[p.role]}</span> : null}
                     {isStale(p.product) ? <span className="sa-caption sa-warning-text block">Dados de {formatDay(p.product.updatedAt)}</span> : null}
                   </span>
-                  <span className="sa-body-sm sa-num font-semibold">{priceText(p.product)}</span>
+                  <span className="sa-body-sm sa-num font-semibold">{priceText(withOffer(p.product, offerChoice[p.product.id]))}</span>
                 </button>
               </li>
             ))}

@@ -13,17 +13,19 @@ import { formatDay, formatInt, formatMoney, formatRating } from "../lib/format"
 import { resolvePartnerLink } from "../lib/links"
 import { StarRating } from "./controls"
 import { ErrorState, Hint, Notice, Photo, Sheet, Skeleton, useLongPress } from "./ui"
+import { OfferPrice, StoreTags, useOfferProduct } from "./offers"
+import { withOffer } from "../lib/offers"
 
 export const ROLE_LABEL: Record<PieceRole, string> = {
   look: "Peça do look",
   similar: "Alternativa semelhante",
-  chosen: "Escolhida no Explorar",
+  chosen: "Escolhida por você",
 }
 
 const ROLE_NOTE: Record<PieceRole, string> = {
   look: "Peça correspondente encontrada para o look: pode não ser idêntica à da imagem gerada.",
   similar: "Alternativa semelhante: não é a peça exata da imagem.",
-  chosen: "Peça que você escolheu no Explorar: é o mesmo produto do catálogo, com a mesma loja e o mesmo link.",
+  chosen: "Peça que você escolheu como base: é o mesmo produto do catálogo, com a loja e o link escolhidos.",
 }
 
 export const priceText = (p: Product): string => (p.price ? formatMoney(p.price.amount, p.price.currency) : "Preço não informado")
@@ -125,6 +127,7 @@ interface PieceCardProps {
 
 export function PieceCard({ product, role, warnings = [], back, extra, eager = false }: PieceCardProps) {
   const { open } = useStore()
+  const shown = useOfferProduct(product)
   const openDetail = (): void => open({ kind: "product", productId: product.id, back })
   const press = useLongPress(openDetail)
   const cover = product.images[0] ?? null
@@ -141,7 +144,7 @@ export function PieceCard({ product, role, warnings = [], back, extra, eager = f
         onPointerLeave={press.onPointerLeave}
         onPointerCancel={press.onPointerCancel}
         onContextMenu={press.onContextMenu}
-        aria-label={`${product.name}, ${priceText(product)}, ${product.partner.name}. Ver detalhes`}
+        aria-label={`${product.name}, ${priceText(shown)}, ${shown.partner.name}. Ver detalhes`}
       >
         <div className="sa-photo relative" style={{ aspectRatio: "3 / 4" }}>
           <Photo image={cover} alt="" className="absolute inset-0 h-full w-full" eager={eager} sizes="(min-width: 1024px) 20vw, 50vw" />
@@ -151,19 +154,14 @@ export function PieceCard({ product, role, warnings = [], back, extra, eager = f
             </span>
           ) : null}
         </div>
-        <div className="pt-3">
-          <p className="sa-title-sm sa-clamp2">{product.name}</p>
-          <p className="sa-caption sa-muted mt-1 flex flex-wrap items-baseline gap-x-2">
-            <span className="sa-num font-semibold" style={{ color: "var(--text1)" }}>
-              {priceText(product)}
-            </span>
-            <span>{product.partner.name}</span>
-          </p>
-          {role ? <p className="sa-caption sa-accent-text mt-1">{ROLE_LABEL[role]}</p> : null}
-          {extra ? <p className="sa-caption sa-muted mt-1">{extra}</p> : null}
-          {warnings.length > 0 ? <p className="sa-caption sa-warning-text mt-1">{warnings[0]}</p> : null}
-        </div>
+        <p className="sa-title-sm sa-clamp2 pt-3">{product.name}</p>
       </button>
+      {/* Outside the card button: store tags are their own controls (no nested buttons). */}
+      <OfferPrice product={product} />
+      <StoreTags product={product} className="mt-2" />
+      {role ? <p className="sa-caption sa-accent-text mt-2">{ROLE_LABEL[role]}</p> : null}
+      {extra ? <p className="sa-caption sa-muted mt-1">{extra}</p> : null}
+      {warnings.length > 0 ? <p className="sa-caption sa-warning-text mt-1">{warnings[0]}</p> : null}
       <div className="absolute" style={{ top: 6, right: 6 }}>
         <FavButton product={product} onPhoto />
       </div>
@@ -209,7 +207,7 @@ function RatingLine({ product }: { product: Product }) {
 const FIT_LABEL = { ajustado: "Ajustado", regular: "Regular", amplo: "Amplo" } as const
 
 export function ProductDetailSheet({ productId, back, role, warnings }: { productId: string; back?: Overlay; role?: PieceRole; warnings?: string[] }) {
-  const { close } = useStore()
+  const { close, offerChoice } = useStore()
   const query = useProduct(productId)
   const product = query.data
   const [size, setSize] = useState<string | null>(null)
@@ -241,6 +239,8 @@ export function ProductDetailSheet({ productId, back, role, warnings }: { produc
   if (product.sellerRating !== null) rows.push({ label: "Nota do vendedor", value: `${formatRating(product.sellerRating)} de 5` })
   const image = product.images[imageIndex] ?? product.images[0] ?? null
   const updated = formatDay(product.updatedAt)
+  // The exit, link note and price follow the store chosen in the tags.
+  const shown = withOffer(product, offerChoice[product.id])
 
   return (
     <Sheet
@@ -248,7 +248,7 @@ export function ProductDetailSheet({ productId, back, role, warnings }: { produc
       onClose={close}
       footer={
         <div className="grid gap-2">
-          <StoreCta product={product} back={self} />
+          <StoreCta product={shown} back={self} />
           <div className="flex gap-2">
             <button type="button" className="sa-btn sa-btn-secondary flex-1" onClick={studio.send} aria-disabled={studio.full || undefined}>
               <PenNib size={18} aria-hidden="true" />
@@ -277,10 +277,10 @@ export function ProductDetailSheet({ productId, back, role, warnings }: { produc
         <div>
           <h3 className="sa-subheading">{product.name}</h3>
           <p className="sa-caption sa-muted mt-1">
-            {product.partner.name}
-            {product.category ? ` · ${product.category.label}` : ""}
+            {product.offers.length > 1 ? (product.category?.label ?? "") : `${product.partner.name}${product.category ? ` · ${product.category.label}` : ""}`}
           </p>
-          <p className="sa-num mt-2 text-lg font-semibold">{priceText(product)}</p>
+          <OfferPrice product={product} size="lg" />
+          {product.offers.length > 1 ? <StoreTags product={product} size="md" className="mt-3" /> : null}
           {role ? <p className="sa-caption sa-muted mt-1">{ROLE_NOTE[role]}</p> : null}
         </div>
         <RatingLine product={product} />
@@ -348,7 +348,7 @@ export function ProductDetailSheet({ productId, back, role, warnings }: { produc
         ) : null}
 
         {updated ? <Hint>Preço e estoque conferidos na loja em {updated}; podem ter mudado desde então.</Hint> : null}
-        <StoreLinkNote product={product} />
+        <StoreLinkNote product={shown} />
       </div>
     </Sheet>
   )

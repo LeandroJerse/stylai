@@ -332,8 +332,15 @@ select.sa-field { appearance: none; padding-right: 36px; background-image: linea
 .sa-matchbtn { min-height: 52px; }
 .sa-matchbtn:active:not([aria-disabled="true"]) { transform: scale(0.98); transition-duration: 100ms; }
 
-/* Match entry under the result photo: centred, never over face or garment. */
-.sa-matchcta-row { display: flex; justify-content: center; margin-top: var(--s-sm); }
+/* Match entry inside the result photo, centred at the bottom edge (brief 2026-11-11).
+   Tapping the photo hides it (data-hidden) so the whole look can be seen; tapping again restores it. */
+.sa-matchcta-row {
+  position: absolute; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; pointer-events: none;
+  transition: opacity var(--dur-normal) var(--ease), transform var(--dur-normal) var(--ease);
+}
+.sa-matchcta-row > * { pointer-events: auto; }
+.sa-matchcta-row[data-hidden] { opacity: 0; transform: translateY(8px); }
+.sa-matchcta-row[data-hidden] > * { pointer-events: none; }
 .sa-matchcta {
   display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 20px 0 16px; border-radius: var(--r-pill);
   background: var(--surface1); color: var(--text1); font-size: 15px; font-weight: 600;
@@ -434,6 +441,8 @@ select.sa-field { appearance: none; padding-right: 36px; background-image: linea
 .sa-chosen, .sa-striprow { display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: var(--r-control); transition: background-color var(--dur-fast) var(--ease); }
 .sa-chosen { background: var(--surface2); }
 .sa-striprow:hover { background: var(--surface2); }
+.sa-striprow { display: block; }
+.sa-striprow-offers { padding: 0 2px 2px 64px; }
 .sa-startrow {
   display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px; border-radius: var(--r-control);
   transition: background-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
@@ -548,11 +557,12 @@ select.sa-field { appearance: none; padding-right: 36px; background-image: linea
 .sa-critbudget { display: flex; align-items: center; gap: var(--s-xs); flex: 1 1 240px; min-width: 0; }
 .sa-range-sm { height: 44px; }
 .sa-critvalue {
-  display: inline-flex; align-items: baseline; gap: 2px; min-height: 44px; padding: 0 10px; border-radius: var(--r-control);
+  display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 10px; border-radius: var(--r-control);
   font-size: var(--fs-body-sm); font-weight: 600; white-space: nowrap; text-decoration: underline dotted; text-underline-offset: 4px;
   transition: background-color var(--dur-fast) var(--ease);
 }
 .sa-critvalue:hover { background: var(--surface2); }
+.sa-critvalue-slot { display: flex; flex: none; min-width: 10.5em; font-size: var(--fs-body-sm); }
 .sa-critvalue-edit { display: inline-flex; align-items: center; gap: 4px; flex: none; }
 .sa-critvalue-edit .sa-field { width: 88px; min-height: 44px; padding: 8px 10px; text-align: right; }
 .sa-critpanel { display: grid; gap: var(--s-sm); padding: var(--s-md); border-radius: var(--r-panel); background: var(--surface2); }
@@ -660,3 +670,170 @@ select.sa-field { appearance: none; padding-right: 36px; background-image: linea
   .sa-skeleton::after, .sa-progress-indeterminate > span { animation: none; }
   .sa-spinner { animation-duration: 2.4s; }
 }
+
+/* ---------------------------------------------------------------- store tags (one product, several stores) */
+.sa-storetags { display: flex; flex-wrap: wrap; gap: 6px; }
+.sa-storetag {
+  position: relative; display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+  border-radius: var(--r-pill); color: var(--text1); font-weight: 600; white-space: nowrap;
+  box-shadow: inset 0 0 0 1px var(--border-visible); background: transparent;
+  transition: background-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), transform 100ms var(--ease);
+}
+/* 40px visual, 44px hit (design-model chip_filter); .sa-hit adds the 2px above and below. */
+.sa-storetag-sm { min-height: 40px; min-width: 44px; padding: 0 12px; font-size: var(--fs-caption); }
+.sa-storetag-md { min-height: 40px; min-width: 44px; padding: 0 14px; font-size: var(--fs-body-sm); }
+button.sa-storetag:hover { background: var(--surface2); }
+button.sa-storetag:active { transform: scale(0.97); }
+.sa-storetag[aria-checked="true"] { background: var(--surface1); box-shadow: inset 0 0 0 2px var(--text1); }
+.sa-storetag-static { color: var(--text2); font-weight: 500; box-shadow: none; padding-left: 0; }
+.sa-price-low { color: var(--price-low); }
+.sa-price-high { color: var(--price-high); }
+.sa-pricerank { display: inline-flex; align-items: center; gap: 3px; font-weight: 700; }
+
+/* ---------------------------------------------------------------- search catalog panel */
+.sa-searchcat { min-width: 0; border-radius: var(--r-panel); background: var(--surface1); border: 1px solid var(--border); }
+.sa-searchcat-toggle {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 10px 16px;
+  border-radius: var(--r-panel); color: var(--text1); text-align: left;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.sa-searchcat-toggle:hover { background: var(--surface2); }
+.sa-searchcat-toggle .sa-caret { transition: transform var(--dur-normal) var(--ease); }
+.sa-searchcat-toggle[aria-expanded="true"] .sa-caret { transform: rotate(180deg); }
+.sa-searchcat-toggle[aria-expanded="true"] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.sa-searchcat-body { padding: 4px 16px 16px; }
+.sa-searchcat-body:not([hidden]) { animation: sa-searchcat-in var(--dur-normal) var(--ease); }
+@keyframes sa-searchcat-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.sa-pick .sa-photo { transition: box-shadow var(--dur-fast) var(--ease); }
+.sa-pick[aria-checked="true"] .sa-photo { box-shadow: inset 0 0 0 3px var(--text1); }
+.sa-pick[aria-disabled="true"] .sa-photo { opacity: 0.55; }
+.sa-pick-mark {
+  left: 8px; top: 8px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: var(--r-pill);
+  background: var(--photo-control); box-shadow: inset 0 0 0 1.5px var(--control);
+}
+.sa-pick[aria-checked="true"] .sa-pick-mark { background: var(--action); color: var(--on-action); box-shadow: none; }
+.sa-pager { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: var(--s-lg); }
+.sa-pager-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.sa-pager-num {
+  display: grid; place-items: center; min-width: 44px; height: 44px; border-radius: var(--r-pill);
+  font-size: var(--fs-body-sm); font-weight: 600; color: var(--text2);
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.sa-pager-num:hover { background: var(--surface2); color: var(--text1); }
+.sa-pager-num[aria-current="page"] { background: var(--action); color: var(--on-action); }
+.sa-searchcat-foot { margin-top: var(--s-lg); padding-top: var(--s-md); border-top: 1px solid var(--border); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sa-matchcta-row { transition: opacity 120ms linear; }
+  .sa-matchcta-row[data-hidden] { transform: none; }
+  .sa-searchcat-body:not([hidden]) { animation: none; }
+  .sa-searchcat-toggle .sa-caret { transition: none; }
+}
+
+/* Focus keeps each control's own shape (the global rule sets a 4px radius). */
+.sa-root .sa-storetag:focus-visible,
+.sa-root .sa-pager-num:focus-visible,
+.sa-root .sa-matchcta:focus-visible { border-radius: var(--r-pill); }
+.sa-root .sa-searchcat-toggle:focus-visible { border-radius: var(--r-panel); outline-offset: -2px; }
+/* The photo toggle fills a clipped frame: draw its ring inside. */
+.sa-root .sa-photo-tap:focus-visible { outline-offset: -4px; border-radius: var(--r-photo-lg); }
+
+/* ---------------------------------------------------------------- estúdio: modes (brief 2026-11-11) */
+.sa-modeswitch button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: var(--fs-body); }
+
+/* Look title on the result photo, just above Match. A neutral scrim keeps it legible on any image. */
+.sa-phototitle {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 56px var(--s-md) 16px; pointer-events: none; text-align: center;
+  background: linear-gradient(to top, rgba(20, 18, 16, 0.58), rgba(20, 18, 16, 0.32) 55%, rgba(20, 18, 16, 0));
+  transition: opacity var(--dur-normal) var(--ease), transform var(--dur-normal) var(--ease);
+}
+[data-match] > .sa-phototitle { padding-bottom: 72px; }
+.sa-phototitle[data-hidden] { opacity: 0; transform: translateY(8px); }
+.sa-phototitle-text {
+  margin: 0 auto; max-width: 30ch; color: #fffdf9; font-family: var(--font-serif); font-weight: 500;
+  font-size: clamp(22px, 1.2vw + 16px, 30px); line-height: 1.05; letter-spacing: -0.01em; text-wrap: balance;
+}
+.sa-phototitle-text:focus { outline: none; }
+
+/* Opened look: image, then title and description below; the whole column scrolls.
+   Solid ground: the text below the image must not show the page through it. */
+.sa-lookviewer { background: var(--background); }
+.sa-lookviewer-bar {
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s-sm);
+  padding: max(8px, env(safe-area-inset-top)) 8px 4px var(--s-md);
+}
+.sa-lookviewer-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.sa-lookviewer-layout { display: grid; gap: var(--s-lg); max-width: 1120px; margin: 0 auto; padding: 0 var(--s-md) calc(40px + env(safe-area-inset-bottom)); }
+.sa-lookviewer-stage { position: relative; height: 68svh; min-height: 320px; touch-action: pan-y; }
+.sa-lookviewer-nav { position: absolute; top: 50%; transform: translateY(-50%); transition: opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease); }
+.sa-lookviewer-nav[data-side="prev"] { left: 4px; }
+.sa-lookviewer-nav[data-side="next"] { right: 4px; }
+.sa-lookviewer-nav[aria-disabled="true"] { opacity: 0.35; }
+.sa-lookviewer-text { max-width: 62ch; }
+.sa-lookviewer-title { font-family: var(--font-serif); font-weight: 500; font-size: clamp(30px, 1.6vw + 22px, 44px); line-height: 1.02; letter-spacing: -0.015em; text-wrap: balance; }
+@media (min-width: 1024px) {
+  .sa-lookviewer-layout { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); align-items: start; gap: 48px; padding-left: var(--s-lg); padding-right: var(--s-lg); }
+  .sa-lookviewer-stage { position: sticky; top: 0; height: calc(100svh - 96px); }
+  .sa-lookviewer-text { padding-top: var(--s-lg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sa-phototitle { transition: opacity 120ms linear; }
+  .sa-phototitle[data-hidden] { transform: none; }
+}
+
+/* Explorar wide filter bar: the price bar sits inline, sized like a field (brief 2026-11-12). */
+.sa-filterbar-price { flex: 1 1 260px; min-width: 240px; max-width: 480px; }
+.sa-pricefilter { display: flex; align-items: center; gap: var(--s-xs); }
+/* In the filters sheet the slider keeps the full width and the button sits under it. */
+.sa-pricefilter-stack { flex-direction: column; align-items: flex-start; }
+.sa-pricefilter-stack > :first-child { width: 100%; }
+
+/* Opened look (brief 2026-11-12): small arrows (44 px hit area, 30 px drawn) and no bands around the photo. */
+.sa-lookviewer-stage img, .sa-lookviewer-stage [role="img"] { background: transparent !important; }
+.sa-lookviewer-nav.sa-photo-ctrl { background: none; box-shadow: none; }
+.sa-lookviewer-nav::before {
+  content: ""; position: absolute; inset: 7px; border-radius: var(--r-pill); z-index: -1;
+  background: var(--photo-control); box-shadow: var(--shadow-photo-control);
+}
+.sa-lookviewer-nav { isolation: isolate; }
+.sa-lookviewer-nav:hover::before { background: var(--surface1); }
+
+/* Result photo (brief 2026-11-12): small arrows and a sideways swipe go through the generated looks, as in Match. */
+.sa-stage-photo[data-browse] { touch-action: pan-y; }
+.sa-stagenav {
+  position: absolute; top: 50%; z-index: 2; transform: translateY(-50%); width: 44px; height: 44px;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--text1); isolation: isolate;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.sa-stagenav::before { content: ""; position: absolute; inset: 7px; z-index: -1; border-radius: var(--r-pill); background: var(--photo-control); box-shadow: var(--shadow-photo-control); }
+.sa-stagenav:hover::before { background: var(--surface1); }
+.sa-stagenav[data-side="prev"] { left: 4px; }
+.sa-stagenav[data-side="next"] { right: 4px; }
+.sa-stagenav[aria-disabled="true"] { opacity: 0.35; }
+.sa-stagecount { position: absolute; top: 62px; left: 10px; }
+.sa-root .sa-stagenav:focus-visible { border-radius: var(--r-pill); }
+
+/* Card swap (brief 2026-11-12): the outgoing look is thrown aside with a slight turn while the next
+   rises from underneath, like dealing cards. Used by the Estúdio photo and the opened look. */
+.sa-cardswap { overflow: hidden; isolation: isolate; }
+.sa-cardswap-card { position: absolute; inset: 0; }
+.sa-cardswap-out { z-index: 1; pointer-events: none; animation: sa-card-out 420ms cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+.sa-cardswap-out[data-dir="prev"] { animation-name: sa-card-out-prev; }
+.sa-cardswap-in[data-animate] { animation: sa-card-in 440ms var(--ease) both; }
+@keyframes sa-card-out { to { transform: translateX(-112%) rotate(-9deg); opacity: 0.6; } }
+@keyframes sa-card-out-prev { to { transform: translateX(112%) rotate(9deg); opacity: 0.6; } }
+@keyframes sa-card-in { from { transform: scale(0.94) translateY(10px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+.sa-lookviewer-stage .sa-cardswap { overflow: visible; }
+@media (prefers-reduced-motion: reduce) {
+  .sa-cardswap-out, .sa-cardswap-out[data-dir="prev"] { animation: sa-fade-out 180ms linear forwards; }
+  .sa-cardswap-in[data-animate] { animation: sa-fade 180ms linear both; }
+}
+@keyframes sa-fade-out { to { opacity: 0; } }
+
+/* Hold-and-drag cards (brief 2026-11-12): grab cursor, the card under the one being dragged, no native image drag. */
+.sa-stage-photo[data-browse], .sa-lookviewer-stage { cursor: grab; user-select: none; -webkit-user-select: none; }
+.sa-cardswap img { -webkit-user-drag: none; user-select: none; }
+.sa-cardswap-in { z-index: 1; will-change: transform; }
+.sa-cardswap-under { z-index: 0; }
+.sa-cardswap-out { z-index: 2; }
+.sa-stage-photo .sa-cardswap-in { box-shadow: 0 18px 40px -24px rgba(20, 18, 16, 0.55); }
