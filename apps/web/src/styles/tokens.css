@@ -29,6 +29,9 @@
   --success-bg: #e2eee6;
   --warning-bg: #f3e8d6;
   --error-bg: #f6e4e0;
+  /* Store price rank (brief 2026-11-11): cheapest store in red, most expensive in amber; always with an arrow icon. */
+  --price-low: var(--error);
+  --price-high: var(--warning);
   --scrim: rgba(20, 18, 16, 0.48);
   --photo-control: rgba(255, 253, 249, 0.92);
   --viewer-bg: rgba(247, 243, 237, 0.97);

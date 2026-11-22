@@ -4,11 +4,12 @@
  * Image and link URLs must be absolute http(s); anything else (javascript:, data:, relative) is dropped.
  */
 import { ApiError, defaultMessage } from "./errors"
-import type {
+import type { CatalogSource,
   Availability,
   Balance,
   BodyAngle,
   BodyPhoto,
+  BodyPhotosState,
   CatalogFacets,
   Candidate,
   Closet,
@@ -32,8 +33,12 @@ import type {
   PreferenceRules,
   Preferences,
   Product,
+  ProductOffer,
   RuleMode,
   Session,
+  SearchResult,
+  SignUpResult,
+  StudioCapabilities,
   StudioConfig,
   UploadedImage,
   User,
@@ -81,9 +86,15 @@ export function safeExternalUrl(raw: unknown): string | null {
   return u && u.startsWith("https://") ? u : null
 }
 
+/** Object URL of a file chosen in this browser (demo preview of the persons own photo; never fetched remotely). */
+const localObjectUrl = (raw: unknown): string | null => {
+  const s = str(raw)
+  return s && /^blob:https?:\/\/\S+$/.test(s) ? s : null
+}
+
 export function parseImage(raw: unknown): ImageAsset | null {
   if (!isObj(raw)) return null
-  const url = safeUrl(raw.url)
+  const url = safeUrl(raw.url) ?? localObjectUrl(raw.url)
   if (!url) return null
   return { url, width: num(raw.width), height: num(raw.height), alt: str(raw.alt), focus: str(raw.focus) }
 }
@@ -102,24 +113,47 @@ const rating = (v: unknown): number | null => {
   return n === null || n < 0 || n > 5 ? null : n
 }
 
+/** One store's offer; null when the store id is missing (the offer is then dropped). */
+function offer(raw: unknown): ProductOffer | null {
+  if (!isObj(raw) || !isObj(raw.partner)) return null
+  const id = str(raw.partner.id)
+  if (!id) return null
+  const links = isObj(raw.links) ? raw.links : {}
+  return {
+    partner: { id, name: str(raw.partner.name) ?? id },
+    price: money(raw.price),
+    links: { affiliateUrl: safeExternalUrl(links.affiliateUrl), productUrl: safeExternalUrl(links.productUrl) },
+  }
+}
+
 export function parseProduct(raw: unknown): Product {
   const o = obj(raw, "product")
   const partner = obj(o.partner, "product.partner")
   const category = isObj(o.category) && str(o.category.id) ? { id: String(o.category.id), label: str(o.category.label) ?? String(o.category.id) } : null
   const links = isObj(o.links) ? o.links : {}
+  const own: ProductOffer = {
+    partner: { id: reqStr(partner.id, "partner.id"), name: str(partner.name) ?? String(partner.id) },
+    price: money(o.price),
+    links: { affiliateUrl: safeExternalUrl(links.affiliateUrl), productUrl: safeExternalUrl(links.productUrl) },
+  }
+  // Own store first, then one offer per other store (repeated stores are ignored).
+  const offers: ProductOffer[] = [own]
+  for (const extra of arr(o.offers).map(offer)) {
+    if (extra && !offers.some((x) => x.partner.id === extra.partner.id)) offers.push(extra)
+  }
   return {
     id: reqStr(o.id, "product.id"),
     name: reqStr(o.name, "product.name"),
     category,
-    partner: { id: reqStr(partner.id, "partner.id"), name: str(partner.name) ?? String(partner.id) },
-    price: money(o.price),
+    partner: own.partner,
+    price: own.price,
     images: images(o.images),
     rating: rating(o.rating),
     reviewsCount: num(o.reviewsCount),
     sellerRating: rating(o.sellerRating),
     variants: arr(o.variants)
       .filter(isObj)
-      .map((v) => ({ label: str(v.label) ?? "", available: bool(v.available) }))
+      .map((v) => ({ id: str(v.id), label: str(v.label) ?? "", available: bool(v.available) }))
       .filter((v) => v.label !== ""),
     availability: oneOf<Availability>(o.availability, ["available", "partial", "unavailable", "unknown"], "unknown"),
     material: str(o.material),
@@ -132,8 +166,11 @@ export function parseProduct(raw: unknown): Product {
       .filter((m) => m.label && m.value),
     styles: strs(o.styles),
     updatedAt: str(o.updatedAt),
-    links: { affiliateUrl: safeExternalUrl(links.affiliateUrl), productUrl: safeExternalUrl(links.productUrl) },
+    links: own.links,
+    offers,
     favorite: bool(o.favorite),
+    fixture: bool(o.fixture),
+    tryOnReady: bool(o.tryOnReady),
   }
 }
 
@@ -212,7 +249,19 @@ export function parseBodyPhoto(raw: unknown): BodyPhoto | null {
   const angle = oneOfOrNull(raw.angle, ANGLES)
   const image = parseImage(raw.image)
   if (!angle || !image) return null
-  return { angle, image, status: oneOf(raw.status, ["processing", "ready", "rejected"] as const, "processing"), issues: strs(raw.issues), uploadedAt: str(raw.uploadedAt) }
+  const status = oneOf(raw.status, ["processing", "ready", "rejected"] as const, "processing")
+  const v = isObj(raw.validation) ? raw.validation : null
+  const validation = v && oneOfOrNull(v.status, ["approved", "needs_adjustment", "inconclusive", "error"] as const) ? {
+    status: oneOf(v.status, ["approved", "needs_adjustment", "inconclusive", "error"] as const, "error"),
+    framing: oneOfOrNull(v.framing, ["full_body", "to_knees", "partial", "none"] as const),
+    supports: isObj(v.supports) ? { upper: bool(v.supports.upper), lower: bool(v.supports.lower), dress: bool(v.supports.dress) } : null,
+    measuredAngle: oneOfOrNull(v.measuredAngle, ANGLES),
+    version: str(v.version),
+  } : null
+  // Older servers had no validation: their ready photo is the one in use.
+  const inUse = typeof raw.inUse === "boolean" ? raw.inUse : status === "ready"
+  const revalidatable = typeof raw.revalidatable === "boolean" ? raw.revalidatable : validation?.status === "error"
+  return { id: str(raw.id), angle, image, status, issues: strs(raw.issues), advice: strs(raw.advice), revalidatable, inUse, validation, uploadedAt: str(raw.uploadedAt), expiresAt: str(raw.expiresAt) }
 }
 
 export const parseBodyPhotos = (raw: unknown): BodyPhoto[] => arr(obj(raw, "bodyPhotos").items).map(parseBodyPhoto).filter((p): p is BodyPhoto => p !== null)
@@ -270,6 +319,9 @@ export function parsePreferences(raw: unknown): Preferences {
 
 /* ------------------------------------------------------------------ studio */
 
+/** Base pieces per request when the server does not say (product decision 2026-11-11). */
+export const DEFAULT_MAX_CHOSEN = 6
+
 export function parseStudioConfig(raw: unknown): StudioConfig {
   const o = obj(raw, "studioConfig")
   const costs = obj(o.costs, "studioConfig.costs")
@@ -280,16 +332,78 @@ export function parseStudioConfig(raw: unknown): StudioConfig {
     return n
   }
   return {
-    costs: { generate: need(costs.generate, "costs.generate"), edit: need(costs.edit, "costs.edit"), tryOn: need(costs.tryOn, "costs.tryOn") },
+    costs: { generate: need(costs.generate, "costs.generate"), edit: costs.edit === null ? null : need(costs.edit, "costs.edit"), tryOn: need(costs.tryOn, "costs.tryOn") },
+    plans: arr(o.plans).flatMap((p) => isObj(p) && str(p.id) && str(p.name) && num(p.coinsPerPeriod) !== null ? [{ id: String(p.id), name: String(p.name), coinsPerPeriod: num(p.coinsPerPeriod)!, period: p.period === "month" ? "month" as const : "day" as const }] : []),
+    costGaps: strs(o.costGaps),
+    generationMode: o.generationMode === "simulated" || o.generationMode === "real" || o.generationMode === "disabled" ? o.generationMode : null,
+    realProvider: isObj(o.realProvider) && str(o.realProvider.model) ? {
+      provider: str(o.realProvider.provider) ?? "", model: String(o.realProvider.model), callsPerGeneration: num(o.realProvider.callsPerGeneration) ?? 1,
+      estimatedUsdPerCall: num(o.realProvider.estimatedUsdPerCall) ?? 0, maxUsdPerCall: num(o.realProvider.maxUsdPerCall) ?? 0,
+    } : null,
     maxReferences: num(o.maxReferences) ?? 0,
-    maxChosenPieces: num(o.maxChosenPieces) ?? 0,
+    maxChosenPieces: num(o.maxChosenPieces) ?? DEFAULT_MAX_CHOSEN,
     maxPromptLength: num(o.maxPromptLength) ?? 500,
     budget: { min: need(budget.min, "budget.min"), max: need(budget.max, "budget.max"), step: num(budget.step) ?? 1, currency: str(budget.currency) ?? "BRL" },
     acceptedImageTypes: strs(o.acceptedImageTypes),
     maxImageBytes: num(o.maxImageBytes) ?? 0,
     minImageHeight: num(o.minImageHeight) ?? 0,
     sizes: { top: strs(isObj(o.sizes) ? o.sizes.top : null), bottom: strs(isObj(o.sizes) ? o.sizes.bottom : null), shoes: strs(isObj(o.sizes) ? o.sizes.shoes : null) },
+    capabilities: capabilities(o.capabilities),
+    unit: isObj(o.unit) && str(o.unit.singular) && str(o.unit.plural) ? { singular: String(o.unit.singular), plural: String(o.unit.plural) } : { singular: "moeda", plural: "moedas" },
+    quotaStatus: o.quotaStatus === "provisional" ? "provisional" : "final",
+    photoPolicyVersion: str(o.photoPolicyVersion),
   }
+}
+
+export function parseSearchResult(raw: unknown): SearchResult {
+  const o = obj(raw, "search")
+  const i = isObj(o.interpretation) ? o.interpretation : {}
+  const category = isObj(i.category) && str(i.category.id) ? { id: String(i.category.id), label: str(i.category.label) ?? String(i.category.id) } : null
+  return {
+    source: str(o.source) ?? "unknown",
+    interpretation: { category, colors: strs(i.colors), maxPriceBrl: num(i.maxPriceBrl), terms: strs(i.terms) },
+    items: parseCandidates(raw),
+    total: num(o.total) ?? 0,
+  }
+}
+
+/** Missing capabilities = the historical full contract (everything on). */
+function capabilities(raw: unknown): StudioCapabilities {
+  if (!isObj(raw)) return { mode: "full", dress: true, adjustments: true, bodyPhotoRequired: false, closet: true, searchScope: "stores", generation: true, edits: true, match: true, references: true, preferences: true, search: true, measurements: true, plans: true, candidates: true }
+  const flag = (v: unknown) => v === true
+  return {
+    mode: raw.mode === "single_piece_try_on" ? "single_piece_try_on" : "full",
+    dress: raw.dress === undefined ? true : flag(raw.dress), adjustments: flag(raw.adjustments),
+    bodyPhotoRequired: flag(raw.bodyPhotoRequired), closet: flag(raw.closet),
+    searchScope: raw.searchScope === "curated_catalog" ? "curated_catalog" : "stores",
+    generation: flag(raw.generation), edits: flag(raw.edits), match: flag(raw.match),
+    references: flag(raw.references), preferences: flag(raw.preferences), search: flag(raw.search),
+    // Declared capabilities fail closed: a flag the server does not send is off.
+    measurements: flag(raw.measurements), plans: flag(raw.plans), candidates: flag(raw.candidates),
+  }
+}
+
+export function parseCatalogSource(raw: unknown): CatalogSource {
+  const o = obj(raw, "catalogSource")
+  const id = str(o.id) ?? "unknown"
+  return { id, label: str(o.label) ?? id, test: id === "test_catalog" }
+}
+
+export function parseBodyPhotosState(raw: unknown): BodyPhotosState {
+  const o = obj(raw, "bodyPhotos")
+  const c = isObj(o.consent) && str(o.consent.policyVersion) ? { policyVersion: String(o.consent.policyVersion), accepted: bool(o.consent.accepted) } : null
+  const required = strs(o.requiredAngles).filter((a): a is BodyAngle => (ANGLES as readonly string[]).includes(a))
+  return {
+    items: arr(o.items).map(parseBodyPhoto).filter((p): p is BodyPhoto => p !== null), consent: c,
+    requiredAngles: required.length ? required : ["front"],
+    validator: isObj(o.validator) ? { available: bool(o.validator.available), where: o.validator.kind === "local_pose_model_in_browser" ? "browser" as const : "server" as const } : null,
+  }
+}
+
+export function parseSignUpResult(raw: unknown): SignUpResult {
+  const o = obj(raw, "signUp")
+  if (o.status !== "verification_required") throw bad("signUp.status")
+  return { status: "verification_required" }
 }
 
 function lookPiece(raw: unknown): LookPiece {
@@ -314,6 +428,8 @@ export function parseLook(raw: unknown): Look {
     createdAt: str(o.createdAt),
     candidatesCount: num(o.candidatesCount) ?? 0,
     saved: bool(o.saved),
+    simulated: bool(o.simulated),
+    lineageId: str(o.lineageId),
   }
 }
 

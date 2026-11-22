@@ -2,17 +2,18 @@
  * Hash routes (works on any static host without rewrite rules, and inside a future
  * Capacitor/PWA shell). Shape: `#/<screen>[?k=v]`.
  * The reset-password email must link to `<app>/#/redefinir-senha?token=<token>`.
+ * The sign-up confirmation email links to `<app>/#/confirmar-email?token_hash=<hash>&type=email`.
  */
 
 export type MainTab = "explorar" | "estudio" | "closet" | "perfil"
-export type AuthScreen = "entrar" | "criar-conta" | "recuperar-senha" | "redefinir-senha"
+export type AuthScreen = "entrar" | "criar-conta" | "recuperar-senha" | "redefinir-senha" | "confirmar-email"
 
 export type Route =
   | { kind: "tab"; tab: MainTab }
   | { kind: "auth"; screen: AuthScreen; next: MainTab | null; token: string | null }
 
 const TABS: readonly MainTab[] = ["explorar", "estudio", "closet", "perfil"]
-const AUTH: readonly AuthScreen[] = ["entrar", "criar-conta", "recuperar-senha", "redefinir-senha"]
+const AUTH: readonly AuthScreen[] = ["entrar", "criar-conta", "recuperar-senha", "redefinir-senha", "confirmar-email"]
 
 export const DEFAULT_ROUTE: Route = { kind: "tab", tab: "explorar" }
 
@@ -24,7 +25,8 @@ export function parseRoute(hash: string): Route {
   if ((TABS as readonly string[]).includes(name)) return { kind: "tab", tab: name as MainTab }
   if ((AUTH as readonly string[]).includes(name)) {
     const next = params.get("next")
-    return { kind: "auth", screen: name as AuthScreen, next: next && (TABS as readonly string[]).includes(next) ? (next as MainTab) : null, token: params.get("token") }
+    const token = name === "confirmar-email" ? params.get("token_hash") : params.get("token")
+    return { kind: "auth", screen: name as AuthScreen, next: next && (TABS as readonly string[]).includes(next) ? (next as MainTab) : null, token }
   }
   return DEFAULT_ROUTE
 }

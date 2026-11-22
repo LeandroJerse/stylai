@@ -4,9 +4,18 @@ Repositório do monorepo: [LeandroJerse/stylai](https://github.com/LeandroJerse/
 
 > Planejamento atual do monorepo e MVP: [`../../docs/MVP-ROADMAP.md`](../../docs/MVP-ROADMAP.md). A direção atual usa Supabase; os planos detalham API, mudanças no frontend, IA e os caminhos de compra. A reorganização foi feita; o backend de domínio e integrações ainda não foram implementados. O restante deste README descreve o frontend existente.
 
-Frontend mobile-first do StylAI (Explorar, Estúdio, Closet, Perfil e contas), pronto para o backend real. **Não há dados demonstrativos**: todo conteúdo vem da API descrita em [`../../docs/API-CONTRACT.md`](../../docs/API-CONTRACT.md). Sem API configurada, o app abre e cada tela informa que o servidor não está conectado.
+Frontend mobile-first do StylAI (Explorar, Estúdio, Closet, Perfil e contas). O build de produção (`src/`) **não contém dados demonstrativos**: todo conteúdo vem da API descrita em [`../../docs/API-CONTRACT.md`](../../docs/API-CONTRACT.md). Sem API configurada, o app abre e cada tela informa que o servidor não está conectado.
 
-Stack: Vite 6, React 19, TypeScript strict, Tailwind 4 (tokens em `src/styles/tokens.css`) e TanStack Query 5.
+## Dois modos, uma interface
+
+| Modo | Pasta / entrada | Origem dos dados | Comandos |
+|---|---|---|---|
+| **Oficial** | `src/` (`index.html`) | API real (`apps/api`) + worker, via `VITE_API_BASE_URL` | `bun run dev` (5190) · `bun run build` · `bun run e2e` (contrato completo com backend falso de teste) · na raiz: `bun run test:e2e:official` |
+| **Demo / mock** | `demo/` (`demo/index.html`) | Adaptador em memória `demo/demo-api.ts`, instalado por `demo/preview.ts` no `fetch` | `bun run dev:demo` (5192) · `bun run build:demo` (`dist-demo/`) · `bun run test:demo` · `bun run e2e:demo` |
+
+As duas entradas montam **as mesmas telas e componentes de `src/`**. A demo só troca a origem dos dados: o adaptador responde ao mesmo contrato REST da API (mesmas rotas, formatos, erros e capacidades), e os resultados aparecem marcados como simulados. A foto escolhida na demo é mostrada a partir do próprio arquivo e nunca é enviada. `?demo=full` abre o protótipo completo (busca e Match simulados). Nada da demo entra no build oficial.
+
+O Estúdio é sempre o original (Procurar/Vestir). `GET /studio/config` (`capabilities`) só indica o que o servidor faz hoje. O que falta aparece com estado "ainda não disponível", sem trocar a tela. Hoje: Procurar busca no catálogo curado; Vestir prova **uma** peça na foto de frente cadastrada no **Perfil** (sem foto válida, a geração fica bloqueada).
 
 ## Configuração
 
@@ -60,3 +69,9 @@ scripts/e2e.mjs        E2E com page.route (fixtures só de teste)
 ## Pendências conhecidas
 
 - Troca de plano e pagamento ainda não existem na API; a folha de planos avisa isso.
+
+## Lojas por peça, Match na foto e catálogo da busca (2026-11-11)
+
+- **Mesma peça, várias lojas**: a API agrupa as duplicatas em `Product.offers` (contrato §4). `src/lib/offers.ts` ordena as ofertas (menor/maior preço) e aplica a loja escolhida (`withOffer`); `src/components/offers.tsx` mostra as tags (grupo de rádio, setas ←/→). A escolha fica em `offerChoice` no store de UI e muda preço, total do look, Acervo, Closet e o botão "Ver na <loja>" com o link daquela loja. Menor preço: vermelho + ↓; maior: âmbar + ↑ (sem marca com empate, moeda mista ou loja única).
+- **Match**: dentro da foto do resultado, embaixo e centralizado. Tocar na foto oculta/reexibe o botão; "Ampliar" fica no canto superior direito.
+- **Catálogo da busca**: painel retrátil no Estúdio com tudo o que a busca retornou (`GET /studio/looks/{id}/candidates`, carregado ao abrir), um produto por bloco, 6 por página. Até `maxChosenPieces` (padrão 6) peças viram a base da próxima geração (`draft.chosen`, o mesmo do "Levar ao Estúdio") e vão em `productIds` de `POST /studio/generations`.

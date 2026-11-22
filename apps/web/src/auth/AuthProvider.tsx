@@ -6,7 +6,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { api, http } from "../api/client"
-import type { Session, User } from "../api/types"
+import type { Session, SignUpResult, User } from "../api/types"
 
 export type AuthStatus = "restoring" | "signed-in" | "signed-out"
 
@@ -16,7 +16,10 @@ interface AuthCtx {
   /** Whether the API base URL is configured at all. */
   connected: boolean
   signIn: (email: string, password: string) => Promise<User>
-  signUp: (input: { name: string; email: string; password: string }) => Promise<User>
+  /** Creates the account pending e-mail confirmation; it never signs in by itself. */
+  signUp: (input: { name: string; email: string; password: string }) => Promise<SignUpResult>
+  /** Confirms the e-mail with the token hash from the link and starts the session. */
+  verifyEmail: (tokenHash: string) => Promise<User>
   signInWithGoogle: (idToken: string) => Promise<User>
   signOut: () => Promise<void>
   setUser: (user: User) => void
@@ -85,8 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void qc.invalidateQueries()
         return u
       },
-      signUp: async (input) => {
-        const u = accept(await api.auth.signUp({ ...input, name: input.name.trim(), email: input.email.trim() }))
+      signUp: (input) => api.auth.signUp({ ...input, name: input.name.trim(), email: input.email.trim() }),
+      verifyEmail: async (tokenHash) => {
+        const u = accept(await api.auth.verifyEmail(tokenHash))
         void qc.invalidateQueries()
         return u
       },

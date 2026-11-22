@@ -51,13 +51,14 @@ export function MatchDialog() {
   const [leaving, setLeaving] = useState<Decision | null>(null)
   useModal(panelRef, close)
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // StrictMode replays setup after cleanup in development.
+    mounted.current = true
+    return () => {
       mounted.current = false
       anim.current?.cancel()
-    },
-    [],
-  )
+    }
+  }, [])
 
   const look = deck[index]
   const nextLook = deck[index + 1]
@@ -311,7 +312,7 @@ export function MatchDialog() {
               <button type="button" className="sa-btn-quiet sa-body-sm mx-auto mt-1 flex items-center gap-2" onClick={undo} aria-disabled={history.length === 0 || leaving || undoing ? true : undefined} aria-label="Desfazer última decisão">
                 <ArrowCounterClockwise size={18} aria-hidden="true" /> Desfazer
               </button>
-              <Hint className="mt-2">Deslizar não gera imagens nem gasta tokens. Guardar leva o look e as peças ao Closet. Setas ← → também decidem.</Hint>
+              <Hint className="mt-2">Deslizar não gera imagens nem gasta moedas. Guardar leva o look e as peças ao Closet. Setas ← → também decidem.</Hint>
             </>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">

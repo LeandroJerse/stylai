@@ -34,3 +34,5 @@ export function formatDay(iso: string | null): string | null {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? null : dateOnly.format(d)
 }
+/** Moedas: the in-app unit (free 30/day, paid 120/day, 10 per generation; values come from the API). */
+export const coins = (n: number): string => plural(n, "moeda", "moedas")

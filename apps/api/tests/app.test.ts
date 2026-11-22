@@ -48,3 +48,12 @@ describe("API foundation", () => {
     } finally { await app.close() }
   })
 })
+
+test("rate limit answers 429 with a clear message (it used to surface as a 500)", async () => {
+  const app = await buildApp({ appOrigin: "http://localhost:5190", rateLimitPerMinute: 10 })
+  let last = await app.inject({ method: "GET", url: "/health/live" })
+  for (let i = 0; i < 11; i++) last = await app.inject({ method: "GET", url: "/health/live" })
+  expect(last.statusCode).toBe(429)
+  expect(last.json()).toEqual({ error: { code: "rate_limited", message: "Muitas requisições. Tente novamente em instantes." } })
+  await app.close()
+})

@@ -10,9 +10,18 @@
     "preview": "vite preview --port 5191 --strictPort",
     "test": "bun test tests",
     "e2e": "node scripts/e2e.mjs",
-    "e2e:install": "playwright install --with-deps chromium"
+    "e2e:install": "playwright install --with-deps chromium",
+    "dev:demo": "node demo/prepare-assets.mjs && vite --config demo/vite.config.ts --port 5192 --strictPort",
+    "build:demo": "node demo/prepare-assets.mjs && tsc --noEmit -p tsconfig.demo.json && vite build --config demo/vite.config.ts",
+    "typecheck:demo": "tsc --noEmit -p tsconfig.demo.json",
+    "test:demo": "bun test ./demo/demo.test.ts ./demo/demo-tryon.test.ts",
+    "e2e:demo": "node demo/prepare-assets.mjs && node scripts/e2e-demo.mjs",
+    "sync:site:demo": "node scripts/sync-site-demo.mjs",
+    "review:record": "node scripts/review-journey.mjs",
+    "compare:frontend": "node scripts/compare-with-frontend.mjs"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "1.2.3",
     "@phosphor-icons/react": "2.1.10",
     "@tanstack/react-query": "5.62.7",
     "react": "19.3.1",

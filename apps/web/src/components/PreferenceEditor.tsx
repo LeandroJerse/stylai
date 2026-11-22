@@ -124,7 +124,7 @@ export function PreferenceEditorSheet({ initial, sourceName, partners, config, o
                 )
               })}
             </div>
-            <p className="sa-caption sa-muted">Lojas parceiras ativas no catálogo. Toque para excluir ou permitir.</p>
+            <p className="sa-caption sa-muted">Lojas presentes no catálogo. Toque para excluir ou permitir.</p>
           </fieldset>
           <div className="grid gap-3 py-4">
             <p className="sa-title-sm">Tamanho por categoria</p>

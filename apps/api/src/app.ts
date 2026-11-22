@@ -2,19 +2,27 @@ import Fastify from "fastify"
 import cors from "@fastify/cors"
 import helmet from "@fastify/helmet"
 import rateLimit from "@fastify/rate-limit"
+import cookie from "@fastify/cookie"
+import multipart from "@fastify/multipart"
 import { apiError, type HealthStatus } from "@stylai/contracts"
 import type { FoundationProbe, PrivateDatabaseStatus } from "@stylai/supabase"
+import { registerStudioRoutes, type StudioDeps } from "./modules/studio/routes.js"
+import { registerAuthRoutes, type AuthRouteDeps } from "./modules/auth/routes.js"
+import { parseCatalogPage, registerCatalogRoutes } from "./modules/catalog/routes.js"
+import { registerSearchRoutes, type SearchDeps } from "./modules/catalog/search.js"
+import { registerPhotoRoutes, type PhotoRouteDeps } from "./modules/photos/routes.js"
+import type { PrivateDatabase } from "@stylai/supabase"
 
-export interface AppDependencies { appOrigin: string; logger?: boolean; probeSupabase?: () => Promise<FoundationProbe>; probePrivateDatabase?: () => Promise<PrivateDatabaseStatus> }
+export interface AppDependencies { appOrigin: string; logger?: boolean; rateLimitPerMinute?: number; probeSupabase?: () => Promise<FoundationProbe>; probePrivateDatabase?: () => Promise<PrivateDatabaseStatus>; studio?: StudioDeps; auth?: AuthRouteDeps; photos?: PhotoRouteDeps; catalog?: { db: PrivateDatabase<"api">; publicBaseUrl?: string }; search?: SearchDeps }
 
-/** Testable foundation. Business routes and dependency readiness remain unimplemented. */
+/** Testable foundation. Auth, catalog, photo and studio slice routes; other /v1 routes stay 503. */
 export async function buildApp(deps: AppDependencies) {
   const app = Fastify({
     bodyLimit: 1_048_576,
     requestTimeout: 15_000,
     trustProxy: false,
     logger: deps.logger ? {
-      redact: ["req.headers.authorization", "req.headers.cookie", "req.headers['asaas-access-token']", "req.headers['x-api-key']"],
+      redact: ["req.headers.authorization", "req.headers.cookie", "res.headers['set-cookie']", "req.headers['asaas-access-token']", "req.headers['x-api-key']"],
       serializers: { req: (req: { method: string; url: string }) => ({ method: req.method, url: req.url.split("?")[0] }) },
     } : false,
   })
@@ -24,8 +32,14 @@ export async function buildApp(deps: AppDependencies) {
     if (origin && origin !== deps.appOrigin) return reply.code(403).send(apiError("forbidden", "Origem não permitida."))
   })
   await app.register(cors, { origin: deps.appOrigin, credentials: true, allowedHeaders: ["Authorization", "Content-Type", "Accept", "Idempotency-Key"], methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] })
-  await app.register(helmet)
-  await app.register(rateLimit, { max: 120, timeWindow: "1 minute", errorResponseBuilder: () => apiError("rate_limited", "Muitas requisições. Tente novamente em instantes.") })
+  await app.register(helmet, { crossOriginResourcePolicy: { policy: "same-site" } })
+  await app.register(cookie)
+  await app.register(multipart, { limits: { fileSize: 12_582_912, files: 1, fields: 4, parts: 6 } })
+  // The builder's return value is thrown: it must carry statusCode, or Fastify turns it into a 500.
+  await app.register(rateLimit, {
+    max: deps.rateLimitPerMinute ?? 120, timeWindow: "1 minute",
+    errorResponseBuilder: (_request, context) => ({ statusCode: context.statusCode, ...apiError("rate_limited", "Muitas requisições. Tente novamente em instantes.") }),
+  })
   app.get("/health/live", async (): Promise<HealthStatus> => ({ status: "ok", service: "api" }))
   app.get("/health/ready", async (_request, reply) => {
     let probe: FoundationProbe = { status: "not_configured" }
@@ -35,6 +49,11 @@ export async function buildApp(deps: AppDependencies) {
     const ready = probe.status === "ready" && privateDatabase === "ready"
     return reply.code(ready ? 200 : 503).send({ status: ready ? "ok" : "not_ready", service: "api", dependencies: { supabase: probe.status, privateDatabase } })
   })
+  if (deps.auth) await registerAuthRoutes(app, deps.auth)
+  if (deps.catalog) await registerCatalogRoutes(app, deps.catalog)
+  if (deps.search) await registerSearchRoutes(app, deps.search, parseCatalogPage)
+  if (deps.photos) await registerPhotoRoutes(app, deps.photos)
+  if (deps.studio) await registerStudioRoutes(app, deps.studio)
   app.setNotFoundHandler((request, reply) => {
     const path = request.url.split("?")[0] ?? ""
     const isApi = path === "/v1" || path.startsWith("/v1/")
@@ -44,7 +63,8 @@ export async function buildApp(deps: AppDependencies) {
     const suppliedStatus = error && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500
     const status = suppliedStatus >= 400 && suppliedStatus < 500 ? suppliedStatus : 500
     const code = status === 413 ? "payload_too_large" : status === 429 ? "rate_limited" : status < 500 ? "validation" : "server"
-    return reply.code(status).send(apiError(code, status < 500 ? "Revise a requisição enviada." : "Não foi possível atender à requisição."))
+    const message = status === 429 ? "Muitas requisições. Tente novamente em instantes." : status < 500 ? "Revise a requisição enviada." : "Não foi possível atender à requisição."
+    return reply.code(status).send(apiError(code, message))
   })
   return app
 }

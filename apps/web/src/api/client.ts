@@ -9,10 +9,11 @@ import {
   parseBalance,
   parseBodyPhoto,
   parseBodyPhotos,
+  parseBodyPhotosState,
   parseCandidates,
   parseCloset,
   parseDecision,
-  parseFacets,
+  parseFacets, parseCatalogSource,
   parseHero,
   parseJob,
   parseLook,
@@ -24,6 +25,8 @@ import {
   parsePreferences,
   parseProduct,
   parseSession,
+  parseSignUpResult,
+  parseSearchResult,
   parseStudioConfig,
   parseUpload,
   parseUser,
@@ -47,6 +50,8 @@ export interface CatalogQuery {
 }
 
 export interface GenerateInput {
+  /** "search": the prompt drives a catalog search. "dress": wear productIds + referenceIds as picked, no search. */
+  mode: "search" | "dress"
   prompt: string
   productIds: string[]
   referenceIds: string[]
@@ -60,7 +65,10 @@ const get = <T>(path: string, parse: (raw: unknown) => T, opts: Parameters<HttpC
 export const api = {
   auth: {
     signIn: (email: string, password: string) => http.request<unknown>("/auth/sign-in", { method: "POST", body: { email, password }, auth: "none" }).then(parseSession),
-    signUp: (input: { name: string; email: string; password: string }) => http.request<unknown>("/auth/sign-up", { method: "POST", body: input, auth: "none" }).then(parseSession),
+    /** Never a session: the account exists only after the e-mail link is confirmed. */
+    signUp: (input: { name: string; email: string; password: string }) => http.request<unknown>("/auth/sign-up", { method: "POST", body: input, auth: "none" }).then(parseSignUpResult),
+    verifyEmail: (tokenHash: string) => http.request<unknown>("/auth/email/verify", { method: "POST", body: { tokenHash }, auth: "none" }).then(parseSession),
+    resendConfirmation: (email: string) => http.request<null>("/auth/email/verify/resend", { method: "POST", body: { email }, auth: "none" }),
     google: (idToken: string) => http.request<unknown>("/auth/google", { method: "POST", body: { idToken }, auth: "none" }).then(parseSession),
     refresh: () => http.refresh().then(parseSession),
     signOut: () => http.request<null>("/auth/sign-out", { method: "POST", auth: "optional" }),
@@ -77,6 +85,8 @@ export const api = {
     measurements: () => get("/me/measurements", parseMeasurements, { auth: "required" }),
     saveMeasurements: (m: Measurements) => http.request<unknown>("/me/measurements", { method: "PUT", body: m, auth: "required" }).then(parseMeasurements),
     bodyPhotos: () => get("/me/body-photos", parseBodyPhotos, { auth: "required" }),
+    bodyPhotosState: () => get("/me/body-photos", parseBodyPhotosState, { auth: "required" }),
+    acceptPhotoConsent: (version: string) => http.request<unknown>("/privacy/consents", { method: "POST", body: { version, purpose: "body_photo_try_on" }, auth: "required" }),
     uploadBodyPhoto: (angle: BodyAngle, file: File) => {
       const form = new FormData()
       form.append("file", file)
@@ -86,6 +96,12 @@ export const api = {
         return photo
       })
     },
+    /** Re-runs validation of a stored candidate after a technical validator error. */
+    revalidateBodyPhoto: (angle: BodyAngle) => http.request<unknown>(`/me/body-photos/${angle}/revalidate`, { method: "POST", auth: "required", timeoutMs: 60_000 }).then((raw) => {
+      const photo = parseBodyPhoto(raw)
+      if (!photo) throw new ApiError({ status: 200, code: "bad_response", message: defaultMessage("bad_response") })
+      return photo
+    }),
     deleteBodyPhoto: (angle: BodyAngle) => http.request<null>(`/me/body-photos/${angle}`, { method: "DELETE", auth: "required" }),
     deleteAllBodyData: () => http.request<null>("/me/body-data", { method: "DELETE", auth: "required" }),
   },
@@ -95,6 +111,7 @@ export const api = {
   catalog: {
     hero: () => get("/explore/hero", parseHero, { auth: "optional" }),
     facets: () => get("/catalog/facets", parseFacets, { auth: "optional" }),
+    source: () => get("/catalog/source", parseCatalogSource, { auth: "optional" }),
     products: (q: CatalogQuery, signal?: AbortSignal) =>
       get("/catalog/products", (raw) => parsePage(raw, parseProduct), {
         auth: q.favorites ? "required" : "optional",
@@ -132,6 +149,18 @@ export const api = {
       return http.request<unknown>("/uploads/references", { method: "POST", form, auth: "required", timeoutMs: 120_000 }).then(parseUpload)
     },
     generate: (input: GenerateInput) => http.request<unknown>("/studio/generations", { method: "POST", body: input, auth: "required" }).then(parseJob),
+    /** One catalog piece on the person's photo. The key makes retries (double click, network) reuse one job. */
+    tryOnPiece: (input: { productId: string; variantId: string | null; parentLookId: string | null }, idempotencyKey: string) =>
+      http.request<unknown>(input.parentLookId ? "/studio/try-ons" : "/studio/generations", {
+        method: "POST",
+        auth: "required",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: input.parentLookId ? { sourceLookId: input.parentLookId, productIds: [input.productId], variantId: input.variantId } : { productId: input.productId, variantId: input.variantId },
+      }).then(parseJob),
+    /** Search step: request + preferences -> candidates. Never generates. */
+    search: (input: { prompt: string; rules: PreferenceRules | null }) => http.request<unknown>("/studio/searches", { method: "POST", body: input, auth: "required" }).then(parseSearchResult),
+    activeJob: () => http.request<unknown>("/studio/jobs", { method: "GET", auth: "required", query: { active: "true" } }).then((raw) => parsePage(raw, parseJob).items[0] ?? null),
+    versions: (lookId: string) => get(`/studio/looks/${encodeURIComponent(lookId)}/versions`, parseLooks, { auth: "required" }),
     edit: (lookId: string, instruction: string) => http.request<unknown>(`/studio/looks/${encodeURIComponent(lookId)}/edits`, { method: "POST", body: { instruction }, auth: "required" }).then(parseJob),
     tryOn: (sourceLookId: string, productIds: string[]) => http.request<unknown>("/studio/try-ons", { method: "POST", body: { sourceLookId, productIds }, auth: "required" }).then(parseJob),
     job: (id: string, signal?: AbortSignal) => get(`/studio/jobs/${encodeURIComponent(id)}`, parseJob, { auth: "required", signal }),

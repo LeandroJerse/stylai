@@ -13,7 +13,7 @@ import { keys, useBalance, useMeasurements, useSaveMeasurements } from "../api/q
 import { useStore, type Overlay, type ThemePref } from "../app/store"
 import { useAuth } from "../auth/AuthProvider"
 import { nameError, NAME_MAX, newPasswordError, passwordChecks } from "../auth/validation"
-import { formatDay, plural } from "../lib/format"
+import { formatDay, coins } from "../lib/format"
 import { ErrorState, LoadingState, Notice, Segmented, Sheet, Switch } from "./ui"
 
 const SECTIONS = [
@@ -172,10 +172,10 @@ function PlanGroup({ self }: { self: Overlay }) {
     <div className="grid gap-3">
       <p className="sa-body-sm">
         Plano <strong>{b.plan.name}</strong>
-        {b.plan.tokensPerPeriod !== null && b.plan.period ? ` · ${plural(b.plan.tokensPerPeriod, "token", "tokens")} por ${b.plan.period === "day" ? "dia" : "mês"}` : ""}
+        {b.plan.tokensPerPeriod !== null && b.plan.period ? ` · ${coins(b.plan.tokensPerPeriod)} por ${b.plan.period === "day" ? "dia" : "mês"}` : ""}
       </p>
       <p className="sa-body-sm">
-        Saldo: <strong className="sa-num">{plural(b.tokens, "token", "tokens")}</strong>
+        Saldo: <strong className="sa-num">{coins(b.tokens)}</strong>
         {renews ? <span className="sa-muted"> · renova em {renews}</span> : null}
       </p>
       <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm justify-self-start" onClick={() => open({ kind: "tokens", back: self })}>
@@ -264,7 +264,7 @@ export function SettingsSheet() {
         <Group id="cfg-conta" title="Conta">
           <AccountGroup self={self} />
         </Group>
-        <Group id="cfg-plano" title="Plano e tokens" description="Gerar, editar e provar consomem tokens; busca, Match e Closet não.">
+        <Group id="cfg-plano" title="Plano e moedas" description="Gerar e provar gastam moedas; busca, Match e Closet não.">
           <PlanGroup self={self} />
         </Group>
         <Group id="cfg-aparencia" title="Aparência" description="Vale neste aparelho. O botão de tema no topo também alterna claro e escuro.">
@@ -441,7 +441,7 @@ export function DeleteAccountSheet() {
       <div className="grid gap-4">
         <Notice tone="warning">
           <p className="font-semibold">Isso não pode ser desfeito.</p>
-          <p className="mt-1">Apagamos a conta {user?.email ? <strong>{user.email}</strong> : null}, o Closet, os looks, as preferências, as fotos do corpo, as medidas e o saldo de tokens.</p>
+          <p className="mt-1">Apagamos a conta {user?.email ? <strong>{user.email}</strong> : null}, o Closet, os looks, as preferências, as fotos do corpo, as medidas e o saldo de moedas.</p>
         </Notice>
         <div>
           <label htmlFor={fieldId} className="sa-fieldlabel">

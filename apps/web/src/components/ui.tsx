@@ -4,6 +4,7 @@ import { ArrowClockwise, Info, Warning, WarningCircle, CheckCircle, X, WifiSlash
 import { brand } from "../assets/brand"
 import type { ImageAsset } from "../api/types"
 import { isApiError, messageOf } from "../api/errors"
+import { useCatalogSource } from "../api/queries"
 
 /* ------------------------------------------------------------------ hooks */
 
@@ -371,5 +372,21 @@ export function EmptyState({ title, children, action, className = "" }: { title:
       {children ? <div className="sa-body-sm sa-muted sa-pretty">{children}</div> : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>
+  )
+}
+
+/**
+ * Says where the products come from. With the test catalog (no store integrated), states it plainly:
+ * synthetic products and own illustrations, no real price, stock or purchase link.
+ */
+export function CatalogNotice() {
+  const source = useCatalogSource()
+  const references = source.data?.id === "store_references"
+  if (!source.data?.test && !references) return null
+  return (
+    <p className="sa-caption mt-2 flex flex-wrap items-center gap-2" data-testid="catalog-notice">
+        <span className="sa-badge sa-badge-quiet">{references ? "Referências para simulação" : "Catálogo de teste"}</span>
+        <span className="sa-muted">{references ? "Imagens de referência, com direitos de uso ainda não confirmados. Não representam parceria ou integração com a loja. A prova é simulada." : "Produtos sintéticos com ilustrações próprias. Nenhuma loja está integrada: sem preço real, estoque ou link de compra."}</span>
+    </p>
   )
 }

@@ -16,7 +16,8 @@ function vendorChunk(id: string): string | undefined {
 // Only the brand files (monogram, wordmark) ship with the app. Screens are split in src/app/lazy.tsx.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { proxy: { "/v1": { target: "http://127.0.0.1:3000", changeOrigin: false } } },
+  // Same-origin API in development: the browser talks to /v1 on the Vite port (cookies stay first-party).
+  server: { proxy: { "/v1": { target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:3000", changeOrigin: false } } },
   build: {
     target: "es2022",
     sourcemap: true,

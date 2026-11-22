@@ -8,7 +8,10 @@
     "start": "node --env-file-if-exists=.env.local dist/server.js"
   },
   "dependencies": {
+    "@stylai/ai": "workspace:*",
     "@stylai/config": "workspace:*",
-    "@stylai/contracts": "workspace:*"
+    "@stylai/contracts": "workspace:*",
+    "@stylai/supabase": "workspace:*",
+    "zod": "4.6.7"
   }
 }

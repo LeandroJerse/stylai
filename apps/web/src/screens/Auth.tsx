@@ -1,10 +1,11 @@
 /**
  * Account screens (hash routes, see app/routes.ts): entrar, criar-conta, recuperar-senha and
- * redefinir-senha (reached from the e-mail link `#/redefinir-senha?token=…`).
+ * redefinir-senha (reached from the e-mail link `#/redefinir-senha?token=…`) and confirmar-email
+ * (sign-up confirmation link `#/confirmar-email?token_hash=…`). Sign-up never signs in by itself.
  * E-mail/senha go to /auth/*; "Continuar com Google" sends the GIS ID token to POST /auth/google.
  * The forgot-password answer never says whether an e-mail has an account.
  */
-import { useId, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import type { ReactNode, Ref } from "react"
 import { useMutation } from "@tanstack/react-query"
 import { ArrowLeft, Eye, EyeSlash } from "@phosphor-icons/react"
@@ -169,6 +170,7 @@ function SignIn({ next }: { next: MainTab | null }) {
   const [password, setPassword] = useState("")
   const [errors, setErrors] = useState<Errors>({})
   const [busy, setBusy] = useState(false)
+  const [unverified, setUnverified] = useState(false)
   const emailRef = useRef<HTMLInputElement | null>(null)
   const passwordRef = useRef<HTMLInputElement | null>(null)
 
@@ -186,6 +188,7 @@ function SignIn({ next }: { next: MainTab | null }) {
       notify(`Olá${u.name ? `, ${u.name.split(" ")[0]}` : ""}`)
       done()
     } catch (err) {
+      setUnverified(isApiError(err) && err.code === "email_not_verified")
       setErrors(apiErrors(err, "password"))
     } finally {
       setBusy(false)
@@ -215,6 +218,7 @@ function SignIn({ next }: { next: MainTab | null }) {
         }}
       >
         {errors.form ? <Notice tone="error">{errors.form}</Notice> : null}
+        {unverified ? <ResendConfirmation email={email} /> : null}
         <Field id={ids.email} label="E-mail" error={errors.email}>
           <input ref={emailRef} id={ids.email} name="email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} className="sa-field" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={errors.email ? true : undefined} aria-describedby={errors.email ? `${ids.email}-e` : undefined} />
         </Field>
@@ -236,8 +240,8 @@ function SignIn({ next }: { next: MainTab | null }) {
 
 function SignUp({ next }: { next: MainTab | null }) {
   const { signUp } = useAuth()
-  const { go, notify } = useStore()
-  const done = useAfterAuth(next)
+  const { go } = useStore()
+  const [sentTo, setSentTo] = useState<string | null>(null)
   const ids = { name: useId(), email: useId(), password: useId() }
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -262,8 +266,7 @@ function SignUp({ next }: { next: MainTab | null }) {
     setBusy(true)
     try {
       await signUp({ name, email, password })
-      notify("Conta criada. Enviamos um link de confirmação para o seu e-mail.")
-      done()
+      setSentTo(email.trim())
     } catch (err) {
       setErrors(apiErrors(err))
     } finally {
@@ -271,10 +274,26 @@ function SignUp({ next }: { next: MainTab | null }) {
     }
   }
 
+  if (sentTo) {
+    return (
+      <Frame title="Confira seu e-mail" lede="Enviamos um link de confirmação. Abra-o neste aparelho para ativar a conta e entrar.">
+        <Notice tone="info">
+          <p>
+            Se <strong>{sentTo}</strong> puder receber uma conta, o link chega em alguns minutos. Veja também a caixa de spam.
+          </p>
+        </Notice>
+        <ResendConfirmation email={sentTo} />
+        <button type="button" className="sa-btn sa-btn-secondary sa-btn-block" onClick={() => go({ kind: "auth", screen: "entrar", next, token: null })}>
+          Já confirmei, quero entrar
+        </button>
+      </Frame>
+    )
+  }
+
   return (
     <Frame
       title="Criar conta"
-      lede="Grátis. Você recebe tokens para gerar looks e pode guardar peças e looks no Closet."
+      lede="Grátis. Depois de confirmar o e-mail, você pode provar peças do catálogo no Estúdio."
       footer={
         <p className="sa-body-sm">
           Já tem conta?{" "}
@@ -307,6 +326,61 @@ function SignUp({ next }: { next: MainTab | null }) {
           {busy ? "Criando conta…" : "Criar conta"}
         </button>
       </form>
+    </Frame>
+  )
+}
+
+function ResendConfirmation({ email }: { email: string }) {
+  const resend = useMutation({ mutationFn: () => api.auth.resendConfirmation(email.trim()) })
+  if (resend.isSuccess) return <p className="sa-body-sm sa-muted" role="status">Se houver uma conta pendente, um novo link foi enviado.</p>
+  return (
+    <button type="button" className="sa-link justify-self-start sa-body-sm" aria-disabled={resend.isPending || !email.trim() || undefined} onClick={() => !resend.isPending && email.trim() && resend.mutate()}>
+      {resend.isPending ? "Enviando…" : "Reenviar link de confirmação"}
+    </button>
+  )
+}
+
+/* ------------------------------------------------------------------ confirm e-mail */
+
+// One request per token, even when React runs effects twice in development: the link is single-use.
+const confirmations = new Map<string, Promise<unknown>>()
+
+function ConfirmEmail({ token, next }: { token: string | null; next: MainTab | null }) {
+  const { verifyEmail } = useAuth()
+  const { go, notify } = useStore()
+  const [state, setState] = useState<"working" | "failed">("working")
+  const [message, setMessage] = useState<string | null>(null)
+  useEffect(() => {
+    if (!token) { setState("failed"); return }
+    let alive = true
+    const run = confirmations.get(token) ?? verifyEmail(token)
+    confirmations.set(token, run)
+    run
+      .then(() => {
+        if (!alive) return
+        notify("E-mail confirmado. Bem-vindo ao StylAI!")
+        // replace(): the single-use token leaves the address bar and the history entry.
+        window.location.replace(`#/${next ?? "estudio"}`)
+      })
+      .catch((e: unknown) => {
+        if (!alive) return
+        setMessage(messageOf(e))
+        setState("failed")
+      })
+    return () => { alive = false }
+  }, [token, verifyEmail, go, notify, next])
+  return (
+    <Frame title="Confirmando seu e-mail" lede="Só um instante.">
+      {state === "working" ? (
+        <p className="sa-body-sm sa-muted" role="status">Validando o link…</p>
+      ) : (
+        <>
+          <Notice tone="error">{message ?? "Este link de confirmação é inválido ou já foi usado."}</Notice>
+          <button type="button" className="sa-btn sa-btn-primary sa-btn-block" onClick={() => go({ kind: "auth", screen: "entrar", next, token: null })}>
+            Entrar com e-mail e senha
+          </button>
+        </>
+      )}
     </Frame>
   )
 }
@@ -441,5 +515,7 @@ export function AuthScreenView({ screen, next, token }: { screen: AuthScreen; ne
       return <Forgot next={next} />
     case "redefinir-senha":
       return <Reset token={token} />
+    case "confirmar-email":
+      return <ConfirmEmail token={token} next={next} />
   }
 }

@@ -30,6 +30,8 @@ export interface CategoryRef {
 export type Availability = "available" | "partial" | "unavailable" | "unknown"
 
 export interface Variant {
+  /** Server id of the variant (needed to request a try-on); null on older payloads. */
+  id: string | null
   label: string
   available: boolean
 }
@@ -39,6 +41,16 @@ export interface ProductLinks {
   affiliateUrl: string | null
   /** Plain product page at the partner. */
   productUrl: string | null
+}
+
+/**
+ * The same product sold by one store: its own price and links. The search agent finds duplicates
+ * across stores (marketplaces included); the API groups them under one Product.
+ */
+export interface ProductOffer {
+  partner: PartnerRef
+  price: Money | null
+  links: ProductLinks
 }
 
 export interface Product {
@@ -62,8 +74,17 @@ export interface Product {
   styles: string[]
   updatedAt: string | null
   links: ProductLinks
+  /**
+   * Every store selling this product. offers[0] is always the product's own store
+   * (partner/price/links above); the rest come from `offers` in the API, one per store.
+   */
+  offers: ProductOffer[]
   /** Whether the signed-in person saved it to the Closet (false when signed out). */
   favorite: boolean
+  /** Synthetic test item: never a real offer. */
+  fixture: boolean
+  /** Has an image cleared for virtual try-on and an available variant. */
+  tryOnReady: boolean
 }
 
 export interface Page<T> {
@@ -124,15 +145,63 @@ export interface Balance {
   renewsAt: string | null
 }
 
+/** Where the catalog comes from (GET /catalog/source). Only a confirmed store integration may say so. */
+export interface CatalogSource {
+  id: string
+  label: string
+  /** Synthetic products for testing: no store, no real price, stock or purchase link. */
+  test: boolean
+}
+
 export type BodyAngle = "front" | "side" | "profile"
 
 export interface BodyPhoto {
+  id: string | null
   angle: BodyAngle
   image: ImageAsset
+  /** ready = approved and in use; processing = being validated; rejected = needs adjustment, unconfirmed or validator error. */
   status: "processing" | "ready" | "rejected"
-  /** Server-side quality findings, in Portuguese (e.g. "Corpo cortado na altura dos joelhos"). */
+  /** Server-side findings, in Portuguese (e.g. "Afaste a câmera para incluir as pernas."). */
   issues: string[]
+  /** True for the approved photo of this angle that the Estúdio uses. */
+  inUse: boolean
+  /** Recommendations on an accepted photo (e.g. little room above the head); never blocking. */
+  advice: string[]
+  /** The server can re-run the current rules on this stored photo (technical error or older rules). */
+  revalidatable: boolean
+  validation: PhotoValidationView | null
   uploadedAt: string | null
+  expiresAt: string | null
+}
+
+export type PhotoValidationStatus = "approved" | "needs_adjustment" | "inconclusive" | "error"
+export interface PhotoValidationView {
+  status: PhotoValidationStatus
+  framing: "full_body" | "to_knees" | "partial" | "none" | null
+  supports: { upper: boolean; lower: boolean; dress: boolean } | null
+  measuredAngle: BodyAngle | null
+  version: string | null
+}
+
+export interface BodyPhotosState {
+  items: BodyPhoto[]
+  /** Angles the current provider needs to generate (today: front only). */
+  requiredAngles: BodyAngle[]
+  /** Where the pose validator runs: on StylAI servers (official) or in this browser (demo). */
+  validator: { available: boolean; where: "server" | "browser" } | null
+  /** Consent for using the photo in virtual try-on (versioned by the server). */
+  consent: { policyVersion: string; accepted: boolean } | null
+}
+
+export type SignUpResult = { status: "verification_required" }
+
+/** Result of the Estúdio search step (before any generation). */
+export interface SearchResult {
+  /** "curated_catalog": reviewed catalog rows, not a live search in stores. */
+  source: string
+  interpretation: { category: CategoryRef | null; colors: string[]; maxPriceBrl: number | null; terms: string[] }
+  items: Candidate[]
+  total: number
 }
 
 export interface Measurements {
@@ -185,9 +254,18 @@ export interface Preferences {
 /* ------------------------------------------------------------------ studio */
 
 export interface StudioConfig {
-  costs: { generate: number; edit: number; tryOn: number }
+  /** In moedas. null = cost not defined by the owner (shown as such, never guessed). */
+  costs: { generate: number; edit: number | null; tryOn: number }
+  /** Plans as the server defines them (moedas per period). */
+  plans: { id: string; name: string; coinsPerPeriod: number; period: "day" | "month" }[]
+  /** Commercial rules still open (e.g. "edit", "monthly_limit"); shown, never invented. */
+  costGaps: string[]
+  /** How this stack renders: simulated (no paid call), real (paid provider) or disabled. null = not declared. */
+  generationMode: "simulated" | "real" | "disabled" | null
+  /** Real mode: what one generation calls and its estimated cost, shown before the paid call. */
+  realProvider: { provider: string; model: string; callsPerGeneration: number; estimatedUsdPerCall: number; maxUsdPerCall: number } | null
   maxReferences: number
-  /** Catalog pieces that can be carried from Explorar into one request. */
+  /** Base pieces per request (from Explorar or the search catalog panel). */
   maxChosenPieces: number
   maxPromptLength: number
   budget: { min: number; max: number; step: number; currency: string }
@@ -196,7 +274,47 @@ export interface StudioConfig {
   minImageHeight: number
   /** Size grids offered in the preference editor, per group. */
   sizes: { top: string[]; bottom: string[]; shoes: string[] }
+  /** What this server actually supports; screens hide everything else. */
+  capabilities: StudioCapabilities
+  unit: { singular: string; plural: string }
+  /** "provisional": the request limit is a test value, not an approved commercial rule. */
+  quotaStatus: "provisional" | "final"
+  photoPolicyVersion: string | null
 }
+
+/**
+ * What the server can do today. The Estúdio keeps its full layout and shows a clear
+ * "not available yet" state for anything switched off here; it never fakes a result.
+ */
+export interface StudioCapabilities {
+  /** "single_piece_try_on": the engine dresses one chosen catalog piece on the person's photo. */
+  mode: "single_piece_try_on" | "full"
+  /** Vestir: dress chosen catalog pieces (limit = maxChosenPieces). */
+  dress: boolean
+  /** Vestir: free-text adjustment ("camisa por dentro da calça"). */
+  adjustments: boolean
+  /** A consented body photo is required before dressing. */
+  bodyPhotoRequired: boolean
+  /** Save looks/pieces in the Closet. */
+  closet: boolean
+  /** Where Procurar searches: "curated_catalog" (reviewed rows) or "stores" (live partner search). */
+  searchScope: "curated_catalog" | "stores"
+  generation: boolean
+  edits: boolean
+  match: boolean
+  references: boolean
+  preferences: boolean
+  search: boolean
+  /** Body measurements (GET/PUT /me/measurements). */
+  measurements: boolean
+  /** Plan catalogue (GET /plans). */
+  plans: boolean
+  /** Search pool of a generated look (GET /studio/looks/:id/candidates). */
+  candidates: boolean
+}
+
+/** Capabilities that are on/off flags (not the mode/scope strings). */
+export type CapabilityFlag = { [K in keyof StudioCapabilities]: StudioCapabilities[K] extends boolean ? K : never }[keyof StudioCapabilities]
 
 export type PieceRole = "look" | "similar" | "chosen"
 
@@ -219,6 +337,10 @@ export interface Look {
   createdAt: string | null
   candidatesCount: number
   saved: boolean
+  /** Image produced by a simulator or the demo, not by the real provider. */
+  simulated: boolean
+  /** Look lineage (all versions share it); null on older payloads. */
+  lineageId: string | null
 }
 
 export interface Candidate {

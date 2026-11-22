@@ -5,12 +5,13 @@
 import { useState } from "react"
 import { ArrowLeft, Trash } from "@phosphor-icons/react"
 import { messageOf } from "../api/errors"
-import { useCloset, useToggleSavedLook } from "../api/queries"
+import { useCapability, useCloset, useToggleSavedLook } from "../api/queries"
 import type { Product } from "../api/types"
 import { useStore, type Overlay } from "../app/store"
 import { useAuth } from "../auth/AuthProvider"
 import { formatDay, plural } from "../lib/format"
-import { ORIGIN_LABEL, sumLook } from "../lib/looks"
+import { ORIGIN_LABEL } from "../lib/looks"
+import { sumLookWith, withOffer } from "../lib/offers"
 import { PieceCard, PieceCardSkeletons, priceText, ROLE_LABEL } from "../components/pieces"
 import { EmptyState, ErrorState, Notice, Photo, Segmented, Sheet, Skeleton } from "../components/ui"
 
@@ -69,6 +70,22 @@ export function ClosetScreen() {
   const looks = closet.data?.looks ?? []
   const pieces = closet.data?.pieces ?? []
   const stale = pieces.filter((p) => isStale(p.product)).length
+  const closetOn = useCapability("closet")
+
+  if (!closetOn) {
+    // QA-010: the engine does not offer the Closet yet; no request is sent and nothing pretends to load.
+    return (
+      <div className="sa-page">
+        <button type="button" className="sa-btn-quiet sa-body-sm -ml-2 mb-2 flex items-center gap-2" onClick={() => go(back)}>
+          <ArrowLeft size={18} aria-hidden="true" /> Voltar para {TAB_LABEL[back]}
+        </button>
+        <h1 className="sa-display mb-4">Closet</h1>
+        <Notice tone="info">
+          <p data-testid="closet-unavailable">O Closet ainda não está disponível nesta versão. Seus looks gerados continuam no histórico do Estúdio.</p>
+        </Notice>
+      </div>
+    )
+  }
 
   return (
     <div className="sa-page">
@@ -149,7 +166,7 @@ export function ClosetScreen() {
 }
 
 export function ClosetLookSheet({ lookId }: { lookId: string }) {
-  const { close, notify, open } = useStore()
+  const { close, notify, open, offerChoice } = useStore()
   const closet = useCloset(true)
   const toggle = useToggleSavedLook()
   const look = closet.data?.looks.find((l) => l.id === lookId)
@@ -161,7 +178,7 @@ export function ClosetLookSheet({ lookId }: { lookId: string }) {
     )
   }
   const self: Overlay = { kind: "closetLook", lookId }
-  const total = sumLook(look)
+  const total = sumLookWith(look, offerChoice)
   const created = formatDay(look.createdAt)
 
   const remove = (): void => {
@@ -218,11 +235,11 @@ export function ClosetLookSheet({ lookId }: { lookId: string }) {
                   </div>
                   <span className="min-w-0 flex-1">
                     <span className="sa-body-sm sa-truncate block font-semibold">{p.product.name}</span>
-                    <span className="sa-caption sa-muted block">{p.product.partner.name}</span>
+                    <span className="sa-caption sa-muted block">{withOffer(p.product, offerChoice[p.product.id]).partner.name}</span>
                     {look.origin !== "tryon" ? <span className="sa-caption sa-accent-text block">{ROLE_LABEL[p.role]}</span> : null}
                     {isStale(p.product) ? <span className="sa-caption sa-warning-text block">Dados de {formatDay(p.product.updatedAt)}</span> : null}
                   </span>
-                  <span className="sa-body-sm sa-num font-semibold">{priceText(p.product)}</span>
+                  <span className="sa-body-sm sa-num font-semibold">{priceText(withOffer(p.product, offerChoice[p.product.id]))}</span>
                 </button>
               </li>
             ))}

@@ -16,3 +16,14 @@ coverage
 supabase/.temp
 supabase/.branches
 supabase/.env
+
+# Local private object store (development/test only)
+.data/
+apps/web/dist-demo
+
+# Local model downloads (pose analyzer)
+.cache/
+
+# Demo assets copied by apps/web/demo/prepare-assets.mjs
+apps/web/demo/public/mediapipe/
+apps/web/demo/public/test-catalog/

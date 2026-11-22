@@ -6,7 +6,7 @@
 import { keepPreviousData, QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, type CatalogQuery, type GenerateInput } from "./client"
 import { isApiError } from "./errors"
-import type { BodyAngle, Job, Measurements, PreferenceRules } from "./types"
+import type { BodyAngle, Job, Measurements, PreferenceRules, CapabilityFlag } from "./types"
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -66,8 +66,22 @@ export const useProduct = (id: string | null) => useQuery({ queryKey: keys.produ
 /* ------------------------------------------------------------------ account */
 
 export const useBalance = (enabled: boolean) => useQuery({ queryKey: keys.balance, queryFn: api.me.balance, enabled, staleTime: 15_000 })
-export const usePlans = () => useQuery({ queryKey: keys.plans, queryFn: api.billing.plans, staleTime: 10 * 60_000 })
-export const useMeasurements = (enabled: boolean) => useQuery({ queryKey: keys.measurements, queryFn: api.me.measurements, enabled })
+/**
+ * QA-010: true only once the server config is loaded AND declares the feature. Until then (or when off)
+ * the feature's queries are not sent at all; screens show a neutral "not available" state.
+ */
+export function useCapability(key: CapabilityFlag): boolean {
+  const config = useStudioConfig()
+  return config.data?.capabilities[key] === true
+}
+export const usePlans = (enabled = true) => {
+  const on = useCapability("plans")
+  return useQuery({ queryKey: keys.plans, queryFn: api.billing.plans, staleTime: 10 * 60_000, enabled: enabled && on })
+}
+export const useMeasurements = (enabled: boolean) => {
+  const on = useCapability("measurements")
+  return useQuery({ queryKey: keys.measurements, queryFn: api.me.measurements, enabled: enabled && on })
+}
 export const useBodyPhotos = (enabled: boolean) =>
   useQuery({
     queryKey: keys.bodyPhotos,
@@ -97,7 +111,10 @@ export function useDeleteBodyPhoto() {
 
 /* ------------------------------------------------------------------ closet */
 
-export const useCloset = (enabled: boolean) => useQuery({ queryKey: keys.closet, queryFn: api.closet.get, enabled })
+export const useCloset = (enabled: boolean) => {
+  const on = useCapability("closet")
+  return useQuery({ queryKey: keys.closet, queryFn: api.closet.get, enabled: enabled && on })
+}
 
 /** Saves or removes a piece; every list that shows the heart is refreshed afterwards. */
 export function useToggleFavorite() {
@@ -125,7 +142,10 @@ export function useToggleSavedLook() {
 
 /* ------------------------------------------------------------------ preferences */
 
-export const usePreferences = (enabled: boolean) => useQuery({ queryKey: keys.preferences, queryFn: api.preferences.list, enabled })
+export const usePreferences = (enabled: boolean) => {
+  const on = useCapability("preferences")
+  return useQuery({ queryKey: keys.preferences, queryFn: api.preferences.list, enabled: enabled && on })
+}
 
 export function useSavePreferenceRules() {
   const qc = useQueryClient()
@@ -137,11 +157,18 @@ export function useSavePreferenceRules() {
 
 /* ------------------------------------------------------------------ studio */
 
+export const useCatalogSource = () => useQuery({ queryKey: ["catalog", "source"] as const, queryFn: api.catalog.source, staleTime: 10 * 60_000, retry: false })
 export const useStudioConfig = () => useQuery({ queryKey: keys.studioConfig, queryFn: api.studio.config, staleTime: 10 * 60_000 })
 export const useLooks = (enabled: boolean) => useQuery({ queryKey: keys.looks, queryFn: api.studio.looks, enabled })
 export const useLook = (id: string | null) => useQuery({ queryKey: keys.look(id ?? ""), queryFn: () => api.studio.look(id ?? ""), enabled: id !== null })
-export const useCandidates = (lookId: string | null) => useQuery({ queryKey: keys.candidates(lookId ?? ""), queryFn: () => api.studio.candidates(lookId ?? ""), enabled: lookId !== null })
-export const useMatchDeck = (lookId: string | null) => useQuery({ queryKey: keys.matchDeck(lookId ?? ""), queryFn: () => api.studio.matchDeck(lookId ?? ""), enabled: lookId !== null, staleTime: Infinity })
+export const useCandidates = (lookId: string | null) => {
+  const on = useCapability("candidates")
+  return useQuery({ queryKey: keys.candidates(lookId ?? ""), queryFn: () => api.studio.candidates(lookId ?? ""), enabled: lookId !== null && on })
+}
+export const useMatchDeck = (lookId: string | null) => {
+  const on = useCapability("match")
+  return useQuery({ queryKey: keys.matchDeck(lookId ?? ""), queryFn: () => api.studio.matchDeck(lookId ?? ""), enabled: lookId !== null && on, staleTime: Infinity })
+}
 
 export const isJobDone = (job: Job | undefined): boolean => !!job && ["succeeded", "failed", "no_results", "cancelled"].includes(job.status)
 

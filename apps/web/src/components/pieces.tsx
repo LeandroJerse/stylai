@@ -13,20 +13,23 @@ import { formatDay, formatInt, formatMoney, formatRating } from "../lib/format"
 import { resolvePartnerLink } from "../lib/links"
 import { StarRating } from "./controls"
 import { ErrorState, Hint, Notice, Photo, Sheet, Skeleton, useLongPress } from "./ui"
+import { OfferPrice, StoreTags, useOfferProduct } from "./offers"
+import { withOffer } from "../lib/offers"
 
 export const ROLE_LABEL: Record<PieceRole, string> = {
   look: "Peça do look",
   similar: "Alternativa semelhante",
-  chosen: "Escolhida no Explorar",
+  chosen: "Escolhida por você",
 }
 
 const ROLE_NOTE: Record<PieceRole, string> = {
   look: "Peça correspondente encontrada para o look: pode não ser idêntica à da imagem gerada.",
   similar: "Alternativa semelhante: não é a peça exata da imagem.",
-  chosen: "Peça que você escolheu no Explorar: é o mesmo produto do catálogo, com a mesma loja e o mesmo link.",
+  chosen: "Peça que você escolheu como base: é o mesmo produto do catálogo, com a loja e o link escolhidos.",
 }
 
-export const priceText = (p: Product): string => (p.price ? formatMoney(p.price.amount, p.price.currency) : "Preço não informado")
+/** Test-catalog prices are synthetic: always labelled, never shown as an offer. */
+export const priceText = (p: Product): string => (p.price ? `${formatMoney(p.price.amount, p.price.currency)}${p.fixture ? " (preço de teste)" : ""}` : "Preço não informado")
 
 /** Runs `action` when signed in; otherwise sends the person to sign in and back to this tab. */
 export function useRequireAccount(): (reason: string, action: () => void) => void {
@@ -45,9 +48,17 @@ export function useSendToStudio(product: Product | undefined): { send: () => voi
   const config = useStudioConfig()
   const max = config.data?.maxChosenPieces ?? 0
   const inStudio = !!product && draft.chosen.some((p) => p.id === product.id)
-  const full = !inStudio && config.isSuccess && draft.chosen.length >= max
+  // With a single slot (one-piece try-on), a new choice replaces the previous one.
+  const single = max === 1
+  const full = !single && !inStudio && config.isSuccess && draft.chosen.length >= max
   const send = (): void => {
     if (!product) return
+    if (single) {
+      setDraft({ chosen: [product], composerOpen: true })
+      go("estudio")
+      notify(`${product.name} foi escolhida para provar no Estúdio`)
+      return
+    }
     if (full) {
       notify(`O Estúdio aceita até ${max} peças do Explorar por pedido. Remova uma no compositor.`)
       return
@@ -85,7 +96,7 @@ export function StoreLinkNote({ product }: { product: Product }) {
       ? "Link comissionado: a compra acontece no site da loja e pode gerar comissão para o StylAI, sem custo extra para você."
       : link.kind === "direct"
         ? "Link da loja: a compra acontece no site dela."
-        : "Esta peça ainda não tem link da loja disponível. A compra sempre acontece no site do parceiro."
+        : "Esta peça não tem link de compra."
   return <Hint>{text}</Hint>
 }
 
@@ -125,6 +136,7 @@ interface PieceCardProps {
 
 export function PieceCard({ product, role, warnings = [], back, extra, eager = false }: PieceCardProps) {
   const { open } = useStore()
+  const shown = useOfferProduct(product)
   const openDetail = (): void => open({ kind: "product", productId: product.id, back })
   const press = useLongPress(openDetail)
   const cover = product.images[0] ?? null
@@ -141,7 +153,7 @@ export function PieceCard({ product, role, warnings = [], back, extra, eager = f
         onPointerLeave={press.onPointerLeave}
         onPointerCancel={press.onPointerCancel}
         onContextMenu={press.onContextMenu}
-        aria-label={`${product.name}, ${priceText(product)}, ${product.partner.name}. Ver detalhes`}
+        aria-label={`${product.name}, ${priceText(shown)}, ${shown.partner.name}. Ver detalhes`}
       >
         <div className="sa-photo relative" style={{ aspectRatio: "3 / 4" }}>
           <Photo image={cover} alt="" className="absolute inset-0 h-full w-full" eager={eager} sizes="(min-width: 1024px) 20vw, 50vw" />
@@ -151,19 +163,14 @@ export function PieceCard({ product, role, warnings = [], back, extra, eager = f
             </span>
           ) : null}
         </div>
-        <div className="pt-3">
-          <p className="sa-title-sm sa-clamp2">{product.name}</p>
-          <p className="sa-caption sa-muted mt-1 flex flex-wrap items-baseline gap-x-2">
-            <span className="sa-num font-semibold" style={{ color: "var(--text1)" }}>
-              {priceText(product)}
-            </span>
-            <span>{product.partner.name}</span>
-          </p>
-          {role ? <p className="sa-caption sa-accent-text mt-1">{ROLE_LABEL[role]}</p> : null}
-          {extra ? <p className="sa-caption sa-muted mt-1">{extra}</p> : null}
-          {warnings.length > 0 ? <p className="sa-caption sa-warning-text mt-1">{warnings[0]}</p> : null}
-        </div>
+        <p className="sa-title-sm sa-clamp2 pt-3">{product.name}</p>
       </button>
+      {/* Outside the card button: store tags are their own controls (no nested buttons). */}
+      <OfferPrice product={product} />
+      <StoreTags product={product} className="mt-2" />
+      {role ? <p className="sa-caption sa-accent-text mt-2">{ROLE_LABEL[role]}</p> : null}
+      {extra ? <p className="sa-caption sa-muted mt-1">{extra}</p> : null}
+      {warnings.length > 0 ? <p className="sa-caption sa-warning-text mt-1">{warnings[0]}</p> : null}
       <div className="absolute" style={{ top: 6, right: 6 }}>
         <FavButton product={product} onPhoto />
       </div>
@@ -187,6 +194,8 @@ export function PieceCardSkeletons({ count = 8 }: { count?: number }) {
 }
 
 function RatingLine({ product }: { product: Product }) {
+  // The test catalog has no rating source: show nothing instead of an empty rating.
+  if (product.rating === null && product.fixture) return null
   if (product.rating === null) return <p className="sa-body-sm sa-muted">Sem avaliações informadas pela loja (não é nota zero)</p>
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sa-body-sm">
@@ -209,7 +218,7 @@ function RatingLine({ product }: { product: Product }) {
 const FIT_LABEL = { ajustado: "Ajustado", regular: "Regular", amplo: "Amplo" } as const
 
 export function ProductDetailSheet({ productId, back, role, warnings }: { productId: string; back?: Overlay; role?: PieceRole; warnings?: string[] }) {
-  const { close } = useStore()
+  const { close, offerChoice } = useStore()
   const query = useProduct(productId)
   const product = query.data
   const [size, setSize] = useState<string | null>(null)
@@ -241,6 +250,8 @@ export function ProductDetailSheet({ productId, back, role, warnings }: { produc
   if (product.sellerRating !== null) rows.push({ label: "Nota do vendedor", value: `${formatRating(product.sellerRating)} de 5` })
   const image = product.images[imageIndex] ?? product.images[0] ?? null
   const updated = formatDay(product.updatedAt)
+  // The exit, link note and price follow the store chosen in the tags.
+  const shown = withOffer(product, offerChoice[product.id])
 
   return (
     <Sheet
@@ -248,7 +259,7 @@ export function ProductDetailSheet({ productId, back, role, warnings }: { produc
       onClose={close}
       footer={
         <div className="grid gap-2">
-          <StoreCta product={product} back={self} />
+          <StoreCta product={shown} back={self} />
           <div className="flex gap-2">
             <button type="button" className="sa-btn sa-btn-secondary flex-1" onClick={studio.send} aria-disabled={studio.full || undefined}>
               <PenNib size={18} aria-hidden="true" />
@@ -277,13 +288,18 @@ export function ProductDetailSheet({ productId, back, role, warnings }: { produc
         <div>
           <h3 className="sa-subheading">{product.name}</h3>
           <p className="sa-caption sa-muted mt-1">
-            {product.partner.name}
-            {product.category ? ` · ${product.category.label}` : ""}
+            {product.offers.length > 1 ? (product.category?.label ?? "") : `${product.partner.name}${product.category ? ` · ${product.category.label}` : ""}`}
           </p>
-          <p className="sa-num mt-2 text-lg font-semibold">{priceText(product)}</p>
+          <OfferPrice product={product} size="lg" />
+          {product.offers.length > 1 ? <StoreTags product={product} size="md" className="mt-3" /> : null}
           {role ? <p className="sa-caption sa-muted mt-1">{ROLE_NOTE[role]}</p> : null}
         </div>
         <RatingLine product={product} />
+        {product.fixture ? (
+          <Notice tone="info">
+            <p data-testid="test-product-note">{product.links.productUrl ? "Referência para simulação: foto e link do anúncio original. Preço, tamanhos e estoque não foram verificados. A simulação não mostra você vestindo a peça." : "Produto de teste: nome, preço e tamanhos são sintéticos. Não é uma oferta real, não tem estoque confirmado nem link de compra."}</p>
+          </Notice>
+        ) : null}
         {warnings && warnings.length > 0 ? (
           <Notice tone="warning">
             {warnings.map((w) => (
@@ -313,7 +329,7 @@ export function ProductDetailSheet({ productId, back, role, warnings }: { produc
                 ))}
               </div>
               {size && !product.variants.find((s) => s.label === size)?.available ? <p className="sa-caption sa-warning-text mt-2">Tamanho {size} indisponível nesta loja.</p> : null}
-              <p className="sa-caption sa-muted mt-2">A escolha de tamanho acontece na loja; aqui serve para conferir a disponibilidade.</p>
+              <p className="sa-caption sa-muted mt-2">Aqui o tamanho serve para conferir a disponibilidade informada.</p>
             </>
           ) : (
             <p className="sa-body-sm sa-muted mt-1">Tamanhos não informados pela loja.</p>
@@ -348,7 +364,7 @@ export function ProductDetailSheet({ productId, back, role, warnings }: { produc
         ) : null}
 
         {updated ? <Hint>Preço e estoque conferidos na loja em {updated}; podem ter mudado desde então.</Hint> : null}
-        <StoreLinkNote product={product} />
+        <StoreLinkNote product={shown} />
       </div>
     </Sheet>
   )
@@ -381,7 +397,7 @@ export function GoToPieceSheet({ product, back }: { product: Product; back?: Ove
           <StoreCta product={product} />
         )}
         <p className="sa-caption sa-muted flex gap-2">
-          <Info size={16} className="flex-none" aria-hidden="true" />A compra acontece sempre no site do parceiro; o StylAI não processa pagamento.
+          <Info size={16} className="flex-none" aria-hidden="true" />O StylAI não vende peças nem processa pagamento.
         </p>
       </div>
     </Sheet>

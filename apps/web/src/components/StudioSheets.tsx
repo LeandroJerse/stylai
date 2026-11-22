@@ -5,13 +5,14 @@
 import { useId, useState } from "react"
 import { Check, CheckSquare, Square } from "@phosphor-icons/react"
 import { messageOf } from "../api/errors"
-import { useCandidates, useFacets, usePlans, useSavePreferenceRules } from "../api/queries"
+import { useCandidates, useCapability, useFacets, usePlans, useSavePreferenceRules } from "../api/queries"
 import type { Product } from "../api/types"
 import { useStore } from "../app/store"
 import { useStudio } from "../app/useStudio"
-import { formatDay, formatMoney, plural } from "../lib/format"
+import { formatDay, formatMoney, plural, coins } from "../lib/format"
 import { summarizeRules } from "../lib/rules"
 import { priceText } from "./pieces"
+import { withOffer } from "../lib/offers"
 import { PreferenceEditorSheet } from "./PreferenceEditor"
 import { ErrorState, Hint, LoadingState, Notice, Photo, Segmented, Sheet } from "./ui"
 
@@ -31,7 +32,7 @@ function CostLine({ kind }: { kind: "edit" | "tryon" }) {
   const cost = studio.costOf(kind)
   const short = studio.shortBy(kind)
   if (cost === null) return null
-  return <p className="sa-caption sa-muted mt-2">{short !== null ? <span className="sa-error-text">Saldo insuficiente: faltam {short} tokens.</span> : studio.balance.data ? `Custa ${cost} tokens · saldo ${studio.balance.data.tokens}. Falha ou cancelamento não debita.` : `Custa ${cost} tokens.`}</p>
+  return <p className="sa-caption sa-muted mt-2">{short !== null ? <span className="sa-error-text">Saldo insuficiente: faltam {coins(short)}.</span> : studio.balance.data ? `Custa ${coins(cost)} · saldo ${coins(studio.balance.data.tokens)}. Falha ou cancelamento não debita.` : `Custa ${coins(cost)}.`}</p>
 }
 
 /* ------------------------------------------------------------------ edit */
@@ -65,7 +66,7 @@ export function EditSheet() {
       footer={
         <div>
           <button type="button" className="sa-btn sa-btn-primary sa-btn-block" aria-disabled={short || studio.starting || undefined} onClick={() => !short && !studio.starting && void submit()}>
-            {studio.starting ? "Enviando…" : `Aplicar alteração${cost !== null ? ` · ${cost} tokens` : ""}`}
+            {studio.starting ? "Enviando…" : `Aplicar alteração${cost !== null ? ` · ${coins(cost)}` : ""}`}
           </button>
           <CostLine kind="edit" />
         </div>
@@ -110,9 +111,11 @@ export function EditSheet() {
 type PoolFilter = "todas" | "fora" | "usadas"
 
 export function AcervoSheet() {
-  const { draft, setDraft, close, open } = useStore()
+  const { draft, setDraft, close, open, offerChoice } = useStore()
   const studio = useStudio()
-  const query = useCandidates(draft.lookId)
+  // The Acervo stays on the last search result, whatever the mode or the look on screen.
+  const query = useCandidates(draft.acervoLookId ?? draft.lookId)
+  const candidatesOn = useCapability("candidates")
   const [filter, setFilter] = useState<PoolFilter>("todas")
   const [review, setReview] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -128,17 +131,21 @@ export function AcervoSheet() {
     const confirm = async (): Promise<void> => {
       if (short || studio.starting) return
       const out = await studio.tryOn(selection)
-      if (out.ok) close()
+      // Wearing pieces from the Acervo is the Vestir mode.
+      if (out.ok) {
+        setDraft({ mode: "vestir" })
+        close()
+      }
       else setMessage(out.message)
     }
     return (
       <Sheet
-        title="Revisar prova"
+        title="Vestir seleção"
         onClose={close}
         footer={
           <div className="grid gap-2">
             <button type="button" className="sa-btn sa-btn-primary sa-btn-block" aria-disabled={short || studio.starting || undefined} onClick={() => void confirm()}>
-              {studio.starting ? "Enviando…" : `Confirmar prova${cost !== null ? ` · ${cost} tokens` : ""}`}
+              {studio.starting ? "Enviando…" : `Vestir${cost !== null ? ` · ${coins(cost)}` : ""}`}
             </button>
             <button type="button" className="sa-btn sa-btn-secondary sa-btn-block" onClick={() => setReview(false)}>
               Voltar à seleção
@@ -155,7 +162,7 @@ export function AcervoSheet() {
                   <Photo image={p.images[0] ?? null} alt="" className="h-full w-full" />
                 </div>
                 <span className="sa-body-sm min-w-0 flex-1">{p.name}</span>
-                <span className="sa-body-sm sa-num font-semibold">{priceText(p)}</span>
+                <span className="sa-body-sm sa-num font-semibold">{priceText(withOffer(p, offerChoice[p.id]))}</span>
               </li>
             ))}
           </ul>
@@ -171,10 +178,18 @@ export function AcervoSheet() {
     )
   }
 
+  if (!candidatesOn) {
+    return (
+      <Sheet title="Acervo da busca" onClose={close}>
+        <Notice tone="info"><p data-testid="acervo-unavailable">O acervo das buscas anteriores ainda não está disponível nesta versão. Use Procurar para buscar peças.</p></Notice>
+      </Sheet>
+    )
+  }
+
   return (
     <Sheet
       title="Acervo da busca"
-      description="Peças encontradas para este pedido, inclusive as que não entraram no look. O acervo não é o Closet: nada aqui fica guardado sem você favoritar."
+      description="Peças que a última busca encontrou, inclusive as que não entraram no look. Selecione para vestir no look atual. A seleção fica guardada ao trocar de modo; o Closet só guarda o que você favoritar."
       onClose={close}
       footer={
         <div>
@@ -188,7 +203,7 @@ export function AcervoSheet() {
             </button>
           </div>
           <button type="button" className="sa-btn sa-btn-primary sa-btn-block mt-2" aria-disabled={selection.length === 0 || undefined} onClick={() => selection.length > 0 && setReview(true)}>
-            Revisar prova{cost !== null ? ` · ${cost} tokens` : ""}
+            Vestir seleção{cost !== null ? ` · ${coins(cost)}` : ""}
           </button>
         </div>
       }
@@ -243,7 +258,7 @@ export function AcervoSheet() {
                         <span className="min-w-0 flex-1">
                           <span className="sa-body-sm sa-truncate block font-semibold">{p.name}</span>
                           <span className="sa-caption sa-muted block">
-                            <span className="sa-num">{priceText(p)}</span> · {p.partner.name}
+                            <span className="sa-num">{priceText(withOffer(p, offerChoice[p.id]))}</span> · {withOffer(p, offerChoice[p.id]).partner.name}
                             {p.category ? ` · ${p.category.label}` : ""}
                           </span>
                           <span className={`sa-caption block ${blocked && !isSel ? "sa-warning-text" : "sa-muted"}`}>{blocked && !isSel ? blocked : c.usedInLook ? "No look atual" : "Não usada no look"}</span>
@@ -375,10 +390,13 @@ export function SearchPreferenceEditor() {
 export function TokensSheet() {
   const { close } = useStore()
   const studio = useStudio()
-  const plans = usePlans()
+  const plans = usePlans(!(studio.config.data?.capabilities.mode === "single_piece_try_on"))
   const balance = studio.balance
   const costs = studio.config.data?.costs
   const renews = formatDay(balance.data?.renewsAt ?? null)
+  const unit = studio.config.data?.unit ?? { singular: "moeda", plural: "moedas" }
+  // Single-piece try-on: one free daily allowance; no plans or other paid actions exist yet.
+  const tryOnOnly = studio.config.data?.capabilities.mode === "single_piece_try_on"
   return (
     <Sheet title="Saldo e planos" onClose={close}>
       <div className="grid gap-6">
@@ -389,7 +407,7 @@ export function TokensSheet() {
         ) : (
           <div>
             <p className="sa-caption sa-muted">Saldo</p>
-            <p className="sa-heading sa-num mt-1">{plural(balance.data.tokens, "token", "tokens")}</p>
+            <p className="sa-heading sa-num mt-1">{plural(balance.data.tokens, unit.singular, unit.plural)}{tryOnOnly ? " hoje" : ""}</p>
             <p className="sa-caption sa-muted mt-1">
               Plano {balance.data.plan.name}
               {balance.data.plan.tokensPerPeriod !== null && balance.data.plan.period ? ` · ${balance.data.plan.tokensPerPeriod} por ${balance.data.plan.period === "day" ? "dia" : "mês"}` : ""}
@@ -397,18 +415,22 @@ export function TokensSheet() {
             </p>
           </div>
         )}
+        {tryOnOnly ? (
+          <p className="sa-body-sm" data-testid="coins-rules">
+            Cada geração ou troca de peça concluída custa {costs ? coins(costs.generate) : "—"}. Falhas e cancelamentos não debitam; buscar não gasta moedas.
+            {studio.config.data?.quotaStatus === "provisional" ? " Valores da fase de testes." : ""}
+          </p>
+        ) : null}
         {costs ? (
           <dl className="sa-divided sa-body-sm">
             {(
-              [
-                ["Gerar look", costs.generate],
-                ["Editar imagem", costs.edit],
-                ["Prova do acervo", costs.tryOn],
-              ] as const
+              (tryOnOnly
+                ? [["Gerar (vestir uma peça)", costs.generate], ["Trocar a peça (nova versão)", costs.tryOn], ["Editar imagem", costs.edit]]
+                : [["Gerar look", costs.generate], ["Editar imagem", costs.edit], ["Prova do acervo", costs.tryOn]]) as [string, number | null][]
             ).map(([k, v]) => (
               <div key={k} className="flex items-start justify-between gap-4 py-3">
                 <dt>{k}</dt>
-                <dd className="sa-num m-0 text-right font-semibold">{plural(v, "token", "tokens")}</dd>
+                <dd className="sa-num m-0 text-right font-semibold">{v === null ? <span className="sa-muted font-normal">custo não definido</span> : coins(v)}</dd>
               </div>
             ))}
             <div className="flex items-start justify-between gap-4 py-3">
@@ -417,7 +439,24 @@ export function TokensSheet() {
             </div>
           </dl>
         ) : null}
-        <div>
+        {tryOnOnly && studio.config.data?.plans.length ? (
+          <div>
+            <p className="sa-title-sm">Planos</p>
+            <ul className="sa-divided mt-2" data-testid="plan-list">
+              {studio.config.data.plans.map((p) => (
+                <li key={p.id} className="flex items-start justify-between gap-4 py-3 sa-body-sm">
+                  <span className="font-semibold">
+                    {p.name}
+                    {p.id === balance.data?.plan.id ? <span className="sa-badge sa-badge-quiet ml-2 align-middle">Atual</span> : null}
+                  </span>
+                  <span className="sa-num">{coins(p.coinsPerPeriod)} por {p.period === "day" ? "dia" : "mês"}</span>
+                </li>
+              ))}
+            </ul>
+            <Hint className="mt-2">Assinatura e pagamento ainda não estão disponíveis no app. Preço do plano pago, limite mensal e custo de edição ainda não foram definidos.</Hint>
+          </div>
+        ) : null}
+        {tryOnOnly ? null : <div>
           <p className="sa-title-sm">Planos</p>
           {plans.isPending ? (
             <LoadingState className="mt-2" />
@@ -432,15 +471,15 @@ export function TokensSheet() {
                   <span>
                     <span className="font-semibold">{p.name}</span>
                     {p.id === balance.data?.plan.id ? <span className="sa-badge sa-badge-quiet ml-2 align-middle">Atual</span> : null}
-                    {p.tokensPerPeriod !== null && p.period ? <span className="sa-caption sa-muted block">{`${p.tokensPerPeriod} tokens por ${p.period === "day" ? "dia" : "mês"}`}</span> : null}
+                    {p.tokensPerPeriod !== null && p.period ? <span className="sa-caption sa-muted block">{`${coins(p.tokensPerPeriod)} por ${p.period === "day" ? "dia" : "mês"}`}</span> : null}
                   </span>
-                  <span className="sa-num font-semibold">{p.price ? formatMoney(p.price.amount, p.price.currency) : "Grátis"}</span>
+                  <span className="sa-num font-semibold">{p.price ? formatMoney(p.price.amount, p.price.currency) : p.id === "free" ? "Grátis" : "Preço não definido"}</span>
                 </li>
               ))}
             </ul>
           )}
           <Hint className="mt-2">A troca de plano e o pagamento ainda não estão disponíveis no app.</Hint>
-        </div>
+        </div>}
       </div>
     </Sheet>
   )

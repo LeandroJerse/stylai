@@ -31,7 +31,10 @@ file_size_limit = "12MiB"
 [auth]
 enabled = true
 site_url = "http://localhost:5190"
-additional_redirect_urls = ["http://localhost:5190"]
+# Local app origins allowed as e-mail redirect targets (QA-007): dev 5190, review 5198, official e2e 5194,
+# older review 5193. `/**` per the Supabase redirect-URL docs (wildcards for local/preview only).
+# The API always derives redirectTo from its own APP_ORIGIN; the browser never chooses it.
+additional_redirect_urls = ["http://localhost:5190/**", "http://localhost:5193/**", "http://localhost:5194/**", "http://localhost:5198/**"]
 jwt_expiry = 900
 enable_signup = true
 
@@ -40,3 +43,11 @@ enabled = true
 double_confirm_changes = true
 enable_confirmations = true
 secure_password_change = true
+
+[auth.email.template.confirmation]
+subject = "Confirme seu e-mail no StylAI"
+content_path = "./supabase/templates/confirmation.html"
+
+# Local only: the default (2 e-mails/hour) blocks repeated sign-up tests against Mailpit.
+[auth.rate_limit]
+email_sent = 60

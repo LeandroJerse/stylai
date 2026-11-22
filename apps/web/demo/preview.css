@@ -1,0 +1,5 @@
+.sa-preview-bar { margin: 0; padding: 8px max(16px, env(safe-area-inset-left, 0px)); background: #2B2723; color: #F3EEE6; font: 500 12px/1.45 Manrope, system-ui, sans-serif; text-align: center; }
+.sa-preview-bar details { margin-top: 4px; }
+.sa-preview-bar summary { cursor: pointer; }
+.sa-preview-bar button { margin: 6px; padding: 6px 10px; border: 1px solid #bda98b; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.sa-preview-bar [role="status"] { display: block; }

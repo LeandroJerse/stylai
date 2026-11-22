@@ -22,6 +22,8 @@ export interface RequestOptions {
   auth?: AuthMode
   signal?: AbortSignal
   timeoutMs?: number
+  /** Extra headers (e.g. Idempotency-Key). Authorization/Content-Type are managed here. */
+  headers?: Record<string, string>
 }
 
 export interface SessionTokens {
@@ -85,7 +87,7 @@ export function createHttpClient(init: HttpClientInit): HttpClient {
 
   async function send(path: string, options: RequestOptions, withToken: boolean): Promise<Response> {
     if (!baseUrl) throw notConfigured()
-    const headers: Record<string, string> = { Accept: "application/json" }
+    const headers: Record<string, string> = { ...options.headers, Accept: "application/json" }
     let body: BodyInit | undefined
     if (options.form) body = options.form
     else if (options.body !== undefined) {

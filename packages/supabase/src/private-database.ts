@@ -1,6 +1,6 @@
 import { Pool, type PoolClient } from "pg"
 import { privateDatabaseRoles, type DatabasePurpose, type PrivateDatabaseConfig } from "./private-config.js"
-import { decodePrivateResult, privateOperations, type Arguments, type Operation, type Result } from "./private-transactions.js"
+import { decodePrivateResult, privateBoundaryVersion, privateOperations, type Arguments, type Operation, type Result } from "./private-transactions.js"
 
 export type PrivateDatabaseStatus = "ready"|"unavailable"
 export class PrivateDatabaseError extends Error {
@@ -43,7 +43,7 @@ export function createPrivateDatabase<P extends DatabasePurpose>(config: Private
   async function authorize(client: PoolClient) {
     const {rows}=await client.query(identitySql)
     const row=rows[0]
-    if(!row || row.role!==privateDatabaseRoles[config.purpose] || row.login!==row.role || row.version!=='20261115000100' || row.unsafe!==false
+    if(!row || row.role!==privateDatabaseRoles[config.purpose] || row.login!==row.role || row.version!==privateBoundaryVersion || row.unsafe!==false
       || !Array.isArray(row.functions) || JSON.stringify(row.functions)!==JSON.stringify(expectedFunctions)) throw new PrivateDatabaseError('not_dispatched')
   }
   return {

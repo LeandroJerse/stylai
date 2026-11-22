@@ -11,5 +11,9 @@
     }
   },
   "sideEffects": false,
-  "dependencies": { "@stylai/contracts": "workspace:*" }
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.6.0",
+    "@stylai/contracts": "workspace:*",
+    "zod": "4.6.7"
+  }
 }

@@ -8,7 +8,7 @@ import type { ReactNode } from "react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { Archive, Coins, Compass, Moon, PenNib, SignIn, Sun, User } from "@phosphor-icons/react"
 import { IconContext } from "@phosphor-icons/react"
-import { createQueryClient, useBalance, useCloset } from "../api/queries"
+import { createQueryClient, useBalance, useCloset, useStudioConfig } from "../api/queries"
 import { AuthProvider, useAuth } from "../auth/AuthProvider"
 import { OverlayHost } from "../components/OverlayHost"
 import { BrandLockup, EmptyState, LoadingState, Toast } from "../components/ui"
@@ -30,12 +30,14 @@ const SURFACE = { light: "#F7F3ED", dark: "#242424" } as const
 function BalanceChip({ compact = false }: { compact?: boolean }) {
   const { open } = useStore()
   const balance = useBalance(true)
+  const config = useStudioConfig()
   const tokens = balance.data?.tokens
+  const unit = tokens === 1 ? (config.data?.unit.singular ?? "moeda") : (config.data?.unit.plural ?? "moedas")
   return (
-    <button type="button" className="sa-headbtn" onClick={() => open({ kind: "tokens" })} aria-label={tokens !== undefined ? `Saldo: ${tokens} tokens. Ver planos` : "Ver saldo e planos"}>
+    <button type="button" className="sa-headbtn" onClick={() => open({ kind: "tokens" })} aria-label={tokens !== undefined ? `Saldo: ${tokens} ${unit}. Ver detalhes` : "Ver saldo"}>
       <Coins size={20} aria-hidden="true" />
       <span className="sa-num font-semibold">{tokens ?? "–"}</span>
-      {compact ? null : <span className="sa-caption sa-muted">tokens</span>}
+      {compact ? null : <span className="sa-caption sa-muted">{unit}</span>}
     </button>
   )
 }
@@ -86,7 +88,7 @@ function SignInButton() {
 }
 
 const GATE: Record<Exclude<MainTab, "explorar">, { title: string; text: string }> = {
-  estudio: { title: "Entre para usar o Estúdio", text: "O Estúdio monta looks com peças das lojas parceiras e usa tokens da sua conta." },
+  estudio: { title: "Entre para usar o Estúdio", text: "O Estúdio monta looks com peças do catálogo e usa moedas da sua conta." },
   closet: { title: "Entre para ver seu Closet", text: "O Closet guarda as peças favoritas e os looks que você salvar, em qualquer aparelho." },
   perfil: { title: "Entre para ver seu Perfil", text: "No Perfil ficam suas fotos para a prova no corpo, medidas e configurações da conta." },
 }
@@ -144,7 +146,8 @@ function useSessionEffects(): void {
 
   // Signed in on entrar/criar-conta/recuperar-senha (e.g. a bookmarked link): go where they meant to.
   useEffect(() => {
-    if (status === "signed-in" && route.kind === "auth" && route.screen !== "redefinir-senha") go(route.next ?? "explorar")
+    // Already signed in on an account screen: leave it. A just-confirmed e-mail goes straight to the Estúdio.
+    if (status === "signed-in" && route.kind === "auth" && route.screen !== "redefinir-senha") go(route.next ?? (route.screen === "confirmar-email" ? "estudio" : "explorar"))
   }, [status, route, go])
 }
 
