@@ -2,7 +2,7 @@ import { resolve } from "node:path"
 import { readServiceConfig } from "@stylai/config"
 import type { CatalogSourceMode } from "@stylai/contracts"
 import { createAliExpressAffiliateClient, createAliExpressCatalogService, createTikTokCatalogCache, createTikTokCreatorClient } from "@stylai/commerce"
-import { createAnthropicComposer, FAL_FASHN_MODEL, findPrice } from "@stylai/ai"
+import { createAnthropicComposer, createInterpretationCache, DEFAULT_COMPOSER_MODEL, FAL_FASHN_MODEL, findPrice } from "@stylai/ai"
 import { buildApp } from "./app.js"
 import {
   readSupabaseConfig, probeFoundation, readPrivateDatabaseConfig, createPrivateDatabase, createLocalObjectStore, createSupabaseObjectStore, createAdminClient, defaultLocalStoreDir,
@@ -91,10 +91,19 @@ const aliexpressCatalog = catalogMode === "aliexpress_affiliate" && aliexpressCl
 
 // Outfit composer (Claude). Off unless explicitly enabled AND a key exists: otherwise the labelled rules fallback runs.
 const composerEnabled = process.env.STYLAI_COMPOSER_ENABLED?.trim() === "true"
-const composerModel = process.env.STYLAI_COMPOSER_MODEL?.trim() || "claude-opus-5-5"
+// Owner decision 2026-11-23: cheapest capable model (Haiku) for interpretation/selection unless explicitly overridden.
+const composerModel = process.env.STYLAI_COMPOSER_MODEL?.trim() || DEFAULT_COMPOSER_MODEL
 if (composerEnabled && !process.env.ANTHROPIC_API_KEY?.trim()) throw new Error("STYLAI_COMPOSER_ENABLED requires ANTHROPIC_API_KEY")
 const composer = composerEnabled ? createAnthropicComposer({ apiKey: process.env.ANTHROPIC_API_KEY!.trim(), model: composerModel }) : null
 const composerPriceEntry = findPrice("anthropic", composerModel)
+if (composer && composerPriceEntry?.kind !== "tokens") throw new Error(`No versioned price for composer model ${composerModel}: cost could not be measured`)
+const composerPrice = composerPriceEntry?.kind === "tokens" ? { inputPerMTok: composerPriceEntry.inputPerMTok, outputPerMTok: composerPriceEntry.outputPerMTok } : null
+// One shared, hash-keyed interpretation cache for the simple search and the composition (quota only on a miss).
+const interpretationCache = composer ? createInterpretationCache() : null
+// Render estimate shown before confirmation must match the worker's provider and per-layer reservation (P04).
+const renderProvider = process.env.STYLAI_TRYON_PROVIDER?.trim() === "fal" ? "fal" as const : "segmind" as const
+const reservePerLayerMicros = BigInt(renderProvider === "fal"
+  ? (process.env.FAL_RESERVE_USD_MICROS?.trim() || "75000") : (process.env.SEGMIND_RESERVE_USD_MICROS?.trim() || "500000"))
 const renderPrice = findPrice("fal", FAL_FASHN_MODEL)
 
 const rateLimitPerMinute = Number(process.env.STYLAI_RATE_LIMIT_PER_MINUTE ?? 120)
@@ -110,13 +119,17 @@ const app = await buildApp({
   ...(database && store && keys && resolveActor ? {
     photos: { db: database, store, keys, resolveActor, photoPolicyVersion, publicBaseUrl, analyzer },
     studio: { db: database, keys, resolveActor, photoPolicyVersion, publicBaseUrl, generationEnabled: generationMode !== "disabled", generationMode, realProvider,
-      searchScope: catalogMode === "tiktok_shop" || catalogMode === "aliexpress_affiliate" ? "stores" : "curated_catalog" },
-    search: { db: database, resolveActor, publicBaseUrl, pilotOnly: pilotCatalogOnly, catalogMode, tiktokCache, aliexpressCatalog },
-    compositions: { db: database, resolveActor, publicBaseUrl, catalogMode, aliexpressCatalog, composer,
+      searchScope: catalogMode === "tiktok_shop" || catalogMode === "aliexpress_affiliate" ? "stores" : "curated_catalog",
+      composer: { mode: composer ? "agent" : "rules", model: composer ? composerModel : null } },
+    search: { db: database, resolveActor, publicBaseUrl, pilotOnly: pilotCatalogOnly, catalogMode, tiktokCache, aliexpressCatalog,
+      agent: composer, interpretationCache, agentPrice: composerPrice,
+      acquireAgentCall: async () => await database.call("take_provider_call_slot", "anthropic", composerCallsPerMinute)
+        && await database.call("take_provider_daily_slot", "anthropic", composerCallsPerDay) },
+    compositions: { db: database, resolveActor, publicBaseUrl, catalogMode, aliexpressCatalog, composer, interpretationCache, renderProvider, reservePerLayerMicros,
       acquireComposerCall: async () => await database.call("take_provider_call_slot", "anthropic", composerCallsPerMinute)
         && await database.call("take_provider_daily_slot", "anthropic", composerCallsPerDay),
       renderPricePerLayerMicros: renderPrice?.kind === "per_image" ? renderPrice.perImageMicros : 75_000n,
-      composerPrice: composerPriceEntry?.kind === "tokens" ? { inputPerMTok: composerPriceEntry.inputPerMTok, outputPerMTok: composerPriceEntry.outputPerMTok } : null },
+      composerPrice },
   } : {}),
   tiktok: { appKey: tiktokAppKey, appSecret: tiktokAppSecret, hasCreatorToken: Boolean(tiktokCreatorToken), tokenAvailable: async () => Boolean(await getTikTokToken()),
     ...(tiktokConnection && resolveActor ? {

@@ -145,8 +145,9 @@ export function useStudio() {
       if (!draft.prompt.trim()) return { ok: false, message: "Descreva o look: peças, ocasião, cores ou orçamento total." }
       setComposing(true)
       try {
-        const composition = await api.studio.compose({ prompt: draft.prompt.trim(), locked })
-        setDraft({ composition })
+        const outcome = await api.studio.compose({ prompt: draft.prompt.trim(), locked })
+        if (outcome.kind === "not_composed") { setDraft({ composition: null }); return { ok: false, message: outcome.message } }
+        setDraft({ composition: outcome.composition })
         return { ok: true }
       } catch (e) {
         return { ok: false, message: messageOf(e) }

@@ -28,6 +28,7 @@ import {
   parseSignUpResult,
   parseSearchResult,
   parseComposition,
+  parseComposeOutcome,
   parseStudioConfig,
   parseUpload,
   parseUser,
@@ -160,7 +161,7 @@ export const api = {
       }).then(parseJob),
     /** Outfit composition: interpretation -> candidates per slot -> agent selection (never generates). */
     compose: (input: { prompt: string; locked: Partial<Record<CompositionSlotId, string>> }) =>
-      http.request<unknown>("/studio/compositions", { method: "POST", body: input, auth: "required", timeoutMs: 90_000 }).then(parseComposition),
+      http.request<unknown>("/studio/compositions", { method: "POST", body: input, auth: "required", timeoutMs: 90_000 }).then(parseComposeOutcome),
     composition: (id: string) => get(`/studio/compositions/${encodeURIComponent(id)}`, parseComposition, { auth: "required" }),
     /** Generates the confirmed composition (every piece re-validated by the server). New version when parentLookId is set. */
     generateComposition: (input: { compositionId: string; choices: { slot: CompositionSlotId; productId: string; variantId: string | null }[]; parentLookId: string | null }, idempotencyKey: string) =>

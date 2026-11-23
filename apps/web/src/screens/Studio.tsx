@@ -365,7 +365,9 @@ function SearchRow({ onSearch }: { onSearch: () => void }) {
       </button>
       <button type="button" className="sa-btn sa-btn-secondary sa-btn-block mt-2" aria-disabled={busy || undefined} data-testid="compose-button"
         onClick={() => { if (!busy) void studio.compose().then((r) => { if (!r.ok) notify(r.message) }) }}>
-        {studio.composing ? <><CircleNotch size={18} className="sa-spin" aria-hidden="true" /> Montando o look…</> : <>Montar look completo com o agente</>}
+        {studio.composing ? <><CircleNotch size={18} className="sa-spin" aria-hidden="true" /> Montando o look…</>
+          : studio.caps?.composer.mode === "agent" ? <>Montar look completo com o agente ({studio.caps.composer.model ?? "IA"})</>
+          : <>Montar look completo (seleção por regras)</>}
       </button>
       <p className="sa-caption sa-muted mt-2">
         {studio.caps?.searchScope === "curated_catalog" ? "Busca no catálogo selecionado pelo StylAI (não é uma busca ao vivo nas lojas). " : ""}

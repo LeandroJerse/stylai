@@ -129,6 +129,8 @@ function readTheme(): ThemePref {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash))
   const lastTab = useRef<MainTab>(route.kind === "tab" ? route.tab : "explorar")
+  const routeRef = useRef<Route>(route)
+  routeRef.current = route
   const [prevTab, setPrevTab] = useState<MainTab>("explorar")
   const scrollByTab = useRef<Partial<Record<MainTab, number>>>({})
   const [theme, setThemeState] = useState<ThemePref>(readTheme)
@@ -175,12 +177,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     (target: Route | MainTab) => {
       const next: Route = typeof target === "string" ? { kind: "tab", tab: target } : target
       const hash = formatRoute(next)
-      if (window.location.hash === hash) {
+      // P01: compare with the RENDERED route too. A history.replaceState elsewhere (e.g. password reset) changes the
+      // URL without a hashchange; comparing only the URL made go() a silent no-op while the screen stayed stale.
+      if (window.location.hash === hash && formatRoute(routeRef.current) === hash) {
         setOverlay(null)
         if (next.kind === "tab") window.scrollTo({ top: 0 })
         return
       }
-      window.history.pushState(null, "", hash)
+      if (window.location.hash !== hash) window.history.pushState(null, "", hash)
       applyRoute(next)
     },
     [applyRoute],

@@ -138,3 +138,20 @@ describe("parseComposition", () => {
     expect(c.generation).toMatchObject({ eligible: false, blockedReason: "ai_image_rights_unconfirmed" })
   })
 })
+
+describe("P05/P07 transparency in the web contract", () => {
+  test("composer capability fails closed to rules; agent only when declared", () => {
+    expect(parseStudioConfig({ costs: { generate: 10, edit: null, tryOn: 10 }, budget: { min: 0, max: 0 }, capabilities: { mode: "single_piece_try_on", composer: { mode: "agent", model: "claude-haiku-5-5" } } }).capabilities.composer)
+      .toEqual({ mode: "agent", model: "claude-haiku-5-5" })
+    expect(parseStudioConfig({ costs: { generate: 10, edit: null, tryOn: 10 }, budget: { min: 0, max: 0 }, capabilities: { mode: "single_piece_try_on" } }).capabilities.composer).toEqual({ mode: "rules", model: null })
+  })
+  test("a not-composed answer is explicit (stages + message), never a look", async () => {
+    const { parseComposeOutcome } = await import("../src/api/parse")
+    const out = parseComposeOutcome({ composed: false, id: null, stages: { interpretation: "agent", retrieval: "empty", selection: "not_run" }, message: "A loja não encontrou peças.", slots: [] })
+    expect(out).toEqual({ kind: "not_composed", stages: { interpretation: "agent", retrieval: "empty", selection: "not_run" }, message: "A loja não encontrou peças." })
+    const ok = parseComposeOutcome({ composed: true, id: "c1", source: "curated", selectionMethod: "rules_fallback", stages: { interpretation: "rules_fallback", retrieval: "ok", selection: "rules_fallback" }, slots: [], missingSlots: [],
+      generation: { eligible: false, layers: 0, render: "single_garment", estimatedProviderUsd: null, reservePerLayerUsd: 0.5, maxReservedUsd: 0, provider: "segmind", coins: 10, coinsNote: "" } })
+    expect(ok.kind).toBe("composed")
+    if (ok.kind === "composed") expect(ok.composition.generation).toMatchObject({ estimatedProviderUsd: null, reservePerLayerUsd: 0.5, provider: "segmind" })
+  })
+})

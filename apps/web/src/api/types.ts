@@ -299,6 +299,8 @@ export interface StudioCapabilities {
   closet: boolean
   /** Where Procurar searches: "curated_catalog" (reviewed rows) or "stores" (live partner search). */
   searchScope: "curated_catalog" | "stores"
+  /** Who picks pieces: the AI agent (model) or deterministic rules (never shown as "agent"). */
+  composer: { mode: "agent" | "rules"; model: string | null }
   generation: boolean
   edits: boolean
   match: boolean
@@ -416,6 +418,7 @@ export interface CompositionSlot {
 }
 export interface Composition {
   id: string
+  stages: CompositionStages | null
   source: string
   /** "agent" = chosen by the AI composer and revalidated by the server; "rules_fallback" = deterministic rules. */
   selectionMethod: "agent" | "rules_fallback"
@@ -428,8 +431,17 @@ export interface Composition {
     blockedReason: string | null
     layers: number
     render: "sequential_layers_unverified" | "single_garment"
-    estimatedProviderUsd: number
+    /** Null when the provider bills by usage (e.g. Segmind GPU-seconds): only the reservation ceiling is known. */
+    estimatedProviderUsd: number | null
+    provider: string | null
+    reservePerLayerUsd: number | null
+    maxReservedUsd: number | null
     coins: number
     coinsNote: string
   }
 }
+
+export interface CompositionStages { interpretation: string; retrieval: string; selection: string }
+export type ComposeOutcome =
+  | { kind: "composed"; composition: Composition }
+  | { kind: "not_composed"; stages: CompositionStages; message: string }

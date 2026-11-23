@@ -35,6 +35,8 @@ export interface StudioDeps {
    * presented as a real try-on.
    */
   generationMode?: "simulated" | "real" | "disabled"
+  /** Who picks pieces (P05): the AI agent (model) or deterministic rules. Shown as is, never "agent" when it is rules. */
+  composer?: { mode: "agent" | "rules"; model: string | null }
   /** "stores" when Procurar queries a provider API (TikTok Shop, AliExpress); default curated catalog. */
   searchScope?: "curated_catalog" | "stores"
   /** Real mode only: what one generation calls and its estimated cost (shown before the user confirms). */
@@ -434,6 +436,7 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
       bodyPhotoRequired: true, closet: false, generation: deps.generationEnabled, edits: false, match: false, references: false, preferences: false,
       // Not offered by this engine: the front sends no request for them (QA-010).
       measurements: false, plans: false, candidates: false,
+      composer: deps.composer ?? { mode: "rules", model: null },
     },
     photoPolicyVersion: deps.photoPolicyVersion,
   }))

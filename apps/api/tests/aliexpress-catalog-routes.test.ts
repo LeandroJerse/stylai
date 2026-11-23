@@ -120,11 +120,13 @@ test("Estúdio config declares a live store search (not the curated catalog) whe
   const { readSessionKeys } = await import("../src/modules/auth/session-crypto")
   const keys = readSessionKeys({ STYLAI_SESSION_KEY: randomBytes(32).toString("base64") })!
   const studio = { db, keys, resolveActor: async () => ACTOR, photoPolicyVersion: "t", publicBaseUrl: "http://x/v1", generationEnabled: false }
-  const live = await buildApp({ appOrigin: "http://localhost:5200", studio: { ...studio, searchScope: "stores" } })
+  const live = await buildApp({ appOrigin: "http://localhost:5200", studio: { ...studio, searchScope: "stores", composer: { mode: "agent", model: "claude-haiku-5-5" } } })
   const curated = await buildApp({ appOrigin: "http://localhost:5200", studio })
   try {
-    expect((await live.inject("/v1/studio/config")).json().capabilities.searchScope).toBe("stores")
+    expect((await live.inject("/v1/studio/config")).json().capabilities).toMatchObject({ searchScope: "stores", composer: { mode: "agent", model: "claude-haiku-5-5" } })
     expect((await curated.inject("/v1/studio/config")).json().capabilities.searchScope).toBe("curated_catalog")
+    // P05: who selects is declared; rules are never presented as an agent.
+    expect((await curated.inject("/v1/studio/config")).json().capabilities.composer).toEqual({ mode: "rules", model: null })
   } finally { await live.close(); await curated.close() }
 })
 

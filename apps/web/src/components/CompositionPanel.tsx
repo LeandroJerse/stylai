@@ -52,7 +52,8 @@ export function CompositionPanel({ composition }: { composition: Composition }) 
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="sa-title-sm">Look sugerido</h2>
         <span className="sa-caption sa-muted" data-testid="composition-method">
-          {composition.selectionMethod === "agent" ? `Selecionado pelo agente (${composition.model ?? "IA"}), conferido pelo servidor` : "Seleção por regras (agente indisponível neste ambiente)"}
+          {composition.selectionMethod === "agent" ? `Selecionado pelo agente (${composition.model ?? "IA"}), conferido pelo servidor` : "Seleção por regras (sem agente)"}
+          {composition.stages ? ` · interpretação: ${composition.stages.interpretation === "agent" ? "agente" : "regras"} · busca: ${composition.stages.retrieval} · fonte: ${composition.source === "aliexpress_affiliate" ? "API AliExpress" : composition.source === "curated" ? "catálogo local" : composition.source}` : ""}
         </span>
       </header>
       {composition.slots.map((slot) => (
@@ -111,7 +112,14 @@ export function CompositionPanel({ composition }: { composition: Composition }) 
         <p className="font-semibold">Total das peças: {total === null ? "não confirmado (preço ausente)" : brl(total)}</p>
         {eligible ? (
           <>
-            <p className="sa-body-sm">Gerar a prévia usa {composition.generation.coins} moedas (um pedido do dia) e {chosen.length} {chosen.length === 1 ? "etapa" : "etapas"} de render (custo estimado do provedor ≈ US$ {(chosen.length * (composition.generation.estimatedProviderUsd / Math.max(composition.generation.layers, 1))).toFixed(3)}).</p>
+            <p className="sa-body-sm" data-testid="composition-cost">
+              Gerar a prévia usa {composition.generation.coins} moedas (um pedido do dia) e {chosen.length} {chosen.length === 1 ? "etapa" : "etapas"} de render
+              {composition.generation.provider ? ` (${composition.generation.provider})` : ""}.
+              {composition.generation.estimatedProviderUsd !== null
+                ? ` Custo estimado do provedor ≈ US$ ${(chosen.length * (composition.generation.estimatedProviderUsd / Math.max(composition.generation.layers, 1))).toFixed(3)}.`
+                : " O provedor cobra por uso: o custo real só é conhecido depois."}
+              {composition.generation.reservePerLayerUsd !== null ? ` Reserva máxima: US$ ${(chosen.length * composition.generation.reservePerLayerUsd).toFixed(2)} (todas as camadas são conferidas antes da primeira).` : ""}
+            </p>
             <p className="sa-caption sa-muted">{composition.generation.coinsNote} {chosen.length > 1 ? "Prévia ilustrativa: as peças são vestidas em camadas e a fidelidade de cada camada não foi medida." : ""}</p>
           </>
         ) : (

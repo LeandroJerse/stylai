@@ -41,7 +41,7 @@ import type { CatalogSource,
   StudioCapabilities,
   StudioConfig,
   UploadedImage,
-  User, Composition, CompositionCandidate, CompositionSlot, CompositionSlotId } from "./types"
+  User, Composition, CompositionCandidate, CompositionSlot, CompositionSlotId, ComposeOutcome, CompositionStages } from "./types"
 
 type Obj = Record<string, unknown>
 
@@ -358,6 +358,19 @@ const SLOT_IDS: readonly CompositionSlotId[] = ["upper", "lower", "dress", "oute
 const slotOf = (v: unknown): CompositionSlotId | null => (SLOT_IDS as readonly unknown[]).includes(v) ? (v as CompositionSlotId) : null
 
 /** Outfit composition: every link goes through parseProduct (https only); unknown slots are dropped. */
+const stagesOf = (raw: unknown): CompositionStages | null =>
+  isObj(raw) && str(raw.interpretation) && str(raw.retrieval) && str(raw.selection)
+    ? { interpretation: String(raw.interpretation), retrieval: String(raw.retrieval), selection: String(raw.selection) } : null
+
+/** P07: a "not composed" answer (no candidates) is explicit and never parsed as a look. */
+export function parseComposeOutcome(raw: unknown): ComposeOutcome {
+  const o = obj(raw, "composeOutcome")
+  if (o.composed === false) {
+    return { kind: "not_composed", stages: stagesOf(o.stages) ?? { interpretation: "unknown", retrieval: "unknown", selection: "not_run" }, message: str(o.message) ?? "Nenhum look foi montado." }
+  }
+  return { kind: "composed", composition: parseComposition(raw) }
+}
+
 export function parseComposition(raw: unknown): Composition {
   const o = obj(raw, "composition")
   const g = isObj(o.generation) ? o.generation : {}
@@ -377,6 +390,7 @@ export function parseComposition(raw: unknown): Composition {
     id: reqStr(o.id, "composition.id"),
     source: str(o.source) ?? "unknown",
     selectionMethod: o.selectionMethod === "agent" ? "agent" : "rules_fallback",
+    stages: stagesOf(o.stages),
     model: str(o.model),
     slots,
     totalPrice: money(o.totalPrice),
@@ -386,7 +400,10 @@ export function parseComposition(raw: unknown): Composition {
       blockedReason: str(g.blockedReason),
       layers: num(g.layers) ?? 0,
       render: g.render === "sequential_layers_unverified" ? "sequential_layers_unverified" : "single_garment",
-      estimatedProviderUsd: num(g.estimatedProviderUsd) ?? 0,
+      estimatedProviderUsd: num(g.estimatedProviderUsd),
+      provider: str(g.provider),
+      reservePerLayerUsd: num(g.reservePerLayerUsd),
+      maxReservedUsd: num(g.maxReservedUsd),
       coins: num(g.coins) ?? 0,
       coinsNote: str(g.coinsNote) ?? "",
     },
@@ -407,7 +424,7 @@ export function parseSearchResult(raw: unknown): SearchResult {
 
 /** Missing capabilities = the historical full contract (everything on). */
 function capabilities(raw: unknown): StudioCapabilities {
-  if (!isObj(raw)) return { mode: "full", dress: true, adjustments: true, bodyPhotoRequired: false, closet: true, searchScope: "stores", generation: true, edits: true, match: true, references: true, preferences: true, search: true, measurements: true, plans: true, candidates: true }
+  if (!isObj(raw)) return { mode: "full", dress: true, adjustments: true, bodyPhotoRequired: false, closet: true, searchScope: "stores", generation: true, edits: true, match: true, references: true, preferences: true, search: true, measurements: true, plans: true, candidates: true, composer: { mode: "rules", model: null } }
   const flag = (v: unknown) => v === true
   return {
     mode: raw.mode === "single_piece_try_on" ? "single_piece_try_on" : "full",
@@ -418,6 +435,7 @@ function capabilities(raw: unknown): StudioCapabilities {
     references: flag(raw.references), preferences: flag(raw.preferences), search: flag(raw.search),
     // Declared capabilities fail closed: a flag the server does not send is off.
     measurements: flag(raw.measurements), plans: flag(raw.plans), candidates: flag(raw.candidates),
+    composer: isObj(raw.composer) && raw.composer.mode === "agent" ? { mode: "agent", model: str(raw.composer.model) } : { mode: "rules", model: null },
   }
 }
 
