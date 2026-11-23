@@ -94,6 +94,9 @@ export async function registerSearchRoutes(app: FastifyInstance, deps: SearchDep
         source: "aliexpress_affiliate",
         catalog: "aliexpress_affiliate",
         sourceState: ae.state,
+        // Honest empty: the provider itself reported no result (resp_code 405 "The result is empty").
+        emptyReason: ae.emptyReason,
+        ...(ae.emptyReason ? { provider: { name: "aliexpress", code: ae.errorCode, requestId: ae.requestId } } : {}),
         observedAt: ae.observedAt,
         expiresAt: ae.expiresAt,
         fromCache: ae.fromCache,

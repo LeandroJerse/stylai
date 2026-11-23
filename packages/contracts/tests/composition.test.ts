@@ -73,3 +73,45 @@ describe("composition validation hardening", () => {
     expect(validateComposition(intent(), { lower: bySlot.lower }, [{ slot: "lower", productId: "l1", reason: "" }], {}, { requireAll: true }).ok).toBe(true)
   })
 })
+
+describe("per-slot queries (P10)", () => {
+  test("masculine request keeps audience, garment type and each slot's own colour", async () => {
+    const { buildSlotQuery } = await import("../src/composition")
+    const i = interpretCompositionRules("camisa masculina de linho branca e calça chino masculina azul marinho")
+    expect(i.audience).toBe("masculino")
+    const upper = i.slots.find((s) => s.slot === "upper")!, lower = i.slots.find((s) => s.slot === "lower")!
+    expect(upper.color).toBe("branco")
+    expect(lower.color).toBe("azul")
+    const qUpper = buildSlotQuery(i, "upper"), qLower = buildSlotQuery(i, "lower")
+    expect(qUpper).toContain("camisa")
+    expect(qUpper).toContain("masculina")
+    expect(qUpper).toContain("linho")
+    expect(qUpper).not.toContain("azul")
+    expect(qUpper).not.toMatch(/blusa|feminin/)
+    expect(qLower).toContain("calça")
+    expect(qLower).toContain("chino")
+    expect(qLower).toContain("masculina")
+    expect(qLower).not.toContain("branc")
+  })
+
+  test("feminine and neutral requests; dress and outer layers", async () => {
+    const { buildSlotQuery } = await import("../src/composition")
+    const f = interpretCompositionRules("vestido vermelho feminino com jaqueta jeans")
+    expect(buildSlotQuery(f, "dress")).toMatch(/^vestido .*vermelh/)
+    expect(buildSlotQuery(f, "outer")).toContain("jaqueta")
+    expect(buildSlotQuery(f, "outer")).not.toContain("vermelh")
+    const n = interpretCompositionRules("me monta uma roupa para um casamento")
+    expect(n.audience).toBeNull()
+    expect(buildSlotQuery(n, "upper")).not.toMatch(/feminin|masculin/)
+  })
+
+  test("an agent query is used only after hard sanitization and must name the slot's garment", async () => {
+    const { buildSlotQuery } = await import("../src/composition")
+    const base = interpretCompositionRules("calça masculina preta")
+    const withAgent = { ...base, slots: base.slots.map((s) => ({ ...s, query: "calça social masculina preta <script> https://x" })) }
+    const q = buildSlotQuery(withAgent, "lower")
+    expect(q).toBe("calça social masculina preta")
+    const offSlot = { ...base, slots: base.slots.map((s) => ({ ...s, query: "relógio dourado" })) }
+    expect(buildSlotQuery(offSlot, "lower")).toMatch(/^calça/)
+  })
+})

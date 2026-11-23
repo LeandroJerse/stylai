@@ -15,8 +15,8 @@ export const MAX_CANDIDATES_PER_SLOT = 12
 
 export const SLOT_LABEL: Record<SlotId, string> = { upper: "Parte de cima", lower: "Parte de baixo", dress: "Peça única", outer: "Camada externa" }
 export const SLOT_CATEGORIES: Record<SlotId, readonly string[]> = { upper: ["tops", "shirts"], lower: ["pants", "bottoms"], dress: ["dresses"], outer: ["jackets"] }
-/** Provider search keywords per slot (pt-BR). */
-export const SLOT_SEARCH_TERMS: Record<SlotId, string> = { upper: "blusa feminina", lower: "calça feminina", dress: "vestido", outer: "jaqueta feminina" }
+/** Neutral default garment per slot (P10: never a fixed audience; the request's audience is added by buildSlotQuery). */
+export const SLOT_SEARCH_TERMS: Record<SlotId, string> = { upper: "camisa", lower: "calça", dress: "vestido", outer: "jaqueta" }
 /** Render order: base garments first, outer layer last. */
 const ORDER: readonly SlotId[] = ["dress", "lower", "upper", "outer"]
 
@@ -26,8 +26,18 @@ export function slotOfCategory(category: string): SlotId | null {
 }
 export const renderOrder = (slots: readonly SlotId[]): SlotId[] => ORDER.filter((s) => slots.includes(s))
 
-export interface SlotRequest { slot: SlotId; required: boolean }
+export type Audience = "masculino" | "feminino"
+export interface SlotRequest {
+  slot: SlotId
+  required: boolean
+  /** Short store query for THIS slot (garment + audience + its own qualifiers). Sanitized again by buildSlotQuery. */
+  query?: string | null
+  /** This slot's own colour (never inherited from another piece). */
+  color?: string | null
+}
 export interface CompositionIntent {
+  /** Who the outfit is for, when the request says it. */
+  audience?: Audience | null
   slots: SlotRequest[]
   colors: string[]
   terms: string[]
@@ -48,36 +58,104 @@ export function normalizeSlots(slots: readonly SlotRequest[]): SlotRequest[] {
 }
 
 const SLOT_WORDS: Record<SlotId, string[]> = {
-  upper: ["blusa", "camisa", "camiseta", "regata", "top", "cropped", "body", "tricot", "suéter", "sueter"],
-  lower: ["calca", "saia", "short", "bermuda", "jeans", "legging"],
+  upper: ["blusa", "camisa", "camiseta", "regata", "top", "cropped", "body", "tricot", "sueter", "polo"],
+  // "jeans" is a material ("jaqueta jeans", "calça jeans"), not a garment on its own.
+  lower: ["calca", "saia", "short", "bermuda", "legging"],
   dress: ["vestido", "macacao"],
   outer: ["jaqueta", "blazer", "casaco", "cardigan", "sobretudo", "colete"],
 }
+/** Display spelling (accents) of normalized garment nouns, and their grammatical gender. */
+const GARMENT_DISPLAY: Record<string, string> = { calca: "calça", macacao: "macacão", sueter: "suéter" }
+const MASCULINE_NOUNS = new Set(["top", "cropped", "body", "tricot", "sueter", "polo", "short", "vestido", "macacao", "blazer", "casaco", "cardigan", "sobretudo", "colete"])
 const COLORS: Record<string, string[]> = {
-  preto: ["preto", "preta", "black"], branco: ["branco", "branca", "off-white", "offwhite"], azul: ["azul", "jeans"],
+  preto: ["preto", "preta", "black"], branco: ["branco", "branca", "off-white", "offwhite"], azul: ["azul", "jeans", "marinho"],
   vermelho: ["vermelho", "vermelha"], verde: ["verde"], rosa: ["rosa"], bege: ["bege", "nude", "caramelo"],
   cinza: ["cinza"], amarelo: ["amarelo", "amarela"], marrom: ["marrom"],
 }
 const OUTFIT_WORDS = ["look", "roupa", "conjunto", "composicao", "producao", "vestir", "outfit"]
+const CONNECTORS = new Set(["e", "com", "para", "pra", "ate", "mais", "num", "numa", "no", "na", "em", "sem", "por", "ou"])
+const STOP = new Set(["de", "do", "da", "um", "uma", "o", "a", "os", "as", "que", "quero", "me", "meu", "minha", "bem", "tipo", "estilo"])
+const AUDIENCE_WORDS: Record<Audience, string[]> = { masculino: ["masculino", "masculina", "homem", "homens", "masc"], feminino: ["feminino", "feminina", "mulher", "mulheres", "fem"] }
+const OCCASIONS = /(trabalho|escritorio|casamento|festa|praia|balada|jantar|academia|viagem|faculdade)/
 
-/** Deterministic interpretation (no AI): used as the explicit fallback and to bound the agent. */
+const garmentSlot = (word: string): { slot: SlotId; noun: string } | null => {
+  for (const slot of SLOT_IDS) for (const noun of SLOT_WORDS[slot]) if (word === noun || word === `${noun}s` || word === `${noun}es`) return { slot, noun }
+  return null
+}
+const colorOf = (word: string): string | null => {
+  for (const [color, forms] of Object.entries(COLORS)) if (forms.includes(word)) return color
+  return null
+}
+const audienceOf = (words: readonly string[]): Audience | null => {
+  const m = words.some((w) => AUDIENCE_WORDS.masculino.includes(w)), f = words.some((w) => AUDIENCE_WORDS.feminino.includes(w))
+  return m === f ? null : m ? "masculino" : "feminino"
+}
+const audienceWord = (audience: Audience, noun: string) =>
+  MASCULINE_NOUNS.has(noun) ? audience : audience === "masculino" ? "masculina" : "feminina"
+
+/**
+ * Deterministic interpretation (no AI): the explicit fallback and the bound for the agent. Each garment owns the
+ * words that follow it until the next garment or connector (P10): "camisa de linho branca e calça chino azul"
+ * gives upper={linho, branca} and lower={chino, azul}; colours never leak between pieces.
+ */
 export function interpretCompositionRules(text: string): CompositionIntent {
   const t = normalizeText(text.slice(0, 500))
   const words = t.split(/[^a-z0-9-]+/).filter(Boolean)
-  const has = (w: string) => words.some((x) => x === w || x.startsWith(w))
-  const slots: SlotRequest[] = SLOT_IDS.filter((slot) => SLOT_WORDS[slot].some((w) => has(normalizeText(w)))).map((slot) => ({ slot, required: true }))
-  if (!slots.length && OUTFIT_WORDS.some(has)) slots.push({ slot: "upper", required: true }, { slot: "lower", required: true })
+  const audience = audienceOf(words)
+  const found = new Map<SlotId, { noun: string; qualifiers: string[]; color: string | null }>()
+  for (let i = 0; i < words.length; i++) {
+    const g = garmentSlot(words[i]!)
+    if (!g || found.has(g.slot)) continue
+    const qualifiers: string[] = []
+    let color: string | null = null
+    for (let k = i + 1; k < words.length && k <= i + 6; k++) {
+      const w = words[k]!
+      if (garmentSlot(w) || CONNECTORS.has(w) || OUTFIT_WORDS.includes(w) || /^\d/.test(w) || OCCASIONS.test(w)) break
+      if (STOP.has(w) || AUDIENCE_WORDS.masculino.includes(w) || AUDIENCE_WORDS.feminino.includes(w) || w.length < 3) continue
+      color ??= colorOf(w)
+      if (!qualifiers.includes(w)) qualifiers.push(w)
+    }
+    found.set(g.slot, { noun: g.noun, qualifiers: qualifiers.slice(0, 4), color })
+  }
+  let slots: SlotRequest[] = [...found.entries()].map(([slot, f]) => ({
+    slot, required: true, color: f.color,
+    query: [GARMENT_DISPLAY[f.noun] ?? f.noun, ...(audience ? [audienceWord(audience, f.noun)] : []), ...f.qualifiers].join(" "),
+  }))
+  if (!slots.length && OUTFIT_WORDS.some((w) => words.includes(w))) slots = [{ slot: "upper", required: true }, { slot: "lower", required: true }]
   const budget = /(?:ate|max(?:imo)?|abaixo de|menos de|orcamento de)\s*(?:r\$)?\s*(\d{1,6}(?:[.,]\d{1,2})?)/.exec(t)
-  const colors = Object.entries(COLORS).filter(([, vs]) => vs.some((v) => words.includes(v))).map(([k]) => k)
-  const occasion = /(trabalho|escritorio|casamento|festa|praia|balada|jantar|academia|viagem|faculdade)/.exec(t)?.[1] ?? null
+  const colors = [...new Set(words.map(colorOf).filter((c): c is string => c !== null))]
+  const occasion = OCCASIONS.exec(t)?.[1] ?? null
   const avoid = [...t.matchAll(/sem ([a-z-]{3,20})/g)].map((m) => m[1]!).slice(0, 8)
-  const allWords = new Set([...Object.values(SLOT_WORDS).flat(), ...Object.values(COLORS).flat(), ...OUTFIT_WORDS].map(normalizeText))
-  const terms = [...new Set(words.filter((w) => w.length > 3 && !allWords.has(w) && !/^\d/.test(w)))].slice(0, 8)
+  const known = new Set([...Object.values(SLOT_WORDS).flat(), ...Object.values(COLORS).flat(), ...OUTFIT_WORDS, ...STOP, ...CONNECTORS,
+    ...AUDIENCE_WORDS.masculino, ...AUDIENCE_WORDS.feminino])
+  const terms = [...new Set(words.filter((w) => w.length > 3 && !known.has(w) && !/^\d/.test(w)))].slice(0, 8)
   return {
+    audience,
     slots: normalizeSlots(slots.length ? slots : [{ slot: "upper", required: true }]),
     colors, terms, occasion, budgetTotalBrl: budget ? Number(budget[1]!.replace(",", ".")) : null,
     budgetMode: budget ? "require" : "prefer", avoid,
   }
+}
+
+/** Hard sanitization of any query (agent or rules): letters only, <= 6 words, must name this slot's garment. */
+function sanitizeSlotQuery(raw: string | null | undefined, slot: SlotId): string | null {
+  if (!raw) return null
+  const tokens = raw.split(/\s+/).filter((w) => /^[\p{L}-]{2,20}$/u.test(w)).map((w) => w.toLowerCase()).slice(0, 6)
+  if (!tokens.some((w) => garmentSlot(normalizeText(w))?.slot === slot)) return null
+  return tokens.join(" ")
+}
+
+/**
+ * The store query for one slot (P10): the slot's sanitized query when it names the slot's garment; otherwise the
+ * neutral garment + the request's audience + THIS slot's colour. Never another slot's colour, never a fixed gender.
+ */
+export function buildSlotQuery(intent: CompositionIntent, slot: SlotId): string {
+  const req = intent.slots.find((s) => s.slot === slot)
+  const sanitized = sanitizeSlotQuery(req?.query, slot)
+  if (sanitized) return sanitized
+  const noun = normalizeText(SLOT_SEARCH_TERMS[slot])
+  const audience = intent.audience ?? null
+  return [SLOT_SEARCH_TERMS[slot], ...(audience ? [audienceWord(audience, noun)] : []), ...(req?.color ? [req.color] : [])].join(" ")
 }
 
 export interface CompositionCandidate {

@@ -10,7 +10,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify"
 import { z } from "zod"
 import {
   apiError, colorTagsOf, COINS_PER_REQUEST, interpretCompositionRules, MAX_CANDIDATES_PER_SLOT, normalizeSlots, normalizeText, PILOT_SELLER_NAME,
-  selectCompositionRules, SLOT_LABEL, SLOT_SEARCH_TERMS, slotOfCategory,
+  buildSlotQuery, selectCompositionRules, SLOT_LABEL, slotOfCategory,
   type CandidatesBySlot, type CatalogSourceMode, type CompositionCandidate, type CompositionChoice, type CompositionIntent, type LockedSlots, type SlotId,
 } from "@stylai/contracts"
 import type { AliExpressCatalogService } from "@stylai/commerce"
@@ -80,10 +80,13 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
       // One small search per slot, sequential (bounded: <= 3 searches + their link batches per composition).
       for (const { slot } of intent.slots) {
         if (!deps.aliexpressCatalog) { out.set(slot, { candidates: [], error: "source_not_configured" }); continue }
-        const keywords = [SLOT_SEARCH_TERMS[slot], ...intent.colors, ...intent.terms.slice(0, 2)].join(" ").slice(0, 100)
+        // P10: per-slot query (audience, garment type and THIS slot's colour; never global colours).
+        const keywords = buildSlotQuery(intent, slot)
         const res = await deps.aliexpressCatalog.search({ keywords, pageSize: 10, viewer })
         if (res.state !== "ready") { out.set(slot, { candidates: [], error: "source_unavailable" }); continue }
-        const items = res.items.filter((i) => slotOfCategory(i.category) === slot || i.category === "uncategorized")
+        // P08: only items whose title maps to this slot's garment (uncategorized = e.g. shapewear, never a candidate).
+        const items = res.items.filter((i) => slotOfCategory(i.category) === slot)
+        if (!items.length) { out.set(slot, { candidates: [], error: "no_results" }); continue }
         out.set(slot, { candidates: items.slice(0, MAX_CANDIDATES_PER_SLOT).map((i) => ({ ...presentAliExpressProduct(i), slot, generationEligible: false })), error: null })
       }
       return out
@@ -131,7 +134,8 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
     const chosen = plan.slots.map((s) => s.choice ? s.candidates.find((c) => c.id === s.choice!.productId) : null).filter((c): c is NonNullable<typeof c> => Boolean(c))
     const eligible = chosen.length > 0 && chosen.every((c) => c.generationEligible)
     return {
-      id, source: plan.source, selectionMethod: plan.selectionMethod, model: plan.model, intent: plan.intent,
+      id, composed: true, source: plan.source, selectionMethod: plan.selectionMethod, model: plan.model, intent: plan.intent,
+      stages: plan.stages ?? { interpretation: plan.interpretedBy, retrieval: "ok", selection: plan.selectionMethod },
       slots: plan.slots, totalPrice: plan.totalMinor === null ? null : { amount: plan.totalMinor / 100, currency: "BRL" },
       missingSlots: plan.missingSlots,
       generation: {
@@ -190,6 +194,23 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
         if (!piece) return reply.code(409).send(apiError("lock_unavailable", `A peça travada em "${SLOT_LABEL[slot]}" não está mais disponível. Destrave ou escolha outra.`))
         entry.candidates.unshift(piece)
       }
+      // P07: explicit stages; no candidates = no look (nothing persisted, nothing claimed).
+      const entries = [...retrieved.values()]
+      const anyCandidates = entries.some((r) => r.candidates.length > 0)
+      const failedSlots = entries.filter((r) => r.error && r.error !== "no_results").length
+      const retrieval = !anyCandidates ? (failedSlots ? "failed" : "empty") : entries.some((r) => r.candidates.length === 0) ? "partial" : "ok"
+      if (!anyCandidates) {
+        return reply.code(failedSlots ? 503 : 200).send({
+          composed: false, id: null, source,
+          stages: { interpretation: interpretedBy, retrieval, selection: "not_run" },
+          model: interpretedBy === "agent" ? deps.composer?.model ?? null : null,
+          slots: intent.slots.map(({ slot }) => ({ slot, label: SLOT_LABEL[slot], candidates: [], choice: null, error: retrieved.get(slot)?.error ?? null })),
+          agentCost: tokenCost(usage) === null ? null : { estimatedUsd: Number(tokenCost(usage)) / 1_000_000, source: "computed_from_usage" },
+          message: failedSlots
+            ? "A busca de lojas não respondeu; nenhum look foi montado e nada foi gravado."
+            : "A loja não encontrou peças para este pedido; nenhum look foi montado. Tente descrever de outro jeito.",
+        })
+      }
       const bySlot: CandidatesBySlot = Object.fromEntries([...retrieved].map(([slot, r]) => [slot, r.candidates.map(toCandidate)]))
       let choices: CompositionChoice[] = []
       let method: "agent" | "rules_fallback" = "rules_fallback"
@@ -218,6 +239,7 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
         totalMinor: choices.length && prices.every((p) => p !== null) ? prices.reduce<number>((a, b) => a + (b ?? 0), 0) : null,
         missingSlots: intent.slots.filter((s) => !choices.some((c) => c.slot === s.slot)).map((s) => s.slot),
         agentCostMicros: tokenCost(usage),
+        stages: { interpretation: interpretedBy, retrieval, selection: method },
         createdAt: new Date().toISOString(),
       }
       const id = await deps.db.call("save_look_composition", user, source, method, plan.model, JSON.parse(JSON.stringify(plan)))
@@ -251,4 +273,5 @@ const planSchema = z.object({
   slots: z.array(z.object({ slot: slotId, label: z.string(), required: z.boolean(), candidates: z.array(candidateSchema),
     choice: z.object({ slot: slotId, productId: z.string(), reason: z.string() }).nullable(), error: z.string().nullable() })),
   totalMinor: z.number().nullable(), missingSlots: z.array(slotId), agentCostMicros: z.string().nullable(), createdAt: z.string(),
+  stages: z.object({ interpretation: z.string(), retrieval: z.string(), selection: z.string() }).optional(),
 })

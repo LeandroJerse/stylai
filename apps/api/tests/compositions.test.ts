@@ -165,3 +165,36 @@ describe("composition lock and cost guards", () => {
     } finally { await t.app.close() }
   })
 })
+
+describe("composition stages are explicit (P07)", () => {
+  const emptyAliExpress = (state: "ready" | "degraded") => ({ hasTrackingId: true, findFresh: async () => null, search: async () => ({
+    state, items: [], rejectedCount: 0, links: null, trackingIdEcho: null, linkErrorCode: null, observedAt: "t", expiresAt: null, fromCache: false,
+    requestId: "r", errorKind: state === "ready" ? null : "network", errorCode: state === "ready" ? "405" : null, errorMessage: null, backoffUntil: null,
+    emptyReason: state === "ready" ? "provider_reported_empty" : null,
+  }) }) as unknown as AliExpressCatalogService
+
+  test("no candidates at all: nothing persisted, no look claimed, stages say why", async () => {
+    const t = await build({ mode: "aliexpress_affiliate", aliexpress: emptyAliExpress("ready") })
+    try {
+      const res = await post(t.app, "/v1/studio/compositions", { prompt: "camisa e calça" })
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toMatchObject({ composed: false, id: null, stages: { interpretation: "rules_fallback", retrieval: "empty", selection: "not_run" } })
+      expect(res.json().slots.every((s: { error: string }) => s.error === "no_results")).toBe(true)
+      expect(t.compositions.size).toBe(0)
+    } finally { await t.app.close() }
+    const down = await build({ mode: "aliexpress_affiliate", aliexpress: emptyAliExpress("degraded") })
+    try {
+      const res = await post(down.app, "/v1/studio/compositions", { prompt: "camisa e calça" })
+      expect(res.statusCode).toBe(503)
+      expect(res.json()).toMatchObject({ composed: false, stages: { retrieval: "failed", selection: "not_run" } })
+    } finally { await down.app.close() }
+  })
+
+  test("a composed look reports each stage", async () => {
+    const t = await build()
+    try {
+      const c = (await post(t.app, "/v1/studio/compositions", { prompt: "calça e blusa" })).json()
+      expect(c).toMatchObject({ composed: true, stages: { interpretation: "rules_fallback", retrieval: "ok", selection: "rules_fallback" } })
+    } finally { await t.app.close() }
+  })
+})

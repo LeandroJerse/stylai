@@ -163,20 +163,33 @@ describe("AliExpress service hardening", () => {
   })
 })
 
-describe("AliExpress provider backoff (P06)", () => {
-  test("after a business error, other keywords are not sent for a short bounded window; the reason is kept", async () => {
+describe("AliExpress empty result and backoff (P06, envelope diagnosed 2026-11-23)", () => {
+  test("resp_code 405 'The result is empty' is an EMPTY result (no outage, no global backoff), cached briefly per keyword", async () => {
     let clock = 1_000_000
     const { service, calls } = harness({
       [QUERY]: [{ body: { resp_result: { resp_code: 405, resp_msg: "The result is empty" }, request_id: "r1" } }, { body: queryBody([product("111")]) }],
       [LINK]: [{ body: linkBody([]) }],
     }, "stylai", () => clock)
-    const first = await service.search({ keywords: "calça chino" })
-    expect(first).toMatchObject({ state: "degraded", errorKind: "business_error", errorCode: "405", errorMessage: "The result is empty", requestId: "r1" })
-    const other = await service.search({ keywords: "camisa preta" })
-    expect(other).toMatchObject({ state: "degraded", errorCode: "405", backoffUntil: expect.any(String) })
-    expect(calls).toHaveLength(1)
-    clock += 16_000
+    const empty = await service.search({ keywords: "calça chino" })
+    expect(empty).toMatchObject({ state: "ready", items: [], emptyReason: "provider_reported_empty", errorCode: "405", errorMessage: "The result is empty", requestId: "r1", backoffUntil: null })
+    // Another keyword is NOT blocked.
     expect((await service.search({ keywords: "camisa preta" })).state).toBe("ready")
+    expect((await service.search({ keywords: "calça chino" })).fromCache).toBe(true)
     expect(calls.filter((c) => c.method === QUERY)).toHaveLength(2)
+  })
+
+  test("only a call-budget/rate refusal pauses ALL keywords for a short bounded window", async () => {
+    let clock = 1_000_000
+    let allowed = false
+    const calls: string[] = []
+    const fetch: AliExpressFetch = async (_url, init) => { calls.push(String(new URLSearchParams(init.body).get("method"))); return { ok: true, status: 200, text: async () => JSON.stringify(queryBody([product("111")])) } }
+    const client = createAliExpressAffiliateClient({ appKey: "500000", appSecret: SECRET, trackingId: null, fetch, acquire: async () => allowed })
+    const service = createAliExpressCatalogService({ client, trackingId: null, now: () => clock })
+    expect(await service.search({ keywords: "a" })).toMatchObject({ state: "degraded", errorKind: "rate_limited", backoffUntil: expect.any(String) })
+    allowed = true
+    expect((await service.search({ keywords: "b" })).state).toBe("degraded")
+    clock += 16_000
+    expect((await service.search({ keywords: "b" })).state).toBe("ready")
+    expect(calls).toHaveLength(1)
   })
 })

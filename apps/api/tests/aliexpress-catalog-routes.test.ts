@@ -105,14 +105,12 @@ describe("aliexpress_affiliate catalog mode", () => {
   })
 })
 
-test("a provider business error is reported transparently (code, request id, retry) and never as products (P06)", async () => {
+test("resp_code 405 'The result is empty' answers 200 with an honest empty result, not an outage (P06)", async () => {
   const app = await build(service({ business405: true }).aliexpressCatalog)
   try {
     const res = await search(app)
-    expect(res.statusCode).toBe(503)
-    expect(res.headers["retry-after"]).toBe("15")
-    expect(res.json()).toMatchObject({ error: { code: "source_unavailable", provider: { name: "aliexpress", kind: "business_error", code: "405", requestId: "r-405", retryAfterSeconds: 15 } } })
-    expect(res.json().error.message).toContain("405")
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ source: "aliexpress_affiliate", total: 0, items: [], emptyReason: "provider_reported_empty", provider: { code: "405", requestId: "r-405" } })
     expect(res.body).not.toContain(SECRET)
   } finally { await app.close() }
 })

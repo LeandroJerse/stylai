@@ -1,9 +1,12 @@
 # Runs scripts/check-aliexpress-access.ts with the DPAPI-protected App Secret injected ONLY into the
 # environment of this PowerShell process and its node child. The secret never appears in arguments,
 # files, history or output. Without -Live no call to AliExpress is made.
-param([switch]$Live, [string]$Keywords = 'vestido')
+# -Diagnose -Queries 'a','b' runs scripts/diagnose-aliexpress-envelope.ts (read-only, <=4 free product.query calls).
+param([switch]$Live, [string]$Keywords = 'vestido', [switch]$Diagnose, [string[]]$Queries = @(), [int]$Spacing = 20)
 $ErrorActionPreference = 'Stop'
 if ($Keywords -notmatch '^[\p{L}\p{N} -]{1,40}$') { throw 'Keywords invalidas.' }
+foreach ($q in $Queries) { if ($q -notmatch '^[\p{L}\p{N} -]{1,60}$') { throw 'Query invalida.' } }
+if ($Queries.Count -gt 4) { throw 'No maximo 4 consultas.' }
 $root = Join-Path $env:LOCALAPPDATA 'StylAI-AliExpress'
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..\..\..')
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Host 'node nao encontrado no PATH.'; exit 1 }
@@ -22,7 +25,8 @@ try {
     # The child that holds the secret must not load extra code or trust extra CAs from the local env.
     foreach ($name in 'NODE_TLS_REJECT_UNAUTHORIZED', 'NODE_OPTIONS', 'NODE_EXTRA_CA_CERTS') { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
     $nodeArgs = @('--conditions=development', '--import', 'tsx', 'scripts/check-aliexpress-access.ts')
-    if ($Live) { $nodeArgs += @('--live', $Keywords) }
+    if ($Diagnose) { $nodeArgs = @('--conditions=development', '--import', 'tsx', 'scripts/diagnose-aliexpress-envelope.ts', '--spacing', [string]$Spacing, '--') + $Queries }
+    elseif ($Live) { $nodeArgs += @('--live', $Keywords) }
     Push-Location $repo
     try { & node @nodeArgs; $code = $LASTEXITCODE } finally { Pop-Location }
     exit $code

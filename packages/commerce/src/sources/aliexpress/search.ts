@@ -20,9 +20,10 @@ export const DEFAULT_ALIEXPRESS_CACHE_TTL_MS = 5 * 60_000
 /** Failures (incl. the undocumented resp_code 405) are remembered briefly: no repeated calls during an outage. */
 export const ALIEXPRESS_NEGATIVE_TTL_MS = 30_000
 /**
- * After a business error / rate limit, NO new query is sent (any keywords) for this bounded window. The meaning of
- * resp_code 405 is undocumented (P06): it may be throttling or an empty result, so the conservative choice is a short
- * global pause instead of hammering the provider with other keywords.
+ * After a call-budget/rate refusal, NO new query is sent (any keywords) for this bounded window.
+ * resp_code 405 is NOT throttling: a read-only envelope diagnosis (2026-11-23, 4 free calls) returned
+ * resp_msg "The result is empty" for a nonsense keyword and for the failing ones, while a control query succeeded.
+ * It is handled as an empty result (it was observed to flip once for "vestido", so it is labelled, not trusted).
  */
 export const ALIEXPRESS_PROVIDER_BACKOFF_MS = 15_000
 const MAX_INDEXED_ITEMS = 2_000
@@ -47,6 +48,8 @@ export interface AliExpressSearchResult {
   errorCode: string | null
   /** Sanitized provider resp_msg (diagnostics; null when absent). */
   errorMessage: string | null
+  /** "provider_reported_empty": the provider answered 405 "The result is empty" (no outage). */
+  emptyReason: "provider_reported_empty" | null
   /** ISO time until which no new provider query is sent (null when not backing off). */
   backoffUntil: string | null
 }
@@ -99,7 +102,7 @@ export function createAliExpressCatalogService(opts: {
   }
 
   function empty(state: AliExpressSearchResult["state"], observedAt: string, extra: Partial<AliExpressSearchResult> = {}): AliExpressSearchResult {
-    return { state, items: [], rejectedCount: 0, links: null, trackingIdEcho: null, linkErrorCode: null, observedAt, expiresAt: null, fromCache: false, requestId: null, errorKind: null, errorCode: null, errorMessage: null, backoffUntil: null, ...extra }
+    return { state, items: [], rejectedCount: 0, links: null, trackingIdEcho: null, linkErrorCode: null, observedAt, expiresAt: null, fromCache: false, requestId: null, errorKind: null, errorCode: null, errorMessage: null, backoffUntil: null, emptyReason: null, ...extra }
   }
 
   async function fetchFresh(client: AliExpressAffiliateClient, query: AliExpressSearchQuery, key: string): Promise<AliExpressSearchResult> {
@@ -108,10 +111,15 @@ export function createAliExpressCatalogService(opts: {
     const pageSize = Math.min(Math.max(Math.trunc(query.pageSize ?? 20), 1), 50)
     prune(currentMs)
     const res = await client.queryProducts({ keywords: query.keywords, pageNo: 1, pageSize })
+    if (!res.ok && res.kind === "business_error" && res.code === "405") {
+      const emptyResult = empty("ready", observedAt, { requestId: res.requestId, errorCode: "405", errorMessage: res.message ?? null, emptyReason: "provider_reported_empty" })
+      negative.set(key, { result: emptyResult, untilMs: currentMs + ALIEXPRESS_NEGATIVE_TTL_MS })
+      return emptyResult
+    }
     if (!res.ok) {
       const failed = empty("degraded", observedAt, { requestId: res.requestId, errorKind: res.kind, errorCode: res.code, errorMessage: res.message ?? null })
       negative.set(key, { result: failed, untilMs: currentMs + ALIEXPRESS_NEGATIVE_TTL_MS })
-      if (res.kind === "business_error" || res.kind === "rate_limited" || res.kind === "provider_error") {
+      if (res.kind === "rate_limited") {
         const untilMs = currentMs + ALIEXPRESS_PROVIDER_BACKOFF_MS
         backoff = { untilMs, result: { ...failed, backoffUntil: new Date(untilMs).toISOString() } }
         return backoff.result
@@ -155,7 +163,7 @@ export function createAliExpressCatalogService(opts: {
     const expiresAtMs = currentMs + ttlMs
     const result: AliExpressSearchResult = {
       state: "ready", items, rejectedCount, links, trackingIdEcho, linkErrorCode, observedAt,
-      expiresAt: new Date(expiresAtMs).toISOString(), fromCache: false, requestId: res.requestId, errorKind: null, errorCode: null, errorMessage: null, backoffUntil: null,
+      expiresAt: new Date(expiresAtMs).toISOString(), fromCache: false, requestId: res.requestId, errorKind: null, errorCode: null, errorMessage: null, backoffUntil: null, emptyReason: null,
     }
     if (pages.size >= maxEntries) {
       const oldest = pages.keys().next().value
