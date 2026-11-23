@@ -23,6 +23,7 @@ Zero chamadas Anthropic, zero Segmind/fal, zero geração. Piloto intocado (0/5)
 | P09 | Parcial | Custo do agente medido por resposta (tokens + US$ via tabela versionada; Haiku US$0,10/0,50 por MTok) e limitado por janelas globais de chamadas (minuto/dia no banco, cota só no cache miss). **Pendente**: ledger persistente de custo do agente e teto diário em US$. | testes |
 | P10 | Corrigido | Consulta por slot com regras duras: público (concordância de gênero), tipo da peça e **cor do próprio slot**; nunca cores globais nem "feminina" fixo; "jeans" é material, não peça. Consulta do agente só após sanitização e se nomear a peça do slot. | `composition.test.ts` |
 | P12 (novo) | Corrigido (regras) | "me vista com roupas italianas" saía só com `upper` (consulta "camisa"): `OUTFIT_WORDS` exigia a forma exata, então "roupas"/"vista" não contavam como look completo. Agora plural e conjugações de "vestir" pedem parte de cima + parte de baixo; ocasião "jantar" detectada. Estilo ("italianas", "elegante") fica só em `terms` — nunca entra na consulta por regras. | `composition.test.ts` (P12) |
+| P13 (novo) | Corrigido + testado (mock) | Pedido natural "Me vista com roupas em estilo italiano elegante para um jantar" perdia o estilo: schema do intérprete sem campo, `terms` do agente sempre vazio, seletor recebia só ocasião. Agora: contrato explícito `style` (≤3 descritores) no intérprete (prompt `interpret/2026-11-23.2`), no plano do seletor (`select/2026-11-23.3`, que também proíbe afirmar origem no `reason`) e nas regras ("estilo italiano", "elegante" → camisa **social** / calça **alfaiataria** / blazer só em slots genéricos; peças explícitas mantêm seus qualificadores). Regra dura no código: consultas perdem só **alegações de origem** ("made in X", "importado", "fabricado em …"); a palavra de estilo "estilo italiano" é permitida. Bump de versão invalida o cache de interpretação. | `composition.test.ts` (P13), `composer.test.ts` (P13) |
 
 ## Agentes especializados (Haiku)
 
@@ -96,3 +97,25 @@ API/worker reiniciados juntos (fronteira estrita); `--composer` ligado (Haiku), 
 Resultado esperado honesto hoje: M1–M5 executáveis; M6 bloqueia geração com produtos reais da loja; M7 só com
 catálogo curado e decisão de orçamento por camada. Fallback fal **não implementado** (pendente; nunca em
 timeout/resultado desconhecido nem para contornar orçamento). P01 segue **incerto**; P11 é defeito distinto.
+
+## Harness do caso italiano (P13) — `test-results/pilot-2026-11-23/italian-flow.mjs` (ignorado pelo git)
+
+- Fluxo só por API: `sign-in` → `/studio/config` → `/catalog/source` → `/studio/compositions` → `sign-out`. **Nunca** chama
+  `/studio/generations` e não envia imagem. Credenciais **só por stdin** (JSON `{email,password}` ou duas linhas).
+- Ordem: pedido natural exato primeiro; `--compare` acrescenta o pedido detalhado (camisa de linho/calça de alfaiataria,
+  masculino, até R$ 500) só como comparação. Custo: até 2 chamadas Haiku por composição em cache miss.
+- Relatório sanitizado por lista fechada (sem token/cookie/senha/e-mail/URLs de imagem); guarda final recusa gravar se
+  detectar JWT, cookie, `Bearer`, `password` ou foto. Nunca sobrescreve uma execução anterior (sufixo com data).
+- Checks derivados do pedido: público, orçamento, peças nomeadas e total só são avaliados se o pedido os declara; senão
+  `ok:null` (n/a). Estilo/ocasião avaliados quando presentes. Origem: falha só para alegação ("made in", "importado",
+  "fabricado em") em consultas ou `reason`; títulos de anúncio com país ficam listados como **alegação não verificada**.
+- Autoteste contra servidor mock local (sem a API ativa e sem provedores): sem vazamento; n/a correto no pedido natural.
+
+```powershell
+Get-Content <arquivo-credenciais-local>.json | node test-results/pilot-2026-11-23/italian-flow.mjs            # natural
+Get-Content <arquivo-credenciais-local>.json | node test-results/pilot-2026-11-23/italian-flow.mjs --compare  # + detalhado
+```
+
+Atenção à prontidão: a API ativa (iniciada antes de P12/P13) **não** tem o contrato `style`. Sem reiniciar API/worker
+após integrar este commit, o pedido natural ainda perde o estilo (M1_style_preserved falharia por causa do runtime, não do
+código). Não há migration nova em P12/P13.

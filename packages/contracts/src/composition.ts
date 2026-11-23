@@ -47,6 +47,8 @@ export interface CompositionIntent {
   /** "require": never exceed; "prefer": rank cheaper first. */
   budgetMode: "require" | "prefer"
   avoid: string[]
+  /** P13: requested aesthetic as short descriptors ("estilo italiano", "elegante"). A look, never a claimed origin. */
+  style?: string[]
 }
 
 /** Dress replaces top + bottom; at most one item per slot and MAX_COMPOSITION_ITEMS overall. */
@@ -79,6 +81,30 @@ const isOutfitWord = (w: string): boolean => OUTFIT_WORDS.includes(w) || OUTFIT_
 const CONNECTORS = new Set(["e", "com", "para", "pra", "ate", "mais", "num", "numa", "no", "na", "em", "sem", "por", "ou"])
 const STOP = new Set(["de", "do", "da", "um", "uma", "o", "a", "os", "as", "que", "quero", "me", "meu", "minha", "bem", "tipo", "estilo"])
 const AUDIENCE_WORDS: Record<Audience, string[]> = { masculino: ["masculino", "masculina", "homem", "homens", "masc"], feminino: ["feminino", "feminina", "mulher", "mulheres", "fem"] }
+/** P13: style words -> descriptor. Formal styles also give generic slots concrete attributes (rules only). */
+const STYLE_WORDS: Record<string, string> = {
+  italiano: "estilo italiano", italiana: "estilo italiano", italianos: "estilo italiano", italianas: "estilo italiano",
+  elegante: "elegante", elegantes: "elegante", social: "social", sociais: "social", classico: "clássico", classica: "clássico",
+  sofisticado: "sofisticado", sofisticada: "sofisticado", chique: "chique", casual: "casual", minimalista: "minimalista",
+  esportivo: "esportivo", esportiva: "esportivo",
+}
+const FORMAL_STYLES = new Set(["estilo italiano", "elegante", "social", "clássico", "sofisticado", "chique"])
+const FORMAL_HINT: Partial<Record<SlotId, { noun?: string; qualifier?: string }>> = { upper: { qualifier: "social" }, lower: { qualifier: "alfaiataria" }, outer: { noun: "blazer" } }
+/** Origin claims are never searched for: a listing's origin is the seller's unverified statement. "made in X" drops X too. */
+const stripOriginClaims = (tokens: string[]): string[] => {
+  const out: string[] = []
+  for (let i = 0; i < tokens.length; i++) {
+    const w = normalizeText(tokens[i]!)
+    if (w === "made") { i += tokens[i + 1] && normalizeText(tokens[i + 1]!) === "in" ? 2 : 0; continue }
+    if (/^(importad|fabricad|produzid)[oa]s?$/.test(w) || w === "origem") {
+      // "fabricada na italia" / "importado da italia": drop the place phrase too.
+      while (tokens[i + 1] && /^(na|no|em|da|do|de)$/.test(normalizeText(tokens[i + 1]!))) i += 2
+      continue
+    }
+    out.push(tokens[i]!)
+  }
+  return out
+}
 const OCCASIONS = /(trabalho|escritorio|casamento|festa|praia|balada|jantar|academia|viagem|faculdade)/
 
 const garmentSlot = (word: string): { slot: SlotId; noun: string } | null => {
@@ -132,8 +158,9 @@ export function interpretCompositionRules(text: string): CompositionIntent {
   const known = new Set([...Object.values(SLOT_WORDS).flat(), ...Object.values(COLORS).flat(), ...OUTFIT_WORDS, ...STOP, ...CONNECTORS,
     ...AUDIENCE_WORDS.masculino, ...AUDIENCE_WORDS.feminino])
   const terms = [...new Set(words.filter((w) => w.length > 3 && !known.has(w) && !/^\d/.test(w)))].slice(0, 8)
+  const style = [...new Set(words.map((w) => STYLE_WORDS[w]).filter((x): x is string => Boolean(x)))].slice(0, 3)
   return {
-    audience,
+    audience, style,
     slots: normalizeSlots(slots.length ? slots : [{ slot: "upper", required: true }]),
     colors, terms, occasion, budgetTotalBrl: budget ? Number(budget[1]!.replace(",", ".")) : null,
     budgetMode: budget ? "require" : "prefer", avoid,
@@ -143,7 +170,7 @@ export function interpretCompositionRules(text: string): CompositionIntent {
 /** Hard sanitization of any query (agent or rules): letters only, <= 6 words, must name this slot's garment. */
 function sanitizeSlotQuery(raw: string | null | undefined, slot: SlotId): string | null {
   if (!raw) return null
-  const tokens = raw.split(/\s+/).filter((w) => /^[\p{L}-]{2,20}$/u.test(w)).map((w) => w.toLowerCase()).slice(0, 6)
+  const tokens = stripOriginClaims(raw.split(/\s+/).filter((w) => /^[\p{L}-]{2,20}$/u.test(w)).map((w) => w.toLowerCase())).slice(0, 6)
   if (!tokens.some((w) => garmentSlot(normalizeText(w))?.slot === slot)) return null
   return tokens.join(" ")
 }
@@ -156,9 +183,11 @@ export function buildSlotQuery(intent: CompositionIntent, slot: SlotId): string 
   const req = intent.slots.find((s) => s.slot === slot)
   const sanitized = sanitizeSlotQuery(req?.query, slot)
   if (sanitized) return sanitized
-  const noun = normalizeText(SLOT_SEARCH_TERMS[slot])
+  const hint = (intent.style ?? []).some((x) => FORMAL_STYLES.has(x)) ? FORMAL_HINT[slot] : undefined
+  const display = hint?.noun ?? SLOT_SEARCH_TERMS[slot]
+  const noun = normalizeText(display)
   const audience = intent.audience ?? null
-  return [SLOT_SEARCH_TERMS[slot], ...(audience ? [audienceWord(audience, noun)] : []), ...(req?.color ? [req.color] : [])].join(" ")
+  return [display, ...(audience ? [audienceWord(audience, noun)] : []), ...(hint?.qualifier ? [hint.qualifier] : []), ...(req?.color ? [req.color] : [])].join(" ")
 }
 
 export interface CompositionCandidate {

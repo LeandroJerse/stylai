@@ -131,3 +131,34 @@ describe("generic outfit requests (P12)", () => {
     expect(i.terms).toEqual(expect.arrayContaining(["italianas", "elegante"]))
   })
 })
+
+describe("style is preserved as an explicit contract, never as an origin claim (P13)", () => {
+  const NATURAL = "Me vista com roupas em estilo italiano elegante para um jantar"
+  test("rules: natural request keeps style, occasion and turns style into concrete garment attributes", async () => {
+    const { buildSlotQuery } = await import("../src/composition")
+    const i = interpretCompositionRules(NATURAL)
+    expect(i.slots.map((s) => s.slot).sort()).toEqual(["lower", "upper"])
+    expect(i.occasion).toBe("jantar")
+    expect(i.style).toEqual(expect.arrayContaining(["estilo italiano", "elegante"]))
+    expect(buildSlotQuery(i, "upper")).toBe("camisa social")
+    expect(buildSlotQuery(i, "lower")).toBe("calça alfaiataria")
+    for (const s of i.slots) expect(buildSlotQuery(i, s.slot)).not.toMatch(/made in|importad|fabricad/)
+  })
+
+  test("explicit pieces keep their own qualifiers; style hints never override them", async () => {
+    const { buildSlotQuery } = await import("../src/composition")
+    const i = interpretCompositionRules("Me vista com roupas em estilo italiano elegante para um jantar, camisa de linho clara e calça de alfaiataria, look masculino até R$ 500")
+    expect(buildSlotQuery(i, "upper")).toMatch(/^camisa masculina .*linho/)
+    expect(buildSlotQuery(i, "lower")).toMatch(/^calça masculina .*alfaiataria/)
+    expect(i).toMatchObject({ audience: "masculino", budgetTotalBrl: 500, occasion: "jantar" })
+  })
+
+  test("hard rule: origin CLAIMS are stripped from any query; a style descriptor is kept", async () => {
+    const { buildSlotQuery } = await import("../src/composition")
+    const base = interpretCompositionRules("calça masculina")
+    const q = (query: string, slot: "upper" | "lower") => buildSlotQuery({ ...base, slots: [{ slot, required: true, query }] }, slot)
+    expect(q("calça made in italy alfaiataria", "lower")).toBe("calça alfaiataria")
+    expect(q("camisa linho importada fabricada na italia", "upper")).toBe("camisa linho")
+    expect(q("camisa estilo italiano linho", "upper")).toBe("camisa estilo italiano linho")
+  })
+})

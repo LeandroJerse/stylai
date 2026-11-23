@@ -20,6 +20,7 @@ import type { MessagesClient } from "./interpreter.js"
 const slotEnum = z.enum(SLOT_IDS as unknown as [string, ...string[]])
 const intentOut = z.object({
   audience: z.enum(["masculino", "feminino"]).nullable(),
+  style: z.array(z.string().max(30)).max(3),
   slots: z.array(z.object({ slot: slotEnum, required: z.boolean(), query: z.string().max(80).nullable(), color: z.string().max(20).nullable() })).min(1).max(4),
   occasion: z.string().max(40).nullable(),
   budget_total_brl: z.number().nonnegative().max(100000).nullable(),
@@ -69,6 +70,7 @@ export function createComposer(options: { client: MessagesClient; model?: string
       const slots = normalizeSlots(data.slots.map((s) => ({ slot: s.slot as SlotId, required: s.required, query: s.query, color: s.color })))
       const intent: CompositionIntent = {
         audience: data.audience,
+        style: data.style.map((x) => x.trim().toLowerCase()).filter(Boolean),
         slots,
         colors: [...new Set(slots.map((s) => s.color).filter((c): c is string => Boolean(c)))],
         terms: [], occasion: data.occasion, budgetTotalBrl: data.budget_total_brl,
@@ -90,7 +92,7 @@ export function createComposer(options: { client: MessagesClient; model?: string
         audience: intent.audience ?? null,
         slots: intent.slots.map((s) => ({ slot: s.slot, query: s.query ?? null, color: s.color ?? null })),
         budget_total_cents: intent.budgetTotalBrl === null ? null : Math.round(intent.budgetTotalBrl * 100), budget_mode: intent.budgetMode,
-        occasion: intent.occasion, avoid: intent.avoid,
+        occasion: intent.occasion, style: intent.style ?? [], avoid: intent.avoid,
       }
       const content = [
         `Plan: ${JSON.stringify(plan)}`,
