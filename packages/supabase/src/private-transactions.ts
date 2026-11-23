@@ -2,7 +2,7 @@ import type { Json } from "./database.types.js"
 import type { DatabasePurpose } from "./private-config.js"
 
 /** Must match private.server_boundary_version() of the latest boundary migration. */
-export const privateBoundaryVersion = "20261123210932"
+export const privateBoundaryVersion = "20261123231214"
 
 // bigint inputs/outputs remain decimal text: never silently round money/fences.
 type Call<A extends unknown[], R> = { args: A; result: R }
@@ -65,6 +65,7 @@ export interface PrivateTransactions {
     renew_ai_job_lease: Call<[job: string,fence: string],boolean>
     load_ai_job: Call<[job: string,fence: string],Json|null>
     record_job_item_snapshot: Call<[job: string,fence: string,position: number,snapshot: Json],boolean>
+    check_layer_budget: Call<[job: string,fence: string,provider: string,layers: number,reserveMicros: string,pilot: string|null],Json|null>
     register_generated_asset: Call<[job: string,fence: string,objectKey: string,bytes: number,mime: string,width: number,height: number],string>
     complete_look_job: Call<[job: string,fence: string,asset: string],string|null>
     fail_look_job: Call<[job: string,fence: string,code: string],boolean>
@@ -168,6 +169,7 @@ export const privateOperations = {
     renew_ai_job_lease: transaction('renew_ai_job_lease',['uuid','bigint'],'boolean'),
     load_ai_job: transaction('load_ai_job',['uuid','bigint'],'json'),
     record_job_item_snapshot: transaction('record_job_item_snapshot',['uuid','bigint','smallint','jsonb'],'boolean'),
+    check_layer_budget: transaction('check_layer_budget',['uuid','bigint','text','integer','bigint','text'],'json'),
     register_generated_asset: transaction('register_generated_asset',['uuid','bigint','text','integer','text','integer','integer'],'uuid'),
     complete_look_job: transaction('complete_look_job',['uuid','bigint','uuid'],'nullable_uuid'),
     fail_look_job: transaction('fail_look_job',['uuid','bigint','text'],'boolean'),

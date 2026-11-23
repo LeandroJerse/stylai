@@ -59,7 +59,8 @@ export interface AliExpressProductRaw {
 
 export type AliExpressErrorKind = "configuration" | "rate_limited" | "network" | "http" | "provider_error" | "business_error" | "invalid_response"
 
-export type AliExpressFailure = { ok: false; kind: AliExpressErrorKind; code: string | null; requestId: string | null }
+/** `message`: provider resp_msg reduced to short plain text (diagnostics only; never shown verbatim to people). */
+export type AliExpressFailure = { ok: false; kind: AliExpressErrorKind; code: string | null; requestId: string | null; message?: string | null }
 
 export type AliExpressProductOutcome =
   | { ok: true; products: AliExpressProductRaw[]; pageNo: number; totalRecordCount: number | null; requestId: string | null }
@@ -74,6 +75,13 @@ type Json = Record<string, unknown>
 const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value)
 const text = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value.trim() : typeof value === "number" && Number.isFinite(value) ? String(value) : null)
 /** Provider codes are echoed to operators only after reduction to a safe token. */
+/** Plain short text only: no markup, URLs or long tokens (a key-like string is never echoed). */
+const safeMessage = (value: unknown): string | null => {
+  const raw = text(value)
+  if (!raw) return null
+  const ok = raw.length <= 80 && /^[A-Za-z0-9 .,:;_()'-]+$/.test(raw) && !/https?|www\./i.test(raw) && !/[A-Za-z0-9]{20,}/.test(raw)
+  return ok ? raw : "unrecognized"
+}
 const safeCode = (value: unknown): string | null => {
   const raw = text(value)
   return raw && /^[A-Za-z0-9_.-]{1,64}$/.test(raw) ? raw : raw ? "unrecognized" : null
@@ -93,7 +101,7 @@ function unwrap(body: Json, apiName: string): { resp: Json | null; requestId: st
     return { resp: null, requestId, error: { ok: false, kind: "invalid_response", code: null, requestId } }
   }
   const id = requestId ?? (isObject(wrapper) ? text(wrapper.request_id) : null)
-  if (text(resp.resp_code) !== "200") return { resp: null, requestId: id, error: { ok: false, kind: "business_error", code: safeCode(resp.resp_code), requestId: id } }
+  if (text(resp.resp_code) !== "200") return { resp: null, requestId: id, error: { ok: false, kind: "business_error", code: safeCode(resp.resp_code), requestId: id, message: safeMessage(resp.resp_msg) } }
   return { resp, requestId: id, error: null }
 }
 

@@ -15,13 +15,14 @@ const linkBody = { aliexpress_affiliate_link_generate_response: { resp_result: {
   { source_value: "https://pt.aliexpress.com/item/1005000000000001.html", promotion_link: "https://s.click.aliexpress.com/e/_generated" },
 ] } } } } }
 
-function service(opts: { trackingId?: string | null; fail?: boolean; empty?: boolean } = {}) {
+function service(opts: { trackingId?: string | null; fail?: boolean; empty?: boolean; business405?: boolean } = {}) {
   const methods: string[] = []
   const fetch: AliExpressFetch = async (_url, init) => {
     const method = new URLSearchParams(init.body).get("method")!
     methods.push(method)
     if (opts.fail) throw new Error(SECRET)
     const body = method === "aliexpress.affiliate.link.generate" ? linkBody
+      : opts.business405 ? { resp_result: { resp_code: 405, resp_msg: "The result is empty" }, request_id: "r-405" }
       : opts.empty ? { resp_result: { resp_code: "200", result: { products: [] } } } : queryBody
     return { ok: true, status: 200, text: async () => JSON.stringify(body) }
   }
@@ -102,6 +103,18 @@ describe("aliexpress_affiliate catalog mode", () => {
       expect(res.json()).toMatchObject({ total: 0, items: [] })
     } finally { await empty.close() }
   })
+})
+
+test("a provider business error is reported transparently (code, request id, retry) and never as products (P06)", async () => {
+  const app = await build(service({ business405: true }).aliexpressCatalog)
+  try {
+    const res = await search(app)
+    expect(res.statusCode).toBe(503)
+    expect(res.headers["retry-after"]).toBe("15")
+    expect(res.json()).toMatchObject({ error: { code: "source_unavailable", provider: { name: "aliexpress", kind: "business_error", code: "405", requestId: "r-405", retryAfterSeconds: 15 } } })
+    expect(res.json().error.message).toContain("405")
+    expect(res.body).not.toContain(SECRET)
+  } finally { await app.close() }
 })
 
 test("Estúdio config declares a live store search (not the curated catalog) when the source is a provider API", async () => {

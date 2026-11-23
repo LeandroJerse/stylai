@@ -162,3 +162,21 @@ describe("AliExpress service hardening", () => {
     expect(calls).toHaveLength(0)
   })
 })
+
+describe("AliExpress provider backoff (P06)", () => {
+  test("after a business error, other keywords are not sent for a short bounded window; the reason is kept", async () => {
+    let clock = 1_000_000
+    const { service, calls } = harness({
+      [QUERY]: [{ body: { resp_result: { resp_code: 405, resp_msg: "The result is empty" }, request_id: "r1" } }, { body: queryBody([product("111")]) }],
+      [LINK]: [{ body: linkBody([]) }],
+    }, "stylai", () => clock)
+    const first = await service.search({ keywords: "calça chino" })
+    expect(first).toMatchObject({ state: "degraded", errorKind: "business_error", errorCode: "405", errorMessage: "The result is empty", requestId: "r1" })
+    const other = await service.search({ keywords: "camisa preta" })
+    expect(other).toMatchObject({ state: "degraded", errorCode: "405", backoffUntil: expect.any(String) })
+    expect(calls).toHaveLength(1)
+    clock += 16_000
+    expect((await service.search({ keywords: "camisa preta" })).state).toBe("ready")
+    expect(calls.filter((c) => c.method === QUERY)).toHaveLength(2)
+  })
+})

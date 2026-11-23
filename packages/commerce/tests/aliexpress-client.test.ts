@@ -113,3 +113,18 @@ describe("AliExpress affiliate client", () => {
     expect(result).toEqual({ ok: false, kind: "network", code: null, requestId: null })
   })
 })
+
+describe("AliExpress business error diagnostics (P06)", () => {
+  const run = async (body: unknown) => {
+    const fetch: AliExpressFetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify(body) })
+    return createAliExpressAffiliateClient({ appKey: "500000", appSecret: SECRET, trackingId: "stylai", fetch }).queryProducts({ keywords: "calça" })
+  }
+  test("keeps a sanitized provider message for a non-200 resp_code (never secrets, URLs or markup)", async () => {
+    expect(await run({ resp_result: { resp_code: 405, resp_msg: "The result is empty" }, request_id: "r405" }))
+      .toMatchObject({ ok: false, kind: "business_error", code: "405", message: "The result is empty", requestId: "r405" })
+    const hostile = await run({ resp_result: { resp_code: 405, resp_msg: `<b>${SECRET}</b> see https://evil.test/x` } })
+    expect(JSON.stringify(hostile)).not.toContain(SECRET)
+    expect(JSON.stringify(hostile)).not.toContain("https://")
+    expect(hostile).toMatchObject({ ok: false, message: "unrecognized" })
+  })
+})

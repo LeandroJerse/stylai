@@ -19,6 +19,12 @@ import { normalizeAliExpressProduct, safeAliExpressUrl, type NormalizedAliExpres
 export const DEFAULT_ALIEXPRESS_CACHE_TTL_MS = 5 * 60_000
 /** Failures (incl. the undocumented resp_code 405) are remembered briefly: no repeated calls during an outage. */
 export const ALIEXPRESS_NEGATIVE_TTL_MS = 30_000
+/**
+ * After a business error / rate limit, NO new query is sent (any keywords) for this bounded window. The meaning of
+ * resp_code 405 is undocumented (P06): it may be throttling or an empty result, so the conservative choice is a short
+ * global pause instead of hammering the provider with other keywords.
+ */
+export const ALIEXPRESS_PROVIDER_BACKOFF_MS = 15_000
 const MAX_INDEXED_ITEMS = 2_000
 
 /** "unmatched": link.generate succeeded but no returned source_value matched a product. */
@@ -39,6 +45,10 @@ export interface AliExpressSearchResult {
   requestId: string | null
   errorKind: AliExpressErrorKind | null
   errorCode: string | null
+  /** Sanitized provider resp_msg (diagnostics; null when absent). */
+  errorMessage: string | null
+  /** ISO time until which no new provider query is sent (null when not backing off). */
+  backoffUntil: string | null
 }
 
 export interface AliExpressSearchQuery {
@@ -69,6 +79,7 @@ export function createAliExpressCatalogService(opts: {
   const inFlight = new Map<string, Promise<AliExpressSearchResult>>()
   const negative = new Map<string, { result: AliExpressSearchResult; untilMs: number }>()
   const viewers = new Map<string, Map<string, number>>()
+  let backoff: { untilMs: number; result: AliExpressSearchResult } | null = null
 
   function prune(currentMs: number) {
     for (const [k, v] of pages) if (v.expiresAtMs <= currentMs) pages.delete(k)
@@ -88,7 +99,7 @@ export function createAliExpressCatalogService(opts: {
   }
 
   function empty(state: AliExpressSearchResult["state"], observedAt: string, extra: Partial<AliExpressSearchResult> = {}): AliExpressSearchResult {
-    return { state, items: [], rejectedCount: 0, links: null, trackingIdEcho: null, linkErrorCode: null, observedAt, expiresAt: null, fromCache: false, requestId: null, errorKind: null, errorCode: null, ...extra }
+    return { state, items: [], rejectedCount: 0, links: null, trackingIdEcho: null, linkErrorCode: null, observedAt, expiresAt: null, fromCache: false, requestId: null, errorKind: null, errorCode: null, errorMessage: null, backoffUntil: null, ...extra }
   }
 
   async function fetchFresh(client: AliExpressAffiliateClient, query: AliExpressSearchQuery, key: string): Promise<AliExpressSearchResult> {
@@ -98,8 +109,13 @@ export function createAliExpressCatalogService(opts: {
     prune(currentMs)
     const res = await client.queryProducts({ keywords: query.keywords, pageNo: 1, pageSize })
     if (!res.ok) {
-      const failed = empty("degraded", observedAt, { requestId: res.requestId, errorKind: res.kind, errorCode: res.code })
+      const failed = empty("degraded", observedAt, { requestId: res.requestId, errorKind: res.kind, errorCode: res.code, errorMessage: res.message ?? null })
       negative.set(key, { result: failed, untilMs: currentMs + ALIEXPRESS_NEGATIVE_TTL_MS })
+      if (res.kind === "business_error" || res.kind === "rate_limited" || res.kind === "provider_error") {
+        const untilMs = currentMs + ALIEXPRESS_PROVIDER_BACKOFF_MS
+        backoff = { untilMs, result: { ...failed, backoffUntil: new Date(untilMs).toISOString() } }
+        return backoff.result
+      }
       return failed
     }
 
@@ -139,7 +155,7 @@ export function createAliExpressCatalogService(opts: {
     const expiresAtMs = currentMs + ttlMs
     const result: AliExpressSearchResult = {
       state: "ready", items, rejectedCount, links, trackingIdEcho, linkErrorCode, observedAt,
-      expiresAt: new Date(expiresAtMs).toISOString(), fromCache: false, requestId: res.requestId, errorKind: null, errorCode: null,
+      expiresAt: new Date(expiresAtMs).toISOString(), fromCache: false, requestId: res.requestId, errorKind: null, errorCode: null, errorMessage: null, backoffUntil: null,
     }
     if (pages.size >= maxEntries) {
       const oldest = pages.keys().next().value
@@ -161,6 +177,7 @@ export function createAliExpressCatalogService(opts: {
       if (hit && hit.expiresAtMs > now()) { remember(query.viewer, hit.result, hit.expiresAtMs); return { ...hit.result, fromCache: true } }
       const failed = negative.get(key)
       if (failed && failed.untilMs > now()) return { ...failed.result, fromCache: true }
+      if (backoff && backoff.untilMs > now()) return { ...backoff.result, fromCache: true }
       // Concurrent identical searches share one provider round trip.
       const pending = inFlight.get(key) ?? fetchFresh(opts.client, query, key).finally(() => inFlight.delete(key))
       inFlight.set(key, pending)

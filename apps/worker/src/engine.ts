@@ -230,6 +230,14 @@ export function createEngine(deps: EngineDeps) {
     if (job.photo.usable === false) throw new JobFailure("photo_removed")
     if (!config.simulatedProvider && planned.some((p) => !publiclyFetchable(p.clothImageUrl))) throw new JobFailure("garment_not_reachable_by_provider")
     if (!config.simulatedProvider && !config.pilotId) throw new JobFailure("pilot_required")
+    // P04: every layer is a separate reservation. The WHOLE chain must fit every budget scope (job, day, provider,
+    // user, pilot money and attempts) before layer 1 is paid; otherwise layer 1 could be spent and layer 2 refused.
+    if (planned.length > 1) {
+      const check = z.object({ ok: z.boolean(), limiting: z.array(z.string()) }).passthrough()
+        .safeParse(await db.call("check_layer_budget", job.id, fence, providerName, planned.length, reserveMicros.toString(), config.pilotId ?? null))
+      if (!check.success) throw new JobFailure("budget_check_unavailable")
+      if (!check.data.ok) throw new JobFailure("budget_insufficient_for_layers")
+    }
 
     const leases: PhotoRelayLease[] = []
     const intermediates: string[] = []

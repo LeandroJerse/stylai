@@ -36,6 +36,24 @@ export interface SearchDeps {
   aliexpressCatalog?: AliExpressCatalogService | null
 }
 
+const retryAfterSeconds = (until: string | null) => (until ? Math.max(1, Math.ceil((Date.parse(until) - Date.now()) / 1000)) : 30)
+
+/** Transparent failure: provider, sanitized code and request id; never products, never a synthetic substitute. */
+export function providerUnavailable(ae: { state: string; errorKind: string | null; errorCode: string | null; requestId: string | null; backoffUntil: string | null }) {
+  const retry = retryAfterSeconds(ae.backoffUntil)
+  const reason = ae.state === "not_configured" ? "a busca no AliExpress não está configurada neste servidor"
+    : ae.errorKind === "business_error" ? `o AliExpress respondeu com erro de negócio (código ${ae.errorCode ?? "?"} do provedor; significado não documentado)`
+    : ae.errorKind === "rate_limited" ? "o limite de chamadas ao AliExpress foi atingido"
+    : "o AliExpress não respondeu de forma utilizável"
+  return {
+    error: {
+      code: "source_unavailable",
+      message: `Busca de lojas indisponível: ${reason}. Nenhum catálogo sintético foi usado no lugar. Tente de novo em ${retry} s.`,
+      provider: { name: "aliexpress", kind: ae.errorKind, code: ae.errorCode, requestId: ae.requestId, retryAfterSeconds: retry },
+    },
+  }
+}
+
 /** Small page on purpose: every new search is a real provider call (plus one link.generate). */
 const ALIEXPRESS_PAGE_SIZE = 5
 
@@ -68,8 +86,9 @@ export async function registerSearchRoutes(app: FastifyInstance, deps: SearchDep
       try { ae = await deps.aliexpressCatalog.search({ keywords, pageSize: ALIEXPRESS_PAGE_SIZE, viewer }) }
       catch { return reply.code(503).send(apiError("service_unavailable", "Busca no AliExpress temporariamente indisponível. Nenhum catálogo sintético foi usado como substituto.")) }
       if (ae.state !== "ready") {
-        request.log.warn({ provider: "aliexpress", state: ae.state, errorKind: ae.errorKind, errorCode: ae.errorCode, requestId: ae.requestId }, "aliexpress search unavailable")
-        return reply.code(503).send(apiError("service_unavailable", "Busca no AliExpress temporariamente indisponível. Nenhum catálogo sintético foi usado como substituto."))
+        request.log.warn({ provider: "aliexpress", state: ae.state, errorKind: ae.errorKind, errorCode: ae.errorCode, providerMessage: ae.errorMessage,
+          requestId: ae.requestId, backoffUntil: ae.backoffUntil, fromCache: ae.fromCache }, "aliexpress search unavailable")
+        return reply.code(503).header("Retry-After", String(retryAfterSeconds(ae.backoffUntil))).send(providerUnavailable(ae))
       }
       return {
         source: "aliexpress_affiliate",

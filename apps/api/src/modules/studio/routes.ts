@@ -104,6 +104,8 @@ const failureMessages: Record<string, string> = {
   too_many_pieces: "Uma composição aceita no máximo três peças.",
   try_on_rights_revoked: "O direito de uso da imagem de uma peça foi retirado antes da geração; nada foi enviado ao provador.",
   selection_changed: "Uma peça mudou (preço, título ou link) desde o pedido; monte o look de novo.",
+  budget_insufficient_for_layers: "O orçamento disponível não cobre todas as camadas deste look; nada foi enviado ao provador. Gere com menos peças ou aguarde o operador.",
+  budget_check_unavailable: "Não conseguimos conferir o orçamento antes de gerar; nada foi enviado ao provador.",
   intermediate_output_invalid: "Uma etapa intermediária da composição devolveu imagem inválida.",
   intermediate_not_reachable_by_provider: "Uma etapa intermediária não pôde ser enviada ao provador neste ambiente.",
 }

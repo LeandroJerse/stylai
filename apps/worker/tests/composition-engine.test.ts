@@ -14,7 +14,8 @@ const piece = (n: number, slot: "lower" | "upper", category: string) => ({
   slot, position: n,
 })
 
-function harness(opts: { failLayer?: number; revokeSnapshot?: number; changedSnapshot?: number; beginFalse?: boolean; bytesOutput?: boolean } = {}) {
+function harness(opts: { failLayer?: number; revokeSnapshot?: number; changedSnapshot?: number; beginFalse?: boolean; bytesOutput?: boolean; budget?: { ok: boolean; limiting: string[] } | "unavailable" } = {}) {
+  const budgetChecks: unknown[][] = []
   const stored: string[] = []
   const removed: string[] = []
   const ops: string[] = []
@@ -34,6 +35,10 @@ function harness(opts: { failLayer?: number; revokeSnapshot?: number; changedSna
         if (opts.revokeSnapshot === args[2]) throw new PrivateDatabaseError("rejected", "SA003")
         if (opts.changedSnapshot === args[2]) throw new PrivateDatabaseError("rejected", "SA004")
         snapshots.push(Number(args[2])); return true
+      case "check_layer_budget":
+        budgetChecks.push(args)
+        if (opts.budget === "unavailable") throw new PrivateDatabaseError("unknown")
+        return { ok: true, limiting: [], max_layers: 3, needed_usd_micros: 150000, effective_ceiling_usd_micros: 2000000, ...(opts.budget ?? {}) }
       case "reserve_provider_call": { const id = `call-${String(args[6])}`; keys.set(id, String(args[6])); return id }
       case "reserve_pilot_dispatch": return { ok: true, attempt_no: 1 }
       case "begin_provider_call": return !opts.beginFalse
@@ -66,7 +71,7 @@ function harness(opts: { failLayer?: number; revokeSnapshot?: number; changedSna
     config: { ...defaultEngineConfig, provider: "fal", environment: "development", pseudonymKey: "k".repeat(32), simulatedProvider: false, pilotId: "stylai-first-real-tryon-pilot" },
     sleep: async () => {},
   })
-  return { engine, ops, settled, submits, snapshots, stored, removed }
+  return { engine, ops, settled, submits, snapshots, stored, removed, budgetChecks }
 }
 
 describe("multi-piece composition engine", () => {
@@ -111,6 +116,20 @@ describe("multi-piece composition engine", () => {
     const h = harness({ changedSnapshot: 1 })
     expect(await h.engine.processJob(JOB)).toEqual({ status: "failed", code: "selection_changed" })
     expect(h.ops).toContain("fail_look_job")
+    expect(h.submits).toHaveLength(0)
+  })
+
+  test("a chain that does not fit the budget is refused BEFORE layer 1 is paid (P04)", async () => {
+    const h = harness({ budget: { ok: false, limiting: ["job"] } })
+    expect(await h.engine.processJob(JOB)).toEqual({ status: "failed", code: "budget_insufficient_for_layers" })
+    expect(h.ops).not.toContain("reserve_provider_call")
+    expect(h.submits).toHaveLength(0)
+    expect(h.budgetChecks[0]!.slice(2, 6)).toEqual(["fal", 2, "75000", "stylai-first-real-tryon-pilot"])
+  })
+
+  test("an unavailable budget check fails closed without spending", async () => {
+    const h = harness({ budget: "unavailable" })
+    expect((await h.engine.processJob(JOB)).status).not.toBe("succeeded")
     expect(h.submits).toHaveLength(0)
   })
 
