@@ -215,3 +215,46 @@ describe("agent abstention is respected (no rules fallback re-introducing reject
     } finally { await t.app.close() }
   })
 })
+
+describe("empty answers are observable (P14)", () => {
+  const svc = (items: unknown[], over: Record<string, unknown> = {}) => ({ hasTrackingId: true, findFresh: async () => null, search: async (q: { keywords: string }) => ({
+    state: "ready", items, rejectedCount: 1, links: null, trackingIdEcho: null, linkErrorCode: null, observedAt: "t", expiresAt: null, fromCache: false,
+    requestId: `req-${q.keywords.split(" ")[0]}`, errorKind: null, errorCode: items.length ? null : "405", errorMessage: items.length ? null : "The result is empty",
+    backoffUntil: null, emptyReason: items.length ? null : "provider_reported_empty", ...over,
+  }) }) as unknown as AliExpressCatalogService
+  const item = (id: string, name: string, category: string) => ({ canonicalKey: `aliexpress:${id}`, externalProductId: id, name, category, categoryLabel: category,
+    seller: "s", sellerName: "S", source: "aliexpress", priceMinor: 10000, currency: "BRL", image: "https://ae01.alicdn.com/x.jpg", priceObservedAt: "t",
+    productUrl: "https://www.aliexpress.com/item/1.html", affiliateUrl: null, capabilities: [] })
+
+  test("provider-empty: validated intent, effective per-slot query and provenance (no secrets)", async () => {
+    const t = await build({ mode: "aliexpress_affiliate", aliexpress: svc([]) })
+    try {
+      const body = (await post(t.app, "/v1/studio/compositions", { prompt: "Me vista com roupas em estilo italiano elegante para um jantar" })).json()
+      expect(body.composed).toBe(false)
+      expect(body.intent).toMatchObject({ occasion: "jantar", style: expect.arrayContaining(["estilo italiano"]), budgetTotalBrl: null })
+      const upper = body.slots.find((s: { slot: string }) => s.slot === "upper")
+      expect(upper).toMatchObject({ error: "no_results", query: "camisa social",
+        retrieval: { provider: "aliexpress", outcome: "provider_empty", returned: 0, kept: 0, code: "405", requestId: "req-camisa", message: "The result is empty" } })
+      expect(JSON.stringify(body)).not.toMatch(/app_?secret|sign=|access_token/i)
+    } finally { await t.app.close() }
+  })
+
+  test("store returned items but none mapped to the slot: 'filtered_out', not a store-empty claim", async () => {
+    const t = await build({ mode: "aliexpress_affiliate", aliexpress: svc([item("1", "Cinta modeladora", "uncategorized"), item("2", "Relógio", "uncategorized")]) })
+    try {
+      const body = (await post(t.app, "/v1/studio/compositions", { prompt: "camisa e calça" })).json()
+      expect(body.composed).toBe(false)
+      for (const s of body.slots) expect(s.retrieval).toMatchObject({ outcome: "filtered_out", returned: 2, kept: 0 })
+    } finally { await t.app.close() }
+  })
+
+  test("a composed answer also carries each slot's effective query and provenance", async () => {
+    const t = await build({ mode: "aliexpress_affiliate", aliexpress: svc([item("1", "Camisa social", "shirts"), item("2", "Calça alfaiataria", "pants")]) })
+    try {
+      const body = (await post(t.app, "/v1/studio/compositions", { prompt: "camisa e calça" })).json()
+      expect(body.composed).toBe(true)
+      const lower = body.slots.find((s: { slot: string }) => s.slot === "lower")
+      expect(lower).toMatchObject({ query: "calça", retrieval: { outcome: "ok", returned: 2, kept: 1 } })
+    } finally { await t.app.close() }
+  })
+})

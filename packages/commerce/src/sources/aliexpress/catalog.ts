@@ -56,7 +56,16 @@ function canonicalProductUrl(raw: string | null): string | null {
 }
 
 function mapCategory(raw: AliExpressProductRaw): { id: string; label: string } {
-  const text = `${raw.secondLevelCategoryName ?? ""} ${raw.title}`.toLowerCase()
+  const title = raw.title.toLowerCase()
+  const text = `${raw.secondLevelCategoryName ?? ""} ${title}`.toLowerCase()
+  // A bundle is not a standalone garment: keep it discoverable, but never assign its full price/image to one slot.
+  const upper = /\b(camisas?|shirts?|blusas?|tops?|blouses?)\b/.test(title)
+  const lower = /\b(calças?|calcas?|pants|trousers?|shorts?|saias?|skirts?)\b/.test(title)
+  if (upper && lower && /\b(conjuntos?|sets?|two[ -]piece|2[ -]piece|duas pe[çc]as)\b/.test(title)) {
+    return { id: "outfit_sets", label: "Conjuntos (múltiplas peças)" }
+  }
+  // English "dress shirt" is a shirt, not a dress.
+  if (/\bdress shirts?\b/.test(title)) return { id: "shirts", label: "Camisas" }
   if (/\b(vestido|dress)/.test(text)) return { id: "dresses", label: "Vestidos" }
   if (/\b(jaqueta|blazer|casaco|jacket|coat)/.test(text)) return { id: "jackets", label: "Jaquetas" }
   if (/\b(calça|calca|jeans|pants|trouser)/.test(text)) return { id: "pants", label: "Calças" }

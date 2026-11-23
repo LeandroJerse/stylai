@@ -9,6 +9,19 @@ const raw = (overrides: Partial<AliExpressProductRaw> = {}): AliExpressProductRa
 })
 
 describe("AliExpress catalog normalization", () => {
+  test("distinguishes outfit sets, dress shirts and denim jackets", () => {
+    for (const [title, category] of [
+      ["Conjunto masculino camisa e calça linho", "outfit_sets"],
+      ["Men shirt and pants two piece set", "outfit_sets"],
+      ["Men dress shirt long sleeve", "shirts"],
+      ["Jaqueta jeans masculina", "jackets"],
+      ["Camisa masculina de linho", "shirts"],
+    ] as const) {
+      const result = normalizeAliExpressProduct(raw({ title, secondLevelCategoryName: "Men's Clothing" }), "t")
+      expect(result.accepted && result.item.category).toBe(category)
+      expect(result.accepted && result.item.capabilities.aiTryOn).toBe(false)
+    }
+  })
   test("keeps display/link separate from AI try-on and never invents variants", () => {
     const outcome = normalizeAliExpressProduct(raw(), "2026-11-23T00:00:00.000Z")
     expect(outcome.accepted).toBe(true)

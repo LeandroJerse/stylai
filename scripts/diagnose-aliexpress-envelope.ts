@@ -7,7 +7,8 @@
  *
  *   node --conditions=development --import tsx scripts/diagnose-aliexpress-envelope.ts --spacing 20 -- "kw one" "kw two"
  */
-import { createAliExpressAffiliateClient } from "@stylai/commerce"
+import { createAliExpressAffiliateClient, normalizeAliExpressProduct } from "@stylai/commerce"
+import { slotOfCategory } from "@stylai/contracts"
 
 const MAX_QUERIES = 4
 
@@ -25,14 +26,31 @@ async function main() {
   if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0") { console.log("TLS desativado: recusado."); process.exitCode = 2; return }
   // Tracking id deliberately NOT sent: product.query does not need it and the envelope is what we diagnose.
   const client = createAliExpressAffiliateClient({ appKey, appSecret, trackingId: null, timeoutMs: 15_000 })
-  console.log(`Diagnóstico read-only: ${keywords.length} chamada(s) product.query, espaçamento ${spacingSeconds}s, page_size 5, BRL/PT/BR, sem link.generate.`)
+  console.log(`Diagnóstico read-only: ${keywords.length} chamada(s) product.query, espaçamento ${spacingSeconds}s, page_size 10 (como a composição), BRL/PT/BR, sem link.generate.`)
   for (let i = 0; i < keywords.length; i++) {
     if (i > 0) await new Promise((r) => setTimeout(r, spacingSeconds * 1000))
     const started = Date.now()
-    const r = await client.queryProducts({ keywords: keywords[i]!, pageSize: 5 })
+    const r = await client.queryProducts({ keywords: keywords[i]!, pageSize: 10 })
     const ms = Date.now() - started
     const at = new Date().toISOString()
-    if (r.ok) console.log(`#${i + 1} ${at} "${keywords[i]}" -> ok resp_code=200 produtos=${r.products.length} total_record_count=${r.totalRecordCount ?? "n/d"} request_id=${r.requestId ?? "n/d"} ${ms}ms`)
+    if (r.ok) {
+      console.log(`#${i + 1} ${at} "${keywords[i]}" -> ok resp_code=200 produtos=${r.products.length} total_record_count=${r.totalRecordCount ?? "n/d"} request_id=${r.requestId ?? "n/d"} ${ms}ms`)
+      // P15: what the composition would keep per slot after normalization + category mapping (counts only).
+      const bySlot: Record<string, number> = {}, rejected: Record<string, number> = {}
+      for (const raw of r.products) {
+        const n = normalizeAliExpressProduct(raw, at)
+        if (!n.accepted) { rejected[n.reason] = (rejected[n.reason] ?? 0) + 1; continue }
+        const slot = slotOfCategory(n.item.category) ?? `sem_slot(${n.item.category})`
+        bySlot[slot] = (bySlot[slot] ?? 0) + 1
+      }
+      console.log(`   mapeamento: ${JSON.stringify(bySlot)} rejeitados: ${JSON.stringify(rejected)}`)
+      // Public taxonomy names + the first garment word found (which rule fired), no titles beyond 50 chars.
+      const words = /(vestido|dress|jaqueta|blazer|casaco|jacket|coat|calça|calca|jeans|pants|trouser|saia|short|bermuda|skirt|camisa|shirt|blusa|regata|cropped|top|camiseta|t-shirt|blouse)/i
+      for (const raw of r.products.slice(0, 4)) {
+        const cat = raw.secondLevelCategoryName ?? "n/d"
+        console.log(`   cat2=${JSON.stringify(cat)} casou_na_cat=${JSON.stringify(words.exec(cat.toLowerCase())?.[1] ?? null)} titulo=${JSON.stringify(raw.title.slice(0, 50))}`)
+      }
+    }
     else console.log(`#${i + 1} ${at} "${keywords[i]}" -> ${r.kind} code=${r.code ?? "n/d"} resp_msg=${JSON.stringify(r.message ?? null)} request_id=${r.requestId ?? "n/d"} ${ms}ms`)
   }
 }

@@ -79,25 +79,33 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
       - intent.avoid.filter((a) => n.includes(a)).length * 5
   }
 
-  async function retrieve(intent: CompositionIntent, viewer: string): Promise<Map<SlotId, { candidates: SlotPlan["candidates"]; error: string | null }>> {
-    const out = new Map<SlotId, { candidates: SlotPlan["candidates"]; error: string | null }>()
+  async function retrieve(intent: CompositionIntent, viewer: string): Promise<Map<SlotId, Retrieved>> {
+    const out = new Map<SlotId, Retrieved>()
     if (source === "aliexpress_affiliate") {
       // One small search per slot, sequential (bounded: <= 3 searches + their link batches per composition).
       for (const { slot } of intent.slots) {
-        if (!deps.aliexpressCatalog) { out.set(slot, { candidates: [], error: "source_not_configured" }); continue }
         // P10: per-slot query (audience, garment type and THIS slot's colour; never global colours).
         const keywords = buildSlotQuery(intent, slot)
+        if (!deps.aliexpressCatalog) { out.set(slot, { candidates: [], error: "source_not_configured", query: keywords, retrieval: null }); continue }
         const res = await deps.aliexpressCatalog.search({ keywords, pageSize: 10, viewer })
-        if (res.state !== "ready") { out.set(slot, { candidates: [], error: "source_unavailable" }); continue }
+        // P14: provenance (sanitized provider code/message and request id; never credentials or raw payloads).
+        const provenance = (outcome: RetrievalProvenance["outcome"], kept: number): RetrievalProvenance => ({
+          provider: "aliexpress", outcome, returned: res.items.length, kept, rejectedByNormalizer: res.rejectedCount,
+          code: res.errorCode, kind: res.errorKind, requestId: res.requestId, message: res.errorMessage, fromCache: res.fromCache,
+        })
+        if (res.state !== "ready") { out.set(slot, { candidates: [], error: "source_unavailable", query: keywords, retrieval: provenance("unavailable", 0) }); continue }
         // P08: only items whose title maps to this slot's garment (uncategorized = e.g. shapewear, never a candidate).
         const items = res.items.filter((i) => slotOfCategory(i.category) === slot)
-        if (!items.length) { out.set(slot, { candidates: [], error: "no_results" }); continue }
-        out.set(slot, { candidates: items.slice(0, MAX_CANDIDATES_PER_SLOT).map((i) => ({ ...presentAliExpressProduct(i), slot, generationEligible: false })), error: null })
+        if (!items.length) {
+          out.set(slot, { candidates: [], error: "no_results", query: keywords, retrieval: provenance(res.items.length ? "filtered_out" : "provider_empty", 0) })
+          continue
+        }
+        out.set(slot, { candidates: items.slice(0, MAX_CANDIDATES_PER_SLOT).map((i) => ({ ...presentAliExpressProduct(i), slot, generationEligible: false })), error: null, query: keywords, retrieval: provenance("ok", items.length) })
       }
       return out
     }
     if (source === "tiktok_shop") {
-      for (const { slot } of intent.slots) out.set(slot, { candidates: [], error: "source_not_supported_for_composition" })
+      for (const { slot } of intent.slots) out.set(slot, { candidates: [], error: "source_not_supported_for_composition", query: null, retrieval: null })
       return out
     }
     const rows = await listLocal()
@@ -105,7 +113,8 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
       const presented = rows.filter((r) => r.category && slotOfCategory(r.category.id) === slot).map((r) => presentProduct(r, base))
         .filter((p) => p.variants.some((v) => v.available) || p.availability !== "unavailable")
         .sort((a, b) => relevance(intent, b.name) - relevance(intent, a.name) || (a.price?.amount ?? Infinity) - (b.price?.amount ?? Infinity))
-      out.set(slot, { candidates: presented.slice(0, MAX_CANDIDATES_PER_SLOT).map((p) => ({ ...p, slot, generationEligible: p.tryOnReady })), error: null })
+      out.set(slot, { candidates: presented.slice(0, MAX_CANDIDATES_PER_SLOT).map((p) => ({ ...p, slot, generationEligible: p.tryOnReady })), error: null, query: null,
+        retrieval: { provider: "curated", outcome: presented.length ? "ok" : "provider_empty", returned: presented.length, kept: Math.min(presented.length, MAX_CANDIDATES_PER_SLOT), rejectedByNormalizer: 0, code: null, kind: null, requestId: null, message: null, fromCache: false } })
     }
     return out
   }
@@ -217,11 +226,14 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
           composed: false, id: null, source,
           stages: { interpretation: interpretedBy, retrieval, selection: "not_run" },
           model: interpretedBy === "agent" ? deps.composer?.model ?? null : null,
-          slots: intent.slots.map(({ slot }) => ({ slot, label: SLOT_LABEL[slot], candidates: [], choice: null, error: retrieved.get(slot)?.error ?? null })),
+          // P14: the validated intent and each slot's effective query + provenance make an empty answer diagnosable.
+          intent: observableIntent(intent),
+          slots: intent.slots.map(({ slot }) => ({ slot, label: SLOT_LABEL[slot], candidates: [], choice: null, error: retrieved.get(slot)?.error ?? null,
+            query: retrieved.get(slot)?.query ?? null, retrieval: retrieved.get(slot)?.retrieval ?? null })),
           agentCost: tokenCost(usage) === null ? null : { estimatedUsd: Number(tokenCost(usage)) / 1_000_000, source: "computed_from_usage" },
           message: failedSlots
             ? "A busca de lojas não respondeu; nenhum look foi montado e nada foi gravado."
-            : "A loja não encontrou peças para este pedido; nenhum look foi montado. Tente descrever de outro jeito.",
+            : "Não encontramos peças compatíveis para este pedido; nenhum look foi montado. Tente descrever de outro jeito.",
         })
       }
       const bySlot: CandidatesBySlot = Object.fromEntries([...retrieved].map(([slot, r]) => [slot, r.candidates.map(toCandidate)]))
@@ -249,6 +261,7 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
         slots: intent.slots.map(({ slot, required }) => ({
           slot, label: SLOT_LABEL[slot], required, candidates: retrieved.get(slot)?.candidates ?? [],
           choice: choices.find((c) => c.slot === slot) ?? null, error: retrieved.get(slot)?.error ?? null,
+          query: retrieved.get(slot)?.query ?? null, retrieval: retrieved.get(slot)?.retrieval ?? null,
         })),
         totalMinor: choices.length && prices.every((p) => p !== null) ? prices.reduce<number>((a, b) => a + (b ?? 0), 0) : null,
         missingSlots: intent.slots.filter((s) => !choices.some((c) => c.slot === s.slot)).map((s) => s.slot),
@@ -280,12 +293,35 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
   })
 }
 
+interface RetrievalProvenance {
+  provider: "aliexpress" | "curated"
+  /** ok | provider_empty (store answered nothing) | filtered_out (store answered, nothing mapped to the slot) | unavailable */
+  outcome: "ok" | "provider_empty" | "filtered_out" | "unavailable"
+  returned: number
+  kept: number
+  rejectedByNormalizer: number
+  code: string | null
+  kind: string | null
+  requestId: string | null
+  /** Sanitized provider resp_msg (client allow-list). */
+  message: string | null
+  fromCache: boolean
+}
+interface Retrieved { candidates: SlotPlan["candidates"]; error: string | null; query: string | null; retrieval: RetrievalProvenance | null }
+/** P14: the validated intent, reduced to what explains the search (no free text from the person beyond the plan). */
+const observableIntent = (intent: CompositionIntent) => ({
+  audience: intent.audience ?? null, style: intent.style ?? [], occasion: intent.occasion, colors: intent.colors,
+  budgetTotalBrl: intent.budgetTotalBrl, budgetMode: intent.budgetMode, avoid: intent.avoid,
+  slots: intent.slots.map((s) => ({ slot: s.slot, required: s.required, query: s.query ?? null, color: s.color ?? null })),
+})
+
 const candidateSchema = z.object({ id: z.string(), slot: slotId, generationEligible: z.boolean() }).passthrough()
 const planSchema = z.object({
   source: z.string(), selectionMethod: z.enum(["agent", "rules_fallback"]), interpretedBy: z.enum(["agent", "rules_fallback"]),
   model: z.string().nullable(), intent: z.unknown(),
   slots: z.array(z.object({ slot: slotId, label: z.string(), required: z.boolean(), candidates: z.array(candidateSchema),
-    choice: z.object({ slot: slotId, productId: z.string(), reason: z.string() }).nullable(), error: z.string().nullable() })),
+    choice: z.object({ slot: slotId, productId: z.string(), reason: z.string() }).nullable(), error: z.string().nullable(),
+    query: z.string().nullable().optional(), retrieval: z.unknown().optional() })),
   totalMinor: z.number().nullable(), missingSlots: z.array(slotId), agentCostMicros: z.string().nullable(), createdAt: z.string(),
   stages: z.object({ interpretation: z.string(), retrieval: z.string(), selection: z.string() }).optional(),
 })
