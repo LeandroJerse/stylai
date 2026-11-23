@@ -304,7 +304,7 @@ try {
     const title = async () => (await page.locator("#result-title").innerText()).trim()
     const next = page.locator(".sa-stagenav[data-side=next]")
     await next.waitFor()
-    check((await page.locator(".sa-stagecount").innerText()).trim() === "1 de 4", "foto do resultado: 1 look gerado + 3 sugestões")
+    check((await page.getByTestId("stage-count").innerText()).trim() === "1 de 4", "foto do resultado: 1 look gerado + 3 sugestões")
     await next.click()
     const dealing = await page.locator(".sa-stage-photo .sa-cardswap-out").count()
     await page.waitForTimeout(500)
