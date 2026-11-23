@@ -73,6 +73,9 @@ const COLORS: Record<string, string[]> = {
   cinza: ["cinza"], amarelo: ["amarelo", "amarela"], marrom: ["marrom"],
 }
 const OUTFIT_WORDS = ["look", "roupa", "conjunto", "composicao", "producao", "vestir", "outfit"]
+/** P12: plurals ("roupas", "looks") and conjugations of "vestir" ("vista", "veste", "vestindo") are whole-outfit requests. */
+const VESTIR_FORMS = new Set(["vista", "veste", "vestir", "vestindo", "vestida", "vestisse"])
+const isOutfitWord = (w: string): boolean => OUTFIT_WORDS.includes(w) || OUTFIT_WORDS.some((o) => w === `${o}s` || w === `${o}es`) || VESTIR_FORMS.has(w)
 const CONNECTORS = new Set(["e", "com", "para", "pra", "ate", "mais", "num", "numa", "no", "na", "em", "sem", "por", "ou"])
 const STOP = new Set(["de", "do", "da", "um", "uma", "o", "a", "os", "as", "que", "quero", "me", "meu", "minha", "bem", "tipo", "estilo"])
 const AUDIENCE_WORDS: Record<Audience, string[]> = { masculino: ["masculino", "masculina", "homem", "homens", "masc"], feminino: ["feminino", "feminina", "mulher", "mulheres", "fem"] }
@@ -110,7 +113,7 @@ export function interpretCompositionRules(text: string): CompositionIntent {
     let color: string | null = null
     for (let k = i + 1; k < words.length && k <= i + 6; k++) {
       const w = words[k]!
-      if (garmentSlot(w) || CONNECTORS.has(w) || OUTFIT_WORDS.includes(w) || /^\d/.test(w) || OCCASIONS.test(w)) break
+      if (garmentSlot(w) || CONNECTORS.has(w) || isOutfitWord(w) || /^\d/.test(w) || OCCASIONS.test(w)) break
       if (STOP.has(w) || AUDIENCE_WORDS.masculino.includes(w) || AUDIENCE_WORDS.feminino.includes(w) || w.length < 3) continue
       color ??= colorOf(w)
       if (!qualifiers.includes(w)) qualifiers.push(w)
@@ -121,7 +124,7 @@ export function interpretCompositionRules(text: string): CompositionIntent {
     slot, required: true, color: f.color,
     query: [GARMENT_DISPLAY[f.noun] ?? f.noun, ...(audience ? [audienceWord(audience, f.noun)] : []), ...f.qualifiers].join(" "),
   }))
-  if (!slots.length && OUTFIT_WORDS.some((w) => words.includes(w))) slots = [{ slot: "upper", required: true }, { slot: "lower", required: true }]
+  if (!slots.length && words.some(isOutfitWord)) slots = [{ slot: "upper", required: true }, { slot: "lower", required: true }]
   const budget = /(?:ate|max(?:imo)?|abaixo de|menos de|orcamento de)\s*(?:r\$)?\s*(\d{1,6}(?:[.,]\d{1,2})?)/.exec(t)
   const colors = [...new Set(words.map(colorOf).filter((c): c is string => c !== null))]
   const occasion = OCCASIONS.exec(t)?.[1] ?? null

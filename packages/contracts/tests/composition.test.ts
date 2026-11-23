@@ -115,3 +115,19 @@ describe("per-slot queries (P10)", () => {
     expect(buildSlotQuery(offSlot, "lower")).toMatch(/^calça/)
   })
 })
+
+describe("generic outfit requests (P12)", () => {
+  test("plural 'roupas' and conjugated 'vestir' ask for a full outfit, never a single top", () => {
+    for (const p of ["me vista com roupas italianas", "me vista com roupas italianas para um jantar elegante", "quero roupas para jantar", "me veste para a festa"]) {
+      expect(interpretCompositionRules(p).slots.map((s) => s.slot).sort()).toEqual(["lower", "upper"])
+    }
+    expect(interpretCompositionRules("me vista com roupas italianas para um jantar elegante").occasion).toBe("jantar")
+  })
+
+  test("style words stay out of rule queries (no invented origin such as 'Made in Italy')", async () => {
+    const { buildSlotQuery } = await import("../src/composition")
+    const i = interpretCompositionRules("me vista com roupas italianas para um jantar elegante")
+    for (const s of i.slots) expect(buildSlotQuery(i, s.slot)).not.toMatch(/ital|made in/)
+    expect(i.terms).toEqual(expect.arrayContaining(["italianas", "elegante"]))
+  })
+})

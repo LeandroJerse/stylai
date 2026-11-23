@@ -22,6 +22,7 @@ Zero chamadas Anthropic, zero Segmind/fal, zero geração. Piloto intocado (0/5)
 | P08 | Parcial | Candidatas da composição só com categoria do slot (ex.: cinta modeladora "uncategorized" excluída). Direitos de imagem e variantes reais continuam ausentes nos itens AliExpress: geração com eles segue **bloqueada** (sem inventar). | teste |
 | P09 | Parcial | Custo do agente medido por resposta (tokens + US$ via tabela versionada; Haiku US$0,10/0,50 por MTok) e limitado por janelas globais de chamadas (minuto/dia no banco, cota só no cache miss). **Pendente**: ledger persistente de custo do agente e teto diário em US$. | testes |
 | P10 | Corrigido | Consulta por slot com regras duras: público (concordância de gênero), tipo da peça e **cor do próprio slot**; nunca cores globais nem "feminina" fixo; "jeans" é material, não peça. Consulta do agente só após sanitização e se nomear a peça do slot. | `composition.test.ts` |
+| P12 (novo) | Corrigido (regras) | "me vista com roupas italianas" saía só com `upper` (consulta "camisa"): `OUTFIT_WORDS` exigia a forma exata, então "roupas"/"vista" não contavam como look completo. Agora plural e conjugações de "vestir" pedem parte de cima + parte de baixo; ocasião "jantar" detectada. Estilo ("italianas", "elegante") fica só em `terms` — nunca entra na consulta por regras. | `composition.test.ts` (P12) |
 
 ## Agentes especializados (Haiku)
 
@@ -72,3 +73,26 @@ git log --oneline a5ca3df..fix/piloto-segmind-p02-p05
   anterior até reinício coordenado. A web nova é compatível com a API antiga (capacidades ausentes falham fechado para
   "regras"; composição sem `composed` é tratada como montada, como antes).
 - Para ativar: aplicar a migration e reiniciar API/worker juntos (fronteira estrita `20261123231214`).
+
+## Caso planejado: "me vista com roupas italianas" (matriz para o Codex executar)
+
+Objetivo: estilo **italiano elegante para jantar**. "Italiano" é **estilo**, não origem: nenhuma etapa pode afirmar
+"Made in Italy"/fabricação italiana sem dado do lojista; títulos de anúncio que digam isso não são verificados.
+Geração: **não executada por mim**; Codex coordena dentro do piloto (5 tentativas / US$2).
+
+Pré-condição: código integrado (`feat/motor-first-slice` ≥ commit com P12), migration `20261123231214` aplicada e
+API/worker reiniciados juntos (fronteira estrita); `--composer` ligado (Haiku), `--catalog=aliexpress_affiliate`.
+
+| # | Etapa | Como verificar | Esperado / critério | Estado do código |
+|---|---|---|---|---|
+| M1 | Interpretação (agente) | `POST /v1/studio/compositions` → `plan.stages.interpretation`, slots e consultas | `agent`; slots upper+lower (± outer: blazer); ocasião jantar; consultas de alfaiataria/social (ex.: "camisa social", "calça alfaiataria", "blazer"); sem "italian"/"made in" nas consultas; custo Haiku registrado | implementado; só testado com mock |
+| M2 | Interpretação (fallback regras) | mesmo pedido sem agente | upper+lower, ocasião jantar, consultas neutras ("camisa", "calça") — estilo perdido, rotulado "seleção por regras" | **P12 corrigido + testado** |
+| M3 | Busca na API | `retrieval` + slots `no_results`/`source_unavailable`; resposta com `request_id`/código | candidatas por slot vindas da API AliExpress (não do catálogo local); 405 = vazio honesto | implementado; testado com mock + diagnóstico real de 405 |
+| M4 | Relevância/coordenação | inspeção humana das peças escolhidas e `reason` | peças coerentes com jantar elegante (sem moletom, cinta, acessório fora do slot); cores coordenadas; agente pode se abster | seleção testada com mock; **relevância real não medida** |
+| M5 | Links/preços reais | cada peça: `link.generate` com tracking `stylai`, preço/moeda do anúncio | link de afiliado funcional e preço exibido = preço da API no momento; sem preço inventado | implementado; atribuição de comissão **não confirmada** |
+| M6 | Elegibilidade | `generationEligible` por peça; tentativa de gerar | itens AliExpress: **inelegíveis** (sem direito de imagem/variantes) → 409 `try_on_rights_missing`, sem gasto | gate testado (rota/DB/worker) |
+| M7 | Geração | só com peças do catálogo curado com direito; preflight de camadas | com orçamento atual **só 1 camada** cabe (job US$0,60 vs 2×US$0,50) → look de 2 peças é recusado antes de gastar (`budget_insufficient_for_layers`) | preflight testado (PG17); geração real **não executada** |
+
+Resultado esperado honesto hoje: M1–M5 executáveis; M6 bloqueia geração com produtos reais da loja; M7 só com
+catálogo curado e decisão de orçamento por camada. Fallback fal **não implementado** (pendente; nunca em
+timeout/resultado desconhecido nem para contornar orçamento). P01 segue **incerto**; P11 é defeito distinto.
