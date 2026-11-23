@@ -403,3 +403,33 @@ export interface Closet {
   pieces: ClosetPiece[]
   looks: Look[]
 }
+
+/* ----------------------------------------------------------------- outfit composition */
+export type CompositionSlotId = "upper" | "lower" | "dress" | "outer"
+export interface CompositionCandidate { product: Product; slot: CompositionSlotId; generationEligible: boolean }
+export interface CompositionSlot {
+  slot: CompositionSlotId
+  label: string
+  candidates: CompositionCandidate[]
+  choice: { productId: string; reason: string } | null
+  error: string | null
+}
+export interface Composition {
+  id: string
+  source: string
+  /** "agent" = chosen by the AI composer and revalidated by the server; "rules_fallback" = deterministic rules. */
+  selectionMethod: "agent" | "rules_fallback"
+  model: string | null
+  slots: CompositionSlot[]
+  totalPrice: Money | null
+  missingSlots: CompositionSlotId[]
+  generation: {
+    eligible: boolean
+    blockedReason: string | null
+    layers: number
+    render: "sequential_layers_unverified" | "single_garment"
+    estimatedProviderUsd: number
+    coins: number
+    coinsNote: string
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-11-22T16:53:10.377Z",
+  "target": "supabase_db_stylai-local",
+  "applied": [
+    "20261122163645_account_deletion_asset_purge.sql",
+    "20261122164614_privacy_completion_guard.sql",
+    "20261122164748_tiktok_revocation_gate.sql"
+  ],
+  "hashes": {
+    "20261122163645_account_deletion_asset_purge.sql": "fb4c145dea65acc59eae57135e55362d78e232fa7367dc98115a1b1227263c03",
+    "20261122164614_privacy_completion_guard.sql": "36b8e1b839c5514c71afeea7b5ab208681ca48dcec7af3c3ed71d32388256093",
+    "20261122164748_tiktok_revocation_gate.sql": "1296d0412685bab3fffb91a319fea737f83945af96159dbb709f06b727495bea"
+  },
+  "before": {
+    "users": 43,
+    "assets": 157,
+    "jobs": 61
+  },
+  "after": {
+    "users": 43,
+    "assets": 157,
+    "jobs": 61
+  },
+  "realDeletionExecuted": false
+}

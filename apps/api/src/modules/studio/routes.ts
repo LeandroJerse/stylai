@@ -12,7 +12,7 @@
 import { createHash } from "node:crypto"
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify"
 import { z } from "zod"
-import { apiError, CATEGORY_GROUP, COIN_UNIT, COINS_PER_REQUEST, coinsFromRequests, PLAN_COINS, PLAN_LABEL } from "@stylai/contracts"
+import { apiError, CATEGORY_GROUP, COIN_UNIT, COINS_PER_REQUEST, coinsFromRequests, MAX_COMPOSITION_ITEMS, PLAN_COINS, PLAN_LABEL, renderOrder, slotOfCategory, type SlotId } from "@stylai/contracts"
 import { PrivateDatabaseError, type PrivateDatabase } from "@stylai/supabase"
 import { signMediaUrl, type SessionKeys } from "../auth/session-crypto.js"
 import { displayImageUrl } from "../catalog/routes.js"
@@ -35,6 +35,8 @@ export interface StudioDeps {
    * presented as a real try-on.
    */
   generationMode?: "simulated" | "real" | "disabled"
+  /** "stores" when Procurar queries a provider API (TikTok Shop, AliExpress); default curated catalog. */
+  searchScope?: "curated_catalog" | "stores"
   /** Real mode only: what one generation calls and its estimated cost (shown before the user confirms). */
   realProvider?: { provider: string; model: string; callsPerGeneration: number; estimatedUsdPerCall: number; maxUsdPerCall: number }
 }
@@ -46,6 +48,15 @@ const contractBody = z.object({
   prompt: z.string().max(500).optional(), referenceIds: z.array(z.string()).max(6).optional(),
   preferenceId: z.string().nullable().optional(), rules: z.unknown().optional(),
 }).strict()
+const slotId = z.enum(["upper", "lower", "dress", "outer"])
+const compositionBody = z.object({
+  compositionId: uuid,
+  choices: z.array(z.object({ slot: slotId, productId: z.string().min(1).max(200), variantId: uuid.nullable().optional() })).min(1).max(3),
+}).strict()
+/** Stored plan subset the generation route trusts (written by the server itself). */
+const storedPlan = z.object({ plan: z.object({ slots: z.array(z.object({
+  slot: slotId, candidates: z.array(z.object({ id: z.string(), generationEligible: z.boolean() }).passthrough()),
+}).passthrough()) }).passthrough() }).passthrough()
 const tryOnBody = z.object({ sourceLookId: uuid, productIds: z.array(uuid).max(6), variantId: uuid.nullable().optional() }).strict()
 const idempotencyKey = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/)
 
@@ -82,13 +93,28 @@ const failureMessages: Record<string, string> = {
   generation_needs_reconciliation: "A geração foi interrompida e está em conferência.",
   provider_failed: "O provador não conseguiu gerar esta prova.",
   output_invalid: "O provador devolveu uma imagem inválida.",
+  pilot_required: "O piloto pago não está configurado neste ambiente.",
+  pilot_pilot_paused: "O piloto real está pausado pelo operador.",
+  pilot_uncertain_outcome: "O piloto foi pausado até a conferência de uma tentativa anterior.",
+  pilot_in_flight: "Já existe uma geração real do piloto em andamento. Aguarde concluir.",
+  pilot_max_attempts_reached: "O limite total de tentativas do piloto foi atingido.",
+  pilot_budget_exhausted: "O limite total de orçamento do piloto foi atingido.",
+  pilot_user_not_allowed: "Esta conta não faz parte do piloto real atual.",
+  pilot_item_not_allowed: "Esta peça não pertence ao catálogo autorizado do piloto real.",
+  too_many_pieces: "Uma composição aceita no máximo três peças.",
+  try_on_rights_revoked: "O direito de uso da imagem de uma peça foi retirado antes da geração; nada foi enviado ao provador.",
+  selection_changed: "Uma peça mudou (preço, título ou link) desde o pedido; monte o look de novo.",
+  intermediate_output_invalid: "Uma etapa intermediária da composição devolveu imagem inválida.",
+  intermediate_not_reachable_by_provider: "Uma etapa intermediária não pôde ser enviada ao provador neste ambiente.",
 }
 const FRAMING_MESSAGE = "Sua foto de frente aprovada não mostra o corpo inteiro: ela serve só para peças de cima. Para calças, saias e vestidos, envie no Perfil uma foto de corpo inteiro."
-const steps: Record<string, string> = { queued: "Na fila", running: "Vestindo a peça escolhida" }
+const steps: Record<string, string> = { queued: "Na fila", running: "Vestindo as peças escolhidas" }
 
 function presentJob(row: z.infer<typeof jobRow>) {
   const base = failureMessages[row.failure_code ?? ""]
-    ?? (row.failure_code?.startsWith("provider_rejected") ? "O provador recusou o pedido." : "Não foi possível gerar o look.")
+    ?? (row.failure_code?.startsWith("provider_rejected") ? "O provador recusou o pedido."
+      : row.failure_code?.startsWith("provider_failed_layer_") ? `O provador falhou na camada ${row.failure_code.slice(-1)} da composição; nenhuma versão foi criada.`
+      : "Não foi possível gerar o look.")
   return {
     id: row.id,
     kind: row.parent_version_id ? "tryon" : "generate",
@@ -109,35 +135,49 @@ function presentJob(row: z.infer<typeof jobRow>) {
   }
 }
 
+const itemSnapshot = snapshot.extend({ slot: z.string().nullable().optional() })
+type ItemSnapshot = z.infer<typeof itemSnapshot>
+
+function presentPiece(s: ItemSnapshot, id: string, variantId: string | null, base: string, warnings: string[]) {
+  return {
+    role: "chosen",
+    slot: s.slot ?? null,
+    warnings,
+    product: {
+      id, name: s.name, category: null,
+      partner: { id: s.source, name: s.partner },
+      price: s.price_minor == null ? null : { amount: s.price_minor / 100, currency: s.currency ?? "BRL" },
+      images: s.garment_image_url ? [{ url: displayImageUrl(s.garment_image_url, base), alt: s.name }] : [],
+      variants: s.variant_label && variantId ? [{ id: variantId, label: s.variant_label, available: true }] : [],
+      availability: "unknown",
+      updatedAt: s.source_updated_at ?? null,
+      links: { productUrl: s.product_url ?? null, affiliateUrl: null },
+    },
+  }
+}
+
 function presentLook(v: z.infer<typeof versionRow>, base: string, keys: SessionKeys, user: string) {
   const s = v.selection_snapshot
+  const items = z.array(itemSnapshot).safeParse((s as { items?: unknown }).items)
+  const multi = items.success && items.data.length > 1
   const warnings = [
     ...(s.visual_fidelity !== "verified" ? ["Aparência no render não verificada"] : []),
     ...(s.link_verification !== "verified" ? ["Link não verificado"] : []),
     ...(s.catalog_kind === "curated" ? ["Catálogo curado"] : []),
     ...(s.fixture === true ? ["Produto de teste (não é oferta real; sem estoque nem link)"] : []),
     ...(s.render_mode === "simulated" ? ["Imagem simulada para teste, não gerada pelo provador real"] : []),
+    ...(multi ? ["Prévia ilustrativa: composição por camadas sem fidelidade medida"] : []),
   ]
   return {
     id: v.id,
-    title: s.name,
+    title: multi ? items.data.map((i) => i.name).join(" + ") : s.name,
     note: null,
     image: { url: signMediaUrl(base, keys, "look", v.id, user), width: v.image?.width ?? null, height: v.image?.height ?? null, alt: `Prévia com ${s.name}` },
     imageAvailable: v.image !== null,
-    pieces: [{
-      role: "chosen",
-      warnings,
-      product: {
-        id: v.product_id, name: s.name, category: null,
-        partner: { id: s.source, name: s.partner },
-        price: s.price_minor == null ? null : { amount: s.price_minor / 100, currency: s.currency ?? "BRL" },
-        images: s.garment_image_url ? [{ url: displayImageUrl(s.garment_image_url, base), alt: s.name }] : [],
-        variants: s.variant_label ? [{ id: v.variant_id, label: s.variant_label, available: true }] : [],
-        availability: "unknown",
-        updatedAt: s.source_updated_at ?? null,
-        links: { productUrl: s.product_url ?? null, affiliateUrl: null },
-      },
-    }],
+    // Pieces frozen at generation time (one-piece looks keep the version's own product).
+    pieces: items.success && items.data.length
+      ? items.data.map((item, i) => presentPiece(item, i === 0 ? v.product_id : `${v.id}:${i + 1}`, i === 0 ? v.variant_id : null, base, warnings))
+      : [presentPiece(s, v.product_id, v.variant_id, base, warnings)],
     prompt: null,
     origin: v.parent_version_id ? "tryon" : "generate",
     version: v.version,
@@ -158,6 +198,7 @@ function dbFailure(reply: FastifyReply, error: unknown) {
     if (error.sqlState === "42501") return reply.code(403).send(apiError("forbidden", "Foto, consentimento ou versão indisponível para esta conta."))
     // Raised atomically by enqueue_look_job (the API pre-check only explains).
     if (error.sqlState === "SA001") return reply.code(409).send(apiError("photo_framing_insufficient", FRAMING_MESSAGE))
+    if (error.sqlState === "SA003") return reply.code(409).send(apiError("try_on_rights_missing", "Uma das peças não tem imagem autorizada para o provador (direito de uso não comprovado). Troque a peça ou gere sem ela."))
     if (error.sqlState === "SA002") return reply.code(409).send(apiError("photo_revalidation_required", "Atualizamos o validador de fotos. No Perfil, toque em “Tentar validar de novo” na foto de frente."))
   }
   return reply.code(503).send(apiError("service_unavailable", "Serviço temporariamente indisponível."))
@@ -207,25 +248,102 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
     }
   }
 
-  const singlePiece = (reply: FastifyReply) =>
-    reply.code(422).send(apiError("single_piece_only", "Nesta fase o provador veste exatamente uma peça do catálogo por vez."))
+  type Piece = { slot: SlotId; productId: string; variantId: string | null }
+
+  /** Pieces from catalog ids (no composition): slot derived from each product's category. */
+  async function piecesFromCatalog(ids: readonly string[]): Promise<Piece[] | null> {
+    const out: Piece[] = []
+    for (const id of ids) {
+      const p = z.object({ category: z.object({ id: z.string() }).nullable() }).passthrough().nullable().safeParse(await deps.db.call("read_catalog_product", id))
+      const slot = p.success && p.data?.category ? slotOfCategory(p.data.category.id) : null
+      if (!slot || out.some((x) => x.slot === slot)) return null
+      out.push({ slot, productId: id, variantId: null })
+    }
+    return out
+  }
+
+  async function enqueueComposition(request: FastifyRequest, reply: FastifyReply, user: string, input: { pieces: Piece[]; parent: string | null; compositionId: string | null }) {
+    const key = idempotencyKey.safeParse(request.headers["idempotency-key"])
+    if (!key.success) return reply.code(400).send(apiError("validation", "Cabeçalho Idempotency-Key ausente ou inválido."))
+    if (input.pieces.length < 1 || input.pieces.length > MAX_COMPOSITION_ITEMS) return reply.code(422).send(apiError("validation", "Escolha de uma a três peças."))
+    const ordered = renderOrder(input.pieces.map((x) => x.slot)).map((slot) => input.pieces.find((x) => x.slot === slot)!)
+    const hash = createHash("sha256").update(JSON.stringify({ v: 2, pieces: ordered, parent: input.parent, composition: input.compositionId })).digest("hex")
+    try {
+      const active = await deps.db.call("read_active_ai_job", user)
+      if (!active) {
+        const consent = z.object({ policy_version: z.string() }).nullable().parse(await deps.db.call("read_photo_consent", user))
+        if (consent?.policy_version !== deps.photoPolicyVersion) return reply.code(403).send(apiError("consent_required", "Aceite o termo de uso da foto para usar o provador."))
+        const photos = z.array(z.object({ angle: z.string(), state: z.string(), validation: z.unknown().optional() })).parse((await deps.db.call("list_body_photos", user)) ?? [])
+        const front = photos.find((p) => p.angle === "front" && p.state === "ready")
+        if (!front) return reply.code(409).send(apiError("photo_required", "Adicione no Perfil uma foto de frente aprovada antes de gerar."))
+        const supports = z.object({ supports: z.object({ upper: z.boolean(), lower: z.boolean(), dress: z.boolean() }) }).safeParse(front.validation)
+        const groups = ordered.map((x) => (x.slot === "outer" ? "upper" : x.slot))
+        if (!supports.success || groups.some((g) => supports.data.supports[g] !== true)) return reply.code(409).send(apiError("photo_framing_insufficient", FRAMING_MESSAGE))
+      }
+      const items = ordered.map((x) => ({ slot: x.slot, product_id: x.productId, variant_id: x.variantId }))
+      const jobId = await deps.db.call("enqueue_composition_job", user, key.data, hash, deps.photoPolicyVersion, items, input.parent, input.compositionId)
+      return reply.code(202).send(presentJob(jobRow.parse(await deps.db.call("read_ai_job", user, jobId))))
+    } catch (error) {
+      if (error instanceof PrivateDatabaseError && error.sqlState === "23514") {
+        const a = z.object({ allowance: z.number(), reserved: z.number(), spent: z.number() }).safeParse(await deps.db.call("read_ai_allowance", user).catch(() => null))
+        if (a.success && a.data.reserved + a.data.spent >= a.data.allowance) {
+          return reply.code(402).send(apiError("insufficient_tokens", `Suas moedas de hoje acabaram (cada geração usa ${COINS_PER_REQUEST}). O saldo renova à meia-noite (UTC).`))
+        }
+      }
+      return dbFailure(reply, error)
+    }
+  }
+
+  /** Composition confirmed by the person: every chosen id must be a generation-eligible candidate of its slot. */
+  async function piecesFromComposition(user: string, compositionId: string, choices: { slot: SlotId; productId: string; variantId?: string | null }[]): Promise<Piece[] | "not_found" | "invalid" | "blocked"> {
+    const raw = await deps.db.call("read_look_composition", user, compositionId)
+    const plan = storedPlan.safeParse(raw)
+    if (!plan.success) return "not_found"
+    const out: Piece[] = []
+    for (const choice of choices) {
+      const slot = plan.data.plan.slots.find((x) => x.slot === choice.slot)
+      const cand = slot?.candidates.find((c) => c.id === choice.productId)
+      if (!cand || out.some((x) => x.slot === choice.slot)) return "invalid"
+      if (!cand.generationEligible || !uuid.safeParse(cand.id).success) return "blocked"
+      // The person's size choice (validated by the database against the product); null only when one size exists.
+      out.push({ slot: choice.slot, productId: cand.id, variantId: choice.variantId ?? null })
+    }
+    return out
+  }
+
+  async function routeComposition(request: FastifyRequest, reply: FastifyReply, user: string, body: z.infer<typeof compositionBody>, parent: string | null) {
+    const pieces = await piecesFromComposition(user, body.compositionId, body.choices)
+    if (pieces === "not_found") return reply.code(404).send(apiError("not_found", "Composição não encontrada. Monte o look de novo."))
+    if (pieces === "invalid") return reply.code(422).send(apiError("validation", "As peças escolhidas não pertencem a esta composição."))
+    if (pieces === "blocked") return reply.code(409).send(apiError("try_on_rights_missing", "Esta composição tem peças sem direito de uso de imagem para o provador (ex.: AliExpress). A pesquisa e os links continuam disponíveis; a geração com essas peças está bloqueada."))
+    return enqueueComposition(request, reply, user, { pieces, parent, compositionId: body.compositionId })
+  }
 
   app.post("/v1/studio/generations", async (request, reply) => {
     const user = await actor(request, reply); if (!user) return reply
+    const composed = compositionBody.safeParse(request.body)
+    if (composed.success) return routeComposition(request, reply, user, composed.data, null)
     const slice = sliceBody.safeParse(request.body)
     if (slice.success) return enqueue(request, reply, user, { productId: slice.data.productId, variantId: slice.data.variantId ?? null, parent: slice.data.parentVersionId ?? null })
     const contract = contractBody.safeParse(request.body)
     if (!contract.success) return reply.code(400).send(apiError("validation", "Escolha uma peça do catálogo."))
-    if (contract.data.productIds.length !== 1) return singlePiece(reply)
-    return enqueue(request, reply, user, { productId: contract.data.productIds[0]!, variantId: contract.data.variantId ?? null, parent: null })
+    if (contract.data.productIds.length === 1) return enqueue(request, reply, user, { productId: contract.data.productIds[0]!, variantId: contract.data.variantId ?? null, parent: null })
+    const pieces = await piecesFromCatalog(contract.data.productIds)
+    if (!pieces) return reply.code(422).send(apiError("validation", "Escolha no máximo uma peça por parte do corpo (cima, baixo, peça única, camada externa)."))
+    return enqueueComposition(request, reply, user, { pieces, parent: null, compositionId: null })
   })
 
   app.post("/v1/studio/try-ons", async (request, reply) => {
     const user = await actor(request, reply); if (!user) return reply
+    // Swapping a piece of a composition re-renders the WHOLE chain (outer layers depend on inner ones).
+    const composed = compositionBody.extend({ sourceLookId: uuid }).safeParse(request.body)
+    if (composed.success) return routeComposition(request, reply, user, composed.data, composed.data.sourceLookId)
     const body = tryOnBody.safeParse(request.body)
     if (!body.success) return reply.code(400).send(apiError("validation", "Escolha o look de origem e a nova peça."))
-    if (body.data.productIds.length !== 1) return singlePiece(reply)
-    return enqueue(request, reply, user, { productId: body.data.productIds[0]!, variantId: body.data.variantId ?? null, parent: body.data.sourceLookId })
+    if (body.data.productIds.length === 1) return enqueue(request, reply, user, { productId: body.data.productIds[0]!, variantId: body.data.variantId ?? null, parent: body.data.sourceLookId })
+    const pieces = await piecesFromCatalog(body.data.productIds)
+    if (!pieces) return reply.code(422).send(apiError("validation", "Escolha no máximo uma peça por parte do corpo."))
+    return enqueueComposition(request, reply, user, { pieces, parent: body.data.sourceLookId, compositionId: null })
   })
 
   app.get<{ Params: { id: string } }>("/v1/studio/jobs/:id", async (request, reply) => {
@@ -310,7 +428,7 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
     sizes: { top: [], bottom: [], shoes: [] },
     // What the engine really does today. The Estúdio keeps its layout and marks the rest as unavailable.
     capabilities: {
-      mode: "single_piece_try_on", search: true, searchScope: "curated_catalog", dress: true, adjustments: false,
+      mode: "single_piece_try_on", search: true, searchScope: deps.searchScope ?? "curated_catalog", dress: true, adjustments: false,
       bodyPhotoRequired: true, closet: false, generation: deps.generationEnabled, edits: false, match: false, references: false, preferences: false,
       // Not offered by this engine: the front sends no request for them (QA-010).
       measurements: false, plans: false, candidates: false,

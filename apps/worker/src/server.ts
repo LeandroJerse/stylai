@@ -1,10 +1,14 @@
 import { readServiceConfig } from "@stylai/config"
-import { createOtlpExporter, createSegmindClient, readLangfuseConfig } from "@stylai/ai"
+import {
+  createFalClient, createOtlpExporter, createSegmindClient, FAL_FASHN_MODEL, FAL_IMAGE_APPS_MODEL, readLangfuseConfig,
+  type FalClient, type FalTryOnModel,
+} from "@stylai/ai"
 import {
   createAdminClient, createLocalObjectStore, createPrivateDatabase, createSupabaseObjectStore, readPrivateDatabaseConfig, readSupabaseConfig,
 } from "@stylai/supabase"
 import { buildWorkerServer, createWorkerLoop } from "./app.js"
 import { createEngine } from "./engine.js"
+import { createCloudflaredPhotoRelay } from "./photo-relay.js"
 import { createPurger } from "./purge.js"
 import { flushTelemetryOnce } from "./telemetry-flush.js"
 import { readWorkerConfig } from "./worker-config.js"
@@ -27,11 +31,24 @@ const segmind = runtime.segmind.simulated
   : runtime.paidCallsEnabled && runtime.segmind.apiKey
     ? createSegmindClient({ apiKey: runtime.segmind.apiKey, model: runtime.segmind.model, baseUrl: runtime.segmind.baseUrl })
     : null
+const fal = runtime.fal.simulated
+  ? createFalClient({ apiKey: "simulator-no-key", model: runtime.fal.model, baseUrl: runtime.fal.baseUrl, fashnMode: runtime.fal.fashnMode })
+  : runtime.paidCallsEnabled && runtime.fal.apiKey
+    ? createFalClient({ apiKey: runtime.fal.apiKey, model: runtime.fal.model, baseUrl: runtime.fal.baseUrl, fashnMode: runtime.fal.fashnMode })
+    : null
+const falReconcilers: Partial<Record<FalTryOnModel, FalClient>> = runtime.fal.apiKey
+  ? {
+      [FAL_FASHN_MODEL]: createFalClient({ apiKey: runtime.fal.apiKey, model: FAL_FASHN_MODEL, baseUrl: runtime.fal.baseUrl }),
+      [FAL_IMAGE_APPS_MODEL]: createFalClient({ apiKey: runtime.fal.apiKey, model: FAL_IMAGE_APPS_MODEL, baseUrl: runtime.fal.baseUrl }),
+    }
+  : {}
 const langfuse = readLangfuseConfig(process.env)
 const exporter = langfuse ? createOtlpExporter(langfuse) : null
 
+const activeSimulated = runtime.provider === "fal" ? runtime.fal.simulated : runtime.segmind.simulated
+const photoRelay = runtime.photoRelay === "cloudflared" && !activeSimulated ? createCloudflaredPhotoRelay() : null
 const engine = db && runtime.engine.pseudonymKey
-  ? createEngine({ db, store, segmind, config: { ...runtime.engine, pseudonymKey: runtime.engine.pseudonymKey } })
+  ? createEngine({ db, store, segmind, fal, falReconcilers, photoRelay, config: { ...runtime.engine, pseudonymKey: runtime.engine.pseudonymKey } })
   : null
 const loop = createWorkerLoop({
   engine,
@@ -45,8 +62,10 @@ const loop = createWorkerLoop({
 
 // Presence only, never values.
 console.log(JSON.stringify({
-  worker: "starting", database: Boolean(db), objectStore: store.kind, paidCallsEnabled: runtime.paidCallsEnabled,
+  worker: "starting", database: Boolean(db), objectStore: store.kind, provider: runtime.provider, paidCallsEnabled: runtime.paidCallsEnabled,
   segmindKey: Boolean(runtime.segmind.apiKey), segmindActive: Boolean(segmind), segmindSimulated: runtime.segmind.simulated,
+  falKey: Boolean(runtime.fal.apiKey), falActive: Boolean(fal), falModel: runtime.fal.model, falSimulated: runtime.fal.simulated,
+  photoRelay: runtime.photoRelay,
   langfuse: Boolean(exporter), telemetryEnvironment: runtime.engine.telemetryEnvironment,
   pseudonymKey: Boolean(runtime.engine.pseudonymKey), consuming: Boolean(engine),
 }))

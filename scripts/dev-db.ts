@@ -65,12 +65,16 @@ type Entry = z.infer<typeof entry>
 async function testCatalogEntries(edgeCases: boolean): Promise<Entry[]> {
   // Main test catalog; --edge-cases adds the synthetic failure/no-price/display-only/sold-out items (tests only).
   const items = testCatalogItems({ edgeCases })
-  return items.flatMap((i: NormalizedCatalogItem) => i.variants.map((v) => ({
-    source: i.source as Entry["source"], seller: i.seller, externalProductId: i.externalProductId, externalVariantId: v.externalVariantId,
-    category: i.category, categoryLabel: i.categoryLabel, name: i.name, variantLabel: v.label, variantAvailable: v.available === true,
-    sellerName: i.sellerName, priceMinor: i.priceMinor, currency: i.currency, priceObservedAt: i.priceObservedAt, productUrl: i.productUrl,
-    imageUrl: TEST_IMAGE_ORIGIN + i.image, rights: i.rights, fixture: i.fixture,
-  })))
+  return items.flatMap((i: NormalizedCatalogItem) => {
+    if (i.rights.basis === "unconfirmed") return []
+    const basis = i.rights.basis
+    return i.variants.map((v) => ({
+      source: i.source as Entry["source"], seller: i.seller, externalProductId: i.externalProductId, externalVariantId: v.externalVariantId,
+      category: i.category, categoryLabel: i.categoryLabel, name: i.name, variantLabel: v.label, variantAvailable: v.available === true,
+      sellerName: i.sellerName, priceMinor: i.priceMinor, currency: i.currency, priceObservedAt: i.priceObservedAt, productUrl: i.productUrl,
+      imageUrl: TEST_IMAGE_ORIGIN + i.image, rights: { ...i.rights, basis }, fixture: i.fixture,
+    }))
+  })
 }
 
 function upsert(r: Entry) {

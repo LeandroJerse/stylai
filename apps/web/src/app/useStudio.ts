@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "../api/client"
 import { isApiError, messageOf } from "../api/errors"
 import { isJobDone, keys, useBalance, useJob, useLook, usePreferences, useStartJob, useStudioConfig } from "../api/queries"
-import type { Job, JobKind, Preference, PreferenceRules, Product } from "../api/types"
+import type { Job, JobKind, Preference, PreferenceRules, Product, CompositionSlotId } from "../api/types"
 import { bindKey, forgetJob, forgetKey, keyFor } from "../lib/requestKeys"
 import { useAuth } from "../auth/AuthProvider"
 import { useStore, type StudioMode } from "./store"
@@ -31,6 +31,7 @@ export function useStudio() {
   const photoReady = caps?.bodyPhotoRequired !== true || (photos.data?.consent?.accepted === true && photos.data.items.some((p) => p.angle === "front" && p.status === "ready"))
   const [searching, setSearching] = useState(false)
   const [sending, setSending] = useState(false)
+  const [composing, setComposing] = useState(false)
   const qc = useQueryClient()
   const look = useLook(draft.lookId)
   const job = useJob(draft.jobId)
@@ -135,6 +136,47 @@ export function useStudio() {
         return { ok: false, message: messageOf(e) }
       } finally {
         setSearching(false)
+      }
+    },
+    composing,
+    /** Outfit composition: the agent (or the labelled rules fallback) picks real pieces per slot. Never generates. */
+    compose: async (locked: Partial<Record<CompositionSlotId, string>> = {}): Promise<StartResult> => {
+      if (!signedIn) return { ok: false, message: "Entre na sua conta para usar o Estúdio." }
+      if (!draft.prompt.trim()) return { ok: false, message: "Descreva o look: peças, ocasião, cores ou orçamento total." }
+      setComposing(true)
+      try {
+        const composition = await api.studio.compose({ prompt: draft.prompt.trim(), locked })
+        setDraft({ composition })
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, message: messageOf(e) }
+      } finally {
+        setComposing(false)
+      }
+    },
+    /** Generates the confirmed composition (one job; one daily request). New version when a look is on screen. */
+    generateComposition: async (choices: { slot: CompositionSlotId; productId: string; variantId: string | null }[], asNewVersion: boolean): Promise<StartResult> => {
+      const composition = draft.composition
+      if (!composition) return { ok: false, message: "Monte o look primeiro." }
+      if (!signedIn) return { ok: false, message: "Entre na sua conta para usar o Estúdio." }
+      if (!photoReady) return { ok: false, message: "Para gerar, adicione uma foto de corpo inteiro no Perfil." }
+      if (running || sending) return { ok: false, message: "Já existe um pedido em andamento. Aguarde ou cancele." }
+      const parentLookId = asNewVersion ? draft.lookId : null
+      const fingerprint = `composition|${composition.id}|${choices.map((c) => `${c.slot}:${c.productId}:${c.variantId ?? ""}`).join(",")}|${parentLookId ?? ""}`
+      setSending(true)
+      try {
+        const j = await api.studio.generateComposition({ compositionId: composition.id, choices, parentLookId }, keyFor(fingerprint))
+        qc.setQueryData(keys.job(j.id), j)
+        setDraft({ jobId: j.id })
+        if (isJobDone(j)) forgetKey(fingerprint)
+        else bindKey(fingerprint, j.id)
+        void qc.invalidateQueries({ queryKey: keys.balance })
+        return { ok: true }
+      } catch (e) {
+        if (isApiError(e) && e.status >= 400 && e.status < 500 && e.code !== "conflict") forgetKey(fingerprint)
+        return { ok: false, message: messageOf(e) }
+      } finally {
+        setSending(false)
       }
     },
     /** New version of the look on screen with another piece (v1 -> v2). */

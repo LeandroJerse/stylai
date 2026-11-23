@@ -103,6 +103,7 @@ end $$;
 reset role;
 do $$ begin
   assert (select spent=12 and reserved=0 from private.ai_daily_usage where user_id='10000000-0000-4000-8000-000000000001'), 'paid limit not enforced at 12 total';
+  assert (select state='deleting' from private.assets where id='20000000-0000-4000-8000-000000000001'), 'account deletion did not queue private image removal';
 end $$;
 
 insert into private.photo_consents(user_id,policy_version) values ('10000000-0000-4000-8000-000000000002','test-v1');
@@ -110,6 +111,10 @@ insert into private.assets(id,user_id,kind,state,bucket_id,object_key,bytes,mime
   ('20000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','body_photo','ready','body-photos','fixture-b',4096,'image/jpeg',800,1000,now()+interval '1 day'),
   ('20000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000002','generated_look','ready','generated-looks','fixture-result',4096,'image/jpeg',800,1000,now()+interval '1 day');
 insert into public.partners(id,source,external_seller_id,region,name) values ('30000000-0000-4000-8000-000000000001','aliexpress','test','BR','Fixture');
+do $$ begin
+  perform private.request_account_deletion('10000000-0000-4000-8000-000000000001');
+  assert (select count(*)=2 from private.assets where user_id='10000000-0000-4000-8000-000000000002' and state='ready'), 'deletion affected another account';
+end $$;
 insert into public.products(id,partner_id,external_product_id,category_id,name,published,rights_cleared) values
   ('40000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000001','top','test-tops','Fixture',true,true);
 insert into public.product_variants(id,product_id,external_variant_id,label,available) values

@@ -3,7 +3,7 @@
  * draft. Server data lives in TanStack Query (api/queries.ts); nothing here duplicates it.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import type { ImageAsset, PreferenceRules, Product, UploadedImage, SearchResult } from "../api/types"
+import type { ImageAsset, PreferenceRules, Product, UploadedImage, SearchResult, Composition } from "../api/types"
 import type { CatalogSort } from "../api/client"
 import type { ToastState } from "../components/ui"
 import { DEFAULT_ROUTE, formatRoute, parseRoute, type MainTab, type Route } from "./routes"
@@ -70,6 +70,8 @@ export interface StudioDraft {
   variantChoice: Record<string, string>
   /** Last search step result (Procurar on the curated catalog); selection happens on top of it. */
   searchResult: SearchResult | null
+  /** Outfit proposed by the composer (durable on the server; reopened by id). */
+  composition: Composition | null
 }
 
 /** Draft patch that shows a look; it becomes the Acervo only when it is a search result. */
@@ -79,7 +81,7 @@ export function showLookPatch(d: StudioDraft, look: { id: string; origin?: strin
   return { lookId: look.id, acervoLookId: look.id, acervoSelection: [] }
 }
 
-export const EMPTY_DRAFT: StudioDraft = { mode: "procurar", prompt: "", chosen: [], references: [], preferenceId: null, sessionRules: null, composerOpen: true, lookId: null, jobId: null, acervoLookId: null, acervoSelection: [], variantChoice: {}, searchResult: null }
+export const EMPTY_DRAFT: StudioDraft = { mode: "procurar", prompt: "", chosen: [], references: [], preferenceId: null, sessionRules: null, composerOpen: true, lookId: null, jobId: null, acervoLookId: null, acervoSelection: [], variantChoice: {}, searchResult: null, composition: null }
 
 interface Store {
   route: Route

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict"
 import { execFile, spawnSync } from "node:child_process"
 import { readdirSync, readFileSync } from "node:fs"
-import { randomBytes, randomUUID } from "node:crypto"
+import { randomBytes, randomUUID, createHash } from "node:crypto"
+import { prepareRecovery } from "./privacy-recovery.mjs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { setTimeout as delay } from "node:timers/promises"
@@ -37,6 +38,25 @@ async function verifyConcurrency() {
   console.log("Multi-session PostgreSQL checks passed: request idempotency and shared procurement funding.")
 }
 let started = false
+async function verifyPrivacyRecovery() {
+  const erased = '73000000-0000-4000-8000-000000000001'
+  const kept = '73000000-0000-4000-8000-000000000002'
+  // Simulate the contents of an older backup before the newer deletion/revocation.
+  await session(`insert into auth.users(id) values ('${erased}'),('${kept}');`)
+  const now = Date.now()
+  const bytes = Buffer.from(JSON.stringify({ version: 1, exportedAt: new Date(now).toISOString(), accountIds: [erased], tiktokBlocked: true }))
+  const hash = createHash('sha256').update(bytes).digest('hex')
+  const recovery = prepareRecovery({ bytes, expectedSha256: hash, snapshotCreatedAt: new Date(now-86400000).toISOString(), nowMs: now })
+  await assert.rejects(session(recovery.releaseGateSql), /Command failed/)
+  await session(recovery.replaySql)
+  await assert.rejects(session(recovery.releaseGateSql), /Command failed/)
+  await session(`select private.complete_pilot_account_deletion(id,'${hash}') from private.deletion_requests where user_id='${erased}';`)
+  await session(recovery.releaseGateSql)
+  const verified = await session(`select exists(select 1 from auth.users where id='${kept}'),not private.tiktok_access_allowed(), (private.export_privacy_recovery_journal()->'accountIds') @> '["${erased}"]'::jsonb;`)
+  assert.equal(verified.stdout.trim(), 't|t|t')
+  await session(`delete from auth.users where id='${kept}';`)
+  console.log('Privacy recovery assertions passed: old identity blocked, deletion replayed, other user preserved, TikTok stays revoked.')
+}
 try {
   const run = docker(["run", "--rm", "--detach", "--network", "none", "--name", name, "-e", "POSTGRES_PASSWORD", "-e", "POSTGRES_DB=stylai_test", "postgres:17-alpine"], { env: { ...process.env, POSTGRES_PASSWORD: randomBytes(24).toString("hex") } })
   if (run.status !== 0) throw new Error("Cannot start isolated PostgreSQL test container. Start Docker; no hosted DB was touched.\n" + (run.stderr ?? ""))
@@ -51,12 +71,13 @@ try {
   const migrations = readdirSync(resolve(root, "supabase/migrations"))
     .filter((file) => /^\d{14}_.+\.sql$/.test(file)).sort()
     .map((file) => `supabase/migrations/${file}`)
-  const files = ["supabase/tests/bootstrap-postgres.sql", ...migrations, "supabase/tests/foundation.sql", "supabase/tests/domain.sql", "supabase/tests/commerce.sql", "supabase/tests/server-boundary.sql", "supabase/tests/motor-slice.sql", "supabase/tests/studio-journey.sql", "supabase/tests/concurrency-fixtures.sql"]
+  const files = ["supabase/tests/bootstrap-postgres.sql", ...migrations, "supabase/tests/foundation.sql", "supabase/tests/domain.sql", "supabase/tests/commerce.sql", "supabase/tests/server-boundary.sql", "supabase/tests/motor-slice.sql", "supabase/tests/studio-journey.sql", "supabase/tests/composition.sql", "supabase/tests/pilot-budget.sql", "supabase/tests/privacy-completion.sql", "supabase/tests/concurrency-fixtures.sql", "supabase/tests/pilot-budget.sql"]
   const input = files.map((file) => readFileSync(resolve(root,file), "utf8")).join("\n")
   const test = docker(["exec", "-i", name, "psql", "-U", "postgres", "-d", "stylai_test", "-v", "ON_ERROR_STOP=1"], { input })
   if (test.status !== 0) throw new Error("Migration/RLS assertion failed:\n" + test.stderr)
   console.log(test.stdout.split("\n").filter((line) => line.includes("assertions passed")).join("\n"))
   await verifyConcurrency()
+  await verifyPrivacyRecovery()
   console.log("Real PostgreSQL 17 role, RLS and transaction tests passed using Auth/Storage compatibility fixtures.")
 } catch (error) {
   console.error(error instanceof Error ? error.message : "Database test failed")
@@ -67,3 +88,4 @@ try {
     if (cleanup.status !== 0) { console.error("Test container cleanup failed:", name); process.exitCode = 1 }
   }
 }
+

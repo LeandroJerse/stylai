@@ -4,16 +4,36 @@ import helmet from "@fastify/helmet"
 import rateLimit from "@fastify/rate-limit"
 import cookie from "@fastify/cookie"
 import multipart from "@fastify/multipart"
-import { apiError, type HealthStatus } from "@stylai/contracts"
+import { apiError, type CatalogSourceMode, type HealthStatus } from "@stylai/contracts"
+import type { AliExpressCatalogService, TikTokCatalogCache } from "@stylai/commerce"
 import type { FoundationProbe, PrivateDatabaseStatus } from "@stylai/supabase"
 import { registerStudioRoutes, type StudioDeps } from "./modules/studio/routes.js"
 import { registerAuthRoutes, type AuthRouteDeps } from "./modules/auth/routes.js"
 import { parseCatalogPage, registerCatalogRoutes } from "./modules/catalog/routes.js"
 import { registerSearchRoutes, type SearchDeps } from "./modules/catalog/search.js"
 import { registerPhotoRoutes, type PhotoRouteDeps } from "./modules/photos/routes.js"
+import { registerTikTokIntegrationRoutes, type TikTokRouteDeps } from "./modules/integrations/tiktok/routes.js"
+import { registerCompositionRoutes, type CompositionDeps } from "./modules/studio/compositions.js"
+import { registerAliExpressIntegrationRoutes, type AliExpressRouteDeps } from "./modules/integrations/aliexpress/routes.js"
 import type { PrivateDatabase } from "@stylai/supabase"
+import { registerPrivacyRoutes, type PrivacyDeps } from "./modules/privacy/routes.js"
 
-export interface AppDependencies { appOrigin: string; logger?: boolean; rateLimitPerMinute?: number; probeSupabase?: () => Promise<FoundationProbe>; probePrivateDatabase?: () => Promise<PrivateDatabaseStatus>; studio?: StudioDeps; auth?: AuthRouteDeps; photos?: PhotoRouteDeps; catalog?: { db: PrivateDatabase<"api">; publicBaseUrl?: string }; search?: SearchDeps }
+export interface AppDependencies {
+  appOrigin: string
+  logger?: boolean
+  rateLimitPerMinute?: number
+  probeSupabase?: () => Promise<FoundationProbe>
+  probePrivateDatabase?: () => Promise<PrivateDatabaseStatus>
+  studio?: StudioDeps
+  auth?: AuthRouteDeps
+  photos?: PhotoRouteDeps
+  catalog?: { db: PrivateDatabase<"api">; publicBaseUrl?: string; pilotOnly?: boolean; catalogMode?: CatalogSourceMode; tiktokCache?: TikTokCatalogCache | null; aliexpressCatalog?: AliExpressCatalogService | null; resolveActor?: (request: import("fastify").FastifyRequest) => Promise<string | null> }
+  search?: SearchDeps
+  compositions?: CompositionDeps
+  tiktok?: TikTokRouteDeps
+  aliexpress?: AliExpressRouteDeps
+  privacy?: PrivacyDeps
+}
 
 /** Testable foundation. Auth, catalog, photo and studio slice routes; other /v1 routes stay 503. */
 export async function buildApp(deps: AppDependencies) {
@@ -52,8 +72,12 @@ export async function buildApp(deps: AppDependencies) {
   if (deps.auth) await registerAuthRoutes(app, deps.auth)
   if (deps.catalog) await registerCatalogRoutes(app, deps.catalog)
   if (deps.search) await registerSearchRoutes(app, deps.search, parseCatalogPage)
+  if (deps.compositions) await registerCompositionRoutes(app, deps.compositions)
   if (deps.photos) await registerPhotoRoutes(app, deps.photos)
   if (deps.studio) await registerStudioRoutes(app, deps.studio)
+  if (deps.tiktok) await registerTikTokIntegrationRoutes(app, deps.tiktok)
+  if (deps.aliexpress) await registerAliExpressIntegrationRoutes(app, deps.aliexpress)
+  if (deps.privacy) await registerPrivacyRoutes(app, deps.privacy)
   app.setNotFoundHandler((request, reply) => {
     const path = request.url.split("?")[0] ?? ""
     const isApi = path === "/v1" || path.startsWith("/v1/")

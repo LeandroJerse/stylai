@@ -1,31 +1,39 @@
 /**
- * First-slice job engine: one explicitly chosen catalog variant on one body
- * photo. Order is fixed: verify selection -> reserve spend -> dispatch once ->
- * poll -> copy output privately -> settle -> publish version. No step re-sends a
- * provider request whose outcome is unknown.
+ * Job engine: one to three explicitly chosen catalog pieces on one body photo, rendered as sequential
+ * single-garment layers (base -> upper -> outer; docs/decisions/2026-11-23-composicao-multipeca.md).
+ * Order is fixed: verify + freeze every piece -> per layer: reserve spend -> pilot gate -> dispatch once ->
+ * poll -> settle -> next layer -> copy the final output privately -> publish version. No step re-sends a
+ * provider request whose outcome is unknown; a failure at layer N fails the job without a version.
  */
 import { z } from "zod"
 import {
-  defaultSegmindPreset, findPrice, microsToUsdNumber, pseudonymizeUser, segmindCost, spanIdFor, traceIdForJob, validateOutputImage,
-  type GpuSecondPrice, type SegmindCategory, type SegmindClient, type SegmindPreset, type SpanRecord, type AttributeValue,
+  defaultSegmindPreset, falCost, findPrice, microsToUsdNumber, pseudonymizeUser, segmindCost, spanIdFor, traceIdForJob, validateOutputImage,
+  type FalClient, type FalTryOnModel, type GpuSecondPrice, type PerImagePrice, type SegmindCategory, type SegmindClient, type SegmindPreset, type SpanRecord, type AttributeValue,
 } from "@stylai/ai"
 import { PrivateDatabaseError, type Json, type PrivateDatabase, type PrivateObjectStore } from "@stylai/supabase"
+import type { PhotoRelay, PhotoRelayLease } from "./photo-relay.js"
 
 /** Plain-data copy for jsonb parameters (drops undefined, rejects non-JSON values). */
 function toJson(value: unknown): Json { return JSON.parse(JSON.stringify(value)) as Json }
 
 export interface EngineConfig {
   environment: "development" | "test" | "staging" | "production"
+  /** Server-side active try-on provider. Defaults to "segmind" (preserves existing integration). */
+  provider?: "segmind" | "fal"
   /** Langfuse environment label (e.g. "integration-test" for synthetic runs). Defaults to environment. */
   telemetryEnvironment?: string
   /** True when the provider is the local simulator: telemetry is labelled synthetic. */
   simulatedProvider?: boolean
+  /** Persistent pilot budget id (required whenever simulatedProvider is false). */
+  pilotId?: string | null
   pseudonymKey: string
   /** Internal category id -> provider category. Unmapped categories are not renderable. */
   categoryMap: Record<string, SegmindCategory>
   preset: SegmindPreset
-  /** Conservative per-attempt reservation for one try-on call (USD micros). */
+  /** Conservative per-attempt reservation for one Segmind try-on call (USD micros). */
   segmindReserveMicros: bigint
+  /** Exact per-attempt reservation for one fal try-on call (USD micros; defaults to published per-image price). */
+  falReserveMicros?: bigint
   pollIntervalMs: number
   pollTimeoutMs: number
   photoUrlTtlSeconds: number
@@ -39,7 +47,7 @@ export const defaultEngineConfig: Omit<EngineConfig, "pseudonymKey" | "environme
   pollIntervalMs: 2_000,
   pollTimeoutMs: 240_000,
   photoUrlTtlSeconds: 600,
-  submitRetries: 2,
+  submitRetries: 0,
 }
 
 export interface EngineDeps {
@@ -47,6 +55,12 @@ export interface EngineDeps {
   store: PrivateObjectStore
   /** Null when paid calls are disabled or the key is absent: jobs fail without spending. */
   segmind: SegmindClient | null
+  /** Optional fal.ai client when server selects provider="fal" (reuses the same worker, relay & ledger). */
+  fal?: FalClient | null
+  /** Optional per-model fal clients for cold reconciliation of prior unknown calls across model switches. */
+  falReconcilers?: Partial<Record<FalTryOnModel, FalClient>>
+  /** Optional restricted single-job HTTPS relay when local Storage URLs are not publicly fetchable. */
+  photoRelay?: PhotoRelay | null
   config: EngineConfig
   now?: () => number
   sleep?: (ms: number) => Promise<void>
@@ -64,6 +78,8 @@ const jobSchema = z.object({
   parent_version_id: z.string().uuid().nullable(),
   photo: z.object({ bucket: z.literal("body-photos"), object_key: z.string(), mime: z.string().nullable(), usable: z.boolean().optional() }),
   variant: variantSchema.nullable(),
+  composition_id: z.string().uuid().nullable().optional(),
+  items: z.array(variantSchema.extend({ slot: z.enum(["upper", "lower", "dress", "outer"]), position: z.number().int().min(1).max(3) })).default([]),
 })
 export type LoadedJob = z.infer<typeof jobSchema>
 
@@ -81,6 +97,8 @@ export function createEngine(deps: EngineDeps) {
   const now = deps.now ?? Date.now
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
   const segmindPrice = findPrice("segmind", deps.segmind?.model ?? "try-on-diffusion")
+  const falPrice = deps.fal ? findPrice("fal", deps.fal.model) : undefined
+  const activeProvider: "segmind" | "fal" = config.provider ?? (deps.fal && !deps.segmind ? "fal" : "segmind")
 
   async function telemetry(job: LoadedJob, key: string, span: Omit<SpanRecord, "traceId" | "spanId" | "parentSpanId">, root = false) {
     const traceId = traceIdForJob(job.id)
@@ -125,7 +143,7 @@ export function createEngine(deps: EngineDeps) {
       ...(job.parent_version_id ? { "langfuse.trace.metadata.parent_version_id": job.parent_version_id } : {}),
     })
     try {
-      const versionId = await run(job, fence, userRef)
+      const versionId = await run(job, fence)
       await telemetry(job, "job", { name: "look-job", startMs: startedAt, endMs: now(), attributes: { ...rootAttrs("succeeded"), "langfuse.trace.metadata.version_id": versionId } }, true)
       return { status: "succeeded", versionId }
     } catch (error) {
@@ -141,91 +159,206 @@ export function createEngine(deps: EngineDeps) {
     }
   }
 
-  async function run(job: LoadedJob, fence: string, userRef: string): Promise<string> {
-    // 1. Selection: the explicit variant is verified and frozen before any paid call.
+  async function run(job: LoadedJob, fence: string): Promise<string> {
+    // 1. Selection: every piece is verified and frozen before any paid call. A one-piece job is the
+    //    particular case of a single layer (legacy jobs carry no items).
     const selStart = now()
-    const v = job.variant
-    if (!v) throw new JobFailure("explicit_variant_required")
-    if (!v.published || !v.rights_cleared || v.variant_available === false || v.availability === "unavailable") throw new JobFailure("catalog_variant_unavailable")
-    if (!v.image_url || !/^https:\/\//.test(v.image_url)) throw new JobFailure("garment_image_missing")
-    const category = config.categoryMap[job.category_id]
-    if (!category) throw new JobFailure("category_not_renderable")
+    const layers = job.items.length ? job.items : job.variant ? [{ ...job.variant, slot: null, position: 1 }] : []
+    if (!layers.length) throw new JobFailure("explicit_variant_required")
+    if (layers.length > 3) throw new JobFailure("too_many_pieces")
+    const planned = layers.map((v) => {
+      if (!v.published || !v.rights_cleared || v.variant_available === false || v.availability === "unavailable") throw new JobFailure("catalog_variant_unavailable")
+      if (!v.image_url || !/^https:\/\//.test(v.image_url)) throw new JobFailure("garment_image_missing")
+      const category = config.categoryMap[v.category_id ?? ""]
+      if (!category) throw new JobFailure("category_not_renderable")
+      return { v, category, clothImageUrl: v.image_url }
+    })
+    const pieceSnapshot = (p: (typeof planned)[number]) => ({
+      name: p.v.name, source: p.v.source, partner: p.v.partner, catalog_kind: p.v.source === "curated" ? "curated" : "source",
+      slot: "slot" in p.v ? p.v.slot : null,
+      external_product_id: p.v.external_product_id, external_variant_id: p.v.external_variant_id, variant_label: p.v.variant_label,
+      product_url: p.v.product_url, price_minor: p.v.price_minor, currency: p.v.currency, garment_image_url: p.v.image_url,
+      source_updated_at: p.v.source_updated_at, provider_category: p.category,
+      link_verification: "unverified", visual_fidelity: "unverified", fixture: p.v.fixture === true,
+    })
     const snapshot = {
-      name: v.name, source: v.source, partner: v.partner, catalog_kind: v.source === "curated" ? "curated" : "source",
-      external_product_id: v.external_product_id, external_variant_id: v.external_variant_id, variant_label: v.variant_label,
-      product_url: v.product_url, price_minor: v.price_minor, currency: v.currency, garment_image_url: v.image_url,
-      source_updated_at: v.source_updated_at, selection_method: "explicit_user_choice", provider_category: category,
-      // Product identity is verified by the catalog; these remain separate, unproven claims:
-      link_verification: "unverified", visual_fidelity: "unverified",
-      fixture: v.fixture === true,
-      // A simulated render must never be mistaken for the real provider's output.
+      ...pieceSnapshot(planned[0]!),
+      selection_method: job.composition_id ? "composition_confirmed_by_person" : "explicit_user_choice",
+      composition_id: job.composition_id ?? null,
+      layers: planned.length,
+      // Multi-layer renders are sequential single-garment try-ons: fidelity of earlier layers is NOT measured.
+      render_plan: planned.length > 1 ? "sequential_layers_unverified" : "single_garment",
+      items: planned.map(pieceSnapshot),
       render_mode: config.simulatedProvider ? "simulated" : "provider",
     }
     try {
-      await db.call("record_ai_selection", job.id, fence, v.product_id, v.variant_id, snapshot)
+      if (job.items.length) {
+        for (const item of job.items) {
+          const p = planned.find((x) => x.v.product_id === item.product_id && x.v.variant_id === item.variant_id)!
+          if (!(await db.call("record_job_item_snapshot", job.id, fence, item.position, toJson(pieceSnapshot(p))))) throw new LeaseLost()
+        }
+      }
+      await db.call("record_ai_selection", job.id, fence, planned[0]!.v.product_id, planned[0]!.v.variant_id, toJson(snapshot))
     } catch (error) {
-      if (error instanceof PrivateDatabaseError && error.outcome === "rejected") throw new JobFailure("catalog_variant_unavailable")
+      if (error instanceof PrivateDatabaseError && error.outcome === "rejected") {
+        throw new JobFailure(error.sqlState === "SA003" ? "try_on_rights_revoked" : error.sqlState === "SA004" ? "selection_changed" : "catalog_variant_unavailable")
+      }
       throw error
     }
     await telemetry(job, "selection", { name: "selection", startMs: selStart, endMs: now(), attributes: {
-      "langfuse.observation.type": "span", "langfuse.observation.metadata.method": "explicit_user_choice",
-      "langfuse.observation.metadata.source": v.source, "langfuse.observation.metadata.product_id": v.product_id,
-      "langfuse.observation.metadata.variant_id": v.variant_id,
+      "langfuse.observation.type": "span", "langfuse.observation.metadata.method": snapshot.selection_method,
+      "langfuse.observation.metadata.layers": planned.length,
+      "langfuse.observation.metadata.product_ids": planned.map((p) => p.v.product_id).join(","),
     } })
 
     // 2. Generation (paid). Disabled provider = honest failure without spend.
-    const segmind = deps.segmind
-    if (!segmind) throw new JobFailure("provider_not_enabled")
-    if (!segmindPrice || segmindPrice.kind !== "gpu_seconds") throw new JobFailure("provider_price_unknown")
+    const activeFal = activeProvider === "fal" ? (deps.fal ?? null) : null
+    const activeSegmind = activeProvider === "segmind" ? deps.segmind : null
+    if (!activeFal && !activeSegmind) throw new JobFailure("provider_not_enabled")
+    const activePrice = activeFal ? falPrice : segmindPrice
+    if (activeFal) {
+      if (!activePrice || activePrice.kind !== "per_image") throw new JobFailure("provider_price_unknown")
+    } else {
+      if (!activePrice || activePrice.kind !== "gpu_seconds") throw new JobFailure("provider_price_unknown")
+    }
+    const providerName: "segmind" | "fal" = activeFal ? "fal" : "segmind"
+    const modelName = activeFal ? activeFal.model : activeSegmind!.model
+    const reserveMicros = activeFal
+      ? (config.falReserveMicros ?? (activePrice as PerImagePrice).perImageMicros)
+      : config.segmindReserveMicros
     // The person removed or replaced the photo after asking: its authorization is gone, never use it.
     if (job.photo.usable === false) throw new JobFailure("photo_removed")
-    const modelImageUrl = await store.signedUrl("body-photos", job.photo.object_key, config.photoUrlTtlSeconds)
-    if (!modelImageUrl) throw new JobFailure("photo_not_reachable_by_provider")
-    // A real provider fetches both inputs over the internet: local/test addresses fail BEFORE any spend
-    // (honest error instead of a paid call that cannot work). The loopback simulator is exempt.
-    if (!config.simulatedProvider) {
-      if (!publiclyFetchable(v.image_url)) throw new JobFailure("garment_not_reachable_by_provider")
-      if (!publiclyFetchable(modelImageUrl)) throw new JobFailure("photo_not_reachable_by_provider")
-    }
+    if (!config.simulatedProvider && planned.some((p) => !publiclyFetchable(p.clothImageUrl))) throw new JobFailure("garment_not_reachable_by_provider")
+    if (!config.simulatedProvider && !config.pilotId) throw new JobFailure("pilot_required")
 
-    const attemptKey = `gen_${job.id.replace(/-/g, "")}_1`
-    const callId = await db.call("reserve_provider_call", job.id, fence, "segmind", segmind.model, segmindPrice.priceVersion,
-      "generation", attemptKey, config.segmindReserveMicros.toString(), userRef, config.environment)
+    const leases: PhotoRelayLease[] = []
+    const intermediates: string[] = []
+    const expose = async (bytes: Uint8Array, mime: "image/jpeg" | "image/png" | "image/webp"): Promise<string> => {
+      if (!deps.photoRelay) throw new JobFailure("photo_not_reachable_by_provider")
+      const lease = await deps.photoRelay.expose({ jobId: job.id, bytes, mime, maxLifetimeMs: Math.min(config.pollTimeoutMs * planned.length + 120_000, 15 * 60_000) })
+      leases.push(lease)
+      return lease.publicUrl
+    }
+    try {
+      let modelImageUrl = await store.signedUrl("body-photos", job.photo.object_key, config.photoUrlTtlSeconds)
+      if (!config.simulatedProvider && (!modelImageUrl || !publiclyFetchable(modelImageUrl)) && deps.photoRelay) {
+        const mime = job.photo.mime === "image/png" || job.photo.mime === "image/webp" ? job.photo.mime : "image/jpeg"
+        try { modelImageUrl = await expose(await store.get("body-photos", job.photo.object_key), mime) } catch { throw new JobFailure("photo_not_reachable_by_provider") }
+      }
+      // A real provider fetches inputs over the internet: local/test addresses fail BEFORE any spend.
+      if (!modelImageUrl || (!config.simulatedProvider && !publiclyFetchable(modelImageUrl))) throw new JobFailure("photo_not_reachable_by_provider")
+
+      let finalBytes: Uint8Array | null = null
+      for (let step = 1; step <= planned.length; step++) {
+        const piece = planned[step - 1]!
+        const last = step === planned.length
+        const out = await renderStep(job, fence, step, planned.length, modelImageUrl, piece.clothImageUrl, piece.category, {
+          activeFal, activeSegmind, providerName, modelName, reserveMicros, activePrice: activePrice as PerImagePrice | GpuSecondPrice,
+        })
+        if (last) {
+          finalBytes = out.kind === "bytes" ? out.bytes : await download(activeFal, activeSegmind, out.url)
+        } else if (out.kind === "url" && (config.simulatedProvider || publiclyFetchable(out.url))) {
+          // The provider's own short-lived https output feeds the next layer (no copy of an intermediate is kept).
+          modelImageUrl = out.url
+        } else {
+          // Kept privately (generated-looks, job folder) and passed by a short signed URL; removed when the job ends.
+          const bytes = out.kind === "bytes" ? out.bytes : await download(activeFal, activeSegmind, out.url)
+          let info
+          try { info = validateOutputImage(bytes) } catch { throw new JobFailure("intermediate_output_invalid") }
+          const key = `${job.user_id}/${job.id}/layer-${step}.${info.mime === "image/png" ? "png" : info.mime === "image/webp" ? "webp" : "jpg"}`
+          await store.put("generated-looks", key, bytes, info.mime)
+          intermediates.push(key)
+          const signed = await store.signedUrl("generated-looks", key, config.photoUrlTtlSeconds)
+          if (signed && (config.simulatedProvider || publiclyFetchable(signed))) modelImageUrl = signed
+          else {
+            try { modelImageUrl = await expose(bytes, info.mime) } catch { throw new JobFailure("intermediate_not_reachable_by_provider") }
+          }
+        }
+      }
+      let info
+      try { info = validateOutputImage(finalBytes!) } catch (error) { throw new JobFailure(error instanceof Error ? error.message : "output_invalid") }
+      await renew(job.id, fence)
+      const ext = info.mime === "image/png" ? "png" : info.mime === "image/webp" ? "webp" : "jpg"
+      const objectKey = `${job.user_id}/${job.id}/look.${ext}`
+      const persistStart = now()
+      await store.put("generated-looks", objectKey, finalBytes!, info.mime)
+      const assetId = await db.call("register_generated_asset", job.id, fence, objectKey, finalBytes!.byteLength, info.mime, info.width, info.height)
+      const versionId = await db.call("complete_look_job", job.id, fence, assetId)
+      if (!versionId) throw new LeaseLost()
+      await telemetry(job, "persist", { name: "persist", startMs: persistStart, endMs: now(), attributes: {
+        "langfuse.observation.type": "span", "langfuse.observation.metadata.version_id": versionId,
+        "langfuse.observation.metadata.layers": planned.length,
+      } })
+      return versionId
+    } finally {
+      for (const lease of leases) await lease.close().catch(() => undefined)
+      for (const key of intermediates) await store.remove("generated-looks", key).catch(() => undefined)
+    }
+  }
+
+  async function download(activeFal: FalClient | null, activeSegmind: SegmindClient | null, url: string): Promise<Uint8Array> {
+    try {
+      return await (activeFal ? activeFal.download(url, 12_582_912) : activeSegmind!.download(url, 12_582_912))
+    } catch (error) {
+      throw new JobFailure(error instanceof Error && /^output_/.test(error.message) ? error.message : "output_download_failed")
+    }
+  }
+
+  /** One paid layer: reserve -> pilot gate -> begin (never re-sent) -> submit -> poll -> settle. */
+  async function renderStep(job: LoadedJob, fence: string, step: number, total: number, modelImageUrl: string, clothImageUrl: string,
+    category: SegmindCategory, p: { activeFal: FalClient | null; activeSegmind: SegmindClient | null; providerName: "segmind" | "fal"; modelName: string;
+      reserveMicros: bigint; activePrice: PerImagePrice | GpuSecondPrice }): Promise<{ kind: "url"; url: string } | { kind: "bytes"; bytes: Uint8Array }> {
+    const { activeFal, activeSegmind, providerName, modelName, reserveMicros, activePrice } = p
+    const userRef = pseudonymizeUser(job.user_id, config.pseudonymKey)
+    const attemptKey = `gen_${job.id.replace(/-/g, "")}_${step}`
+    const callId = await db.call("reserve_provider_call", job.id, fence, providerName, modelName, activePrice.priceVersion,
+      "generation", attemptKey, reserveMicros.toString(), userRef, config.environment)
       .catch((error: unknown) => {
         if (error instanceof PrivateDatabaseError && error.outcome === "rejected") throw new JobFailure("provider_budget_unavailable")
         throw error
       })
+    if (config.pilotId) {
+      const pilotRes = z.object({ ok: z.boolean(), reason: z.string().optional(), attempt_no: z.number().int().optional() }).safeParse(
+        await db.call("reserve_pilot_dispatch", config.pilotId, callId, fence, config.simulatedProvider ? "simulated" : "real",
+          toJson(activeFal ? { category, provider: "fal", model: modelName, images_per_call: 1, layer: step, layers: total } : { category, preset: config.preset, layer: step, layers: total })),
+      )
+      if (!pilotRes.success) throw new JobFailure("pilot_gate_error")
+      if (!pilotRes.data.ok) throw new JobFailure(`pilot_${pilotRes.data.reason ?? "blocked"}`)
+    }
     // A recovered job whose call was already dispatched is never re-sent.
     if (!(await db.call("begin_provider_call", callId, fence))) throw new JobFailure("generation_needs_reconciliation")
 
     const genStart = now()
+    let submitCount = 1
     const settle = (status: "succeeded" | "failed" | "unknown", requestId: string | null, extra: {
       units?: Record<string, number>; report?: Record<string, unknown>; computed?: bigint | null; source: string; error?: string | null
     }) => db.call("settle_provider_call", callId, status, requestId, toJson(extra.units ?? {}), toJson(extra.report ?? {}),
-      config.segmindReserveMicros.toString(), extra.computed == null ? null : extra.computed.toString(), null, extra.source,
+      reserveMicros.toString(), extra.computed == null ? null : extra.computed.toString(), null, extra.source,
       Math.max(0, Math.round(now() - genStart)), extra.error ?? null)
     const genSpan = async (status: string, requestId: string | null, cost: bigint | null, units: Record<string, number>, errorCode?: string) => {
-      await telemetry(job, `generation:${attemptKey}`, { name: "try-on", startMs: genStart, endMs: now(), error: status !== "succeeded", attributes: {
-        "langfuse.observation.type": "generation", "langfuse.observation.model.name": segmind.model,
+      await telemetry(job, `generation:${attemptKey}`, { name: total > 1 ? `try-on-layer-${step}` : "try-on", startMs: genStart, endMs: now(), error: status !== "succeeded", attributes: {
+        "langfuse.observation.type": "generation", "langfuse.observation.model.name": modelName,
         "langfuse.observation.usage_details": JSON.stringify(units),
         ...(cost !== null ? { "langfuse.observation.cost_details": JSON.stringify({ total: microsToUsdNumber(cost) }) } : {}),
-        "langfuse.observation.metadata.provider": "segmind", "langfuse.observation.metadata.status": status,
-        // One logical attempt per job; submitCount includes same-key retries after 429/5xx.
+        "langfuse.observation.metadata.provider": providerName, "langfuse.observation.metadata.status": status,
         "langfuse.observation.metadata.attempt": 1, "langfuse.observation.metadata.submit_count": submitCount,
+        "langfuse.observation.metadata.layer": step, "langfuse.observation.metadata.layers": total,
         "langfuse.observation.metadata.cost_source": cost !== null ? "computed_from_usage" : "unknown",
-        "langfuse.observation.metadata.price_version": segmindPrice.priceVersion,
+        "langfuse.observation.metadata.price_version": activePrice.priceVersion,
         ...(requestId ? { "langfuse.observation.metadata.provider_request_id": requestId } : {}),
         ...(errorCode ? { "langfuse.observation.status_message": errorCode } : {}),
       } })
     }
-
-    let submitCount = 1
-    let submit = await segmind.submit({ requestKey: attemptKey, modelImageUrl, clothImageUrl: v.image_url, category, preset: config.preset })
-    for (let i = 0; submit.kind === "retryable" && i < config.submitRetries; i++) {
+    const submitOnce = () => activeFal
+      ? activeFal.submit({ requestKey: attemptKey, modelImageUrl, clothImageUrl, category })
+      : activeSegmind!.submit({ requestKey: attemptKey, modelImageUrl, clothImageUrl, category, preset: config.preset })
+    let submit = await submitOnce()
+    const allowedSubmitRetries = config.pilotId || !config.simulatedProvider ? 0 : config.submitRetries
+    for (let i = 0; submit.kind === "retryable" && i < allowedSubmitRetries; i++) {
       await sleep(1000 * 2 ** i)
       await renew(job.id, fence)
       submitCount++
-      submit = await segmind.submit({ requestKey: attemptKey, modelImageUrl, clothImageUrl: v.image_url, category, preset: config.preset })
+      submit = await submitOnce()
     }
     if (submit.kind === "rejected") {
       await settle("failed", null, { computed: 0n, source: "rejected_before_run", error: submit.code })
@@ -233,19 +366,17 @@ export function createEngine(deps: EngineDeps) {
       throw new JobFailure(`provider_rejected_${submit.code}`)
     }
     if (submit.kind !== "accepted") {
-      await settle("unknown", null, { source: "unknown", error: submit.kind === "retryable" ? submit.code : submit.code })
+      await settle("unknown", null, { source: "unknown", error: submit.code })
       await genSpan("unknown", null, null, {}, "submit_outcome_unknown")
       throw new JobFailure("provider_outcome_unknown")
     }
     const requestId = submit.requestId
-    // Persist the provider request id before polling (cost still unknown).
     await settle("unknown", requestId, { source: "unknown" })
-
     const deadline = now() + config.pollTimeoutMs
     for (;;) {
       await sleep(config.pollIntervalMs)
       await renew(job.id, fence)
-      const poll = await segmind.poll(requestId)
+      const poll = activeFal ? await activeFal.poll(requestId) : await activeSegmind!.poll(requestId)
       if (poll.kind === "pending" || (poll.kind === "error" && ["timeout", "network", "provider_error", "rate_limited"].includes(poll.code))) {
         if (now() > deadline) {
           await genSpan("timeout", requestId, null, {}, "poll_timeout")
@@ -259,65 +390,65 @@ export function createEngine(deps: EngineDeps) {
       }
       const metrics = poll.kind === "completed" ? poll.result.metrics : poll.metrics
       const units: Record<string, number> = {}
-      if (metrics.inferenceTime !== undefined) units.gpu_seconds = metrics.inferenceTime
-      const cost = segmindCost(segmindPrice as GpuSecondPrice, metrics)
-      const report = { credits: metrics.cost ?? null, inference_time: metrics.inferenceTime ?? null, queue_time: metrics.queueTime ?? null }
+      if (activeFal) units.images = poll.kind === "completed" ? 1 : 0
+      else if (metrics.inferenceTime !== undefined) units.gpu_seconds = metrics.inferenceTime
+      const cost = activeFal
+        ? falCost(activePrice as PerImagePrice, poll.kind === "completed" ? "completed" : "failed", poll.kind === "completed" ? 1 : 0)
+        : segmindCost(activePrice as GpuSecondPrice, metrics)
+      const report = activeFal
+        ? { images: poll.kind === "completed" ? 1 : 0, inference_time: metrics.inferenceTime ?? null, layer: step }
+        : { credits: metrics.cost ?? null, inference_time: metrics.inferenceTime ?? null, queue_time: metrics.queueTime ?? null, layer: step }
       if (poll.kind === "failed") {
         await settle(cost.computed === null ? "unknown" : "failed", requestId, { units, report, computed: cost.computed, source: cost.source, error: "provider_failed" })
         await genSpan("failed", requestId, cost.computed, units, "provider_failed")
-        throw new JobFailure("provider_failed")
-      }
-      // 3. Copy the output privately; vendor URLs are public and short-lived.
-      let bytes: Uint8Array
-      try {
-        bytes = poll.result.image.kind === "url"
-          ? await segmind.download(poll.result.image.url, 12_582_912)
-          : new Uint8Array(Buffer.from(poll.result.image.data, "base64"))
-      } catch (error) {
-        await settle(cost.computed === null ? "unknown" : "succeeded", requestId, { units, report, computed: cost.computed, source: cost.source, error: "output_download_failed" })
-        await genSpan("output_unavailable", requestId, cost.computed, units, "output_download_failed")
-        throw new JobFailure(error instanceof Error && /^output_/.test(error.message) ? error.message : "output_download_failed")
-      }
-      let info
-      try { info = validateOutputImage(bytes) } catch (error) {
-        await settle(cost.computed === null ? "unknown" : "succeeded", requestId, { units, report, computed: cost.computed, source: cost.source, error: "output_invalid" })
-        await genSpan("output_invalid", requestId, cost.computed, units, "output_invalid")
-        throw new JobFailure(error instanceof Error ? error.message : "output_invalid")
+        throw new JobFailure(total > 1 ? `provider_failed_layer_${step}` : "provider_failed")
       }
       await settle(cost.computed === null ? "unknown" : "succeeded", requestId, { units, report, computed: cost.computed, source: cost.source })
       await genSpan("succeeded", requestId, cost.computed, units)
-      await renew(job.id, fence)
-      const ext = info.mime === "image/png" ? "png" : info.mime === "image/webp" ? "webp" : "jpg"
-      const objectKey = `${job.user_id}/${job.id}/look.${ext}`
-      const persistStart = now()
-      await store.put("generated-looks", objectKey, bytes, info.mime)
-      const assetId = await db.call("register_generated_asset", job.id, fence, objectKey, bytes.byteLength, info.mime, info.width, info.height)
-      const versionId = await db.call("complete_look_job", job.id, fence, assetId)
-      if (!versionId) throw new LeaseLost()
-      await telemetry(job, "persist", { name: "persist", startMs: persistStart, endMs: now(), attributes: {
-        "langfuse.observation.type": "span", "langfuse.observation.metadata.version_id": versionId,
-      } })
-      return versionId
+      return poll.result.image.kind === "url"
+        ? { kind: "url", url: poll.result.image.url }
+        : { kind: "bytes", bytes: new Uint8Array(Buffer.from(poll.result.image.data, "base64")) }
     }
   }
 
-  /** Reconciles dispatched/unknown Segmind calls by polling with the stored request id. */
+  /** Reconciles dispatched/unknown Segmind and fal calls by polling with the stored request id. */
   async function reconcileOnce(limit = 20): Promise<number> {
     const segmind = deps.segmind
-    if (!segmind || !segmindPrice || segmindPrice.kind !== "gpu_seconds") return 0
-    const rows = z.array(z.object({ id: z.string().uuid(), provider: z.string(), provider_request_id: z.string().nullable() }))
-      .safeParse(await db.call("list_unreconciled_calls", limit))
+    const hasSegmind = Boolean(segmind && segmindPrice && segmindPrice.kind === "gpu_seconds")
+    const hasFal = Boolean(deps.fal || (deps.falReconcilers && Object.keys(deps.falReconcilers).length > 0))
+    if (!hasSegmind && !hasFal) return 0
+    const rows = z.array(z.object({
+      id: z.string().uuid(),
+      provider: z.string(),
+      model: z.string().optional(),
+      provider_request_id: z.string().nullable(),
+    })).safeParse(await db.call("list_unreconciled_calls", limit))
     if (!rows.success) return 0
     let settled = 0
     for (const row of rows.data) {
-      if (row.provider !== "segmind" || !row.provider_request_id) continue // needs operator evidence
-      const poll = await segmind.poll(row.provider_request_id)
-      if (poll.kind !== "completed" && poll.kind !== "failed") continue
-      const metrics = poll.kind === "completed" ? poll.result.metrics : poll.metrics
-      const cost = segmindCost(segmindPrice, metrics)
-      if (cost.computed === null) continue
-      if (await db.call("reconcile_provider_call", row.id, poll.kind === "completed" ? "succeeded" : "failed", cost.computed.toString(),
-        "computed_from_usage", toJson({ credits: metrics.cost ?? null, inference_time: metrics.inferenceTime ?? null }))) settled++
+      if (!row.provider_request_id) continue // needs operator evidence
+      if (row.provider === "segmind" && hasSegmind) {
+        const poll = await segmind!.poll(row.provider_request_id)
+        if (poll.kind !== "completed" && poll.kind !== "failed") continue
+        const metrics = poll.kind === "completed" ? poll.result.metrics : poll.metrics
+        const cost = segmindCost(segmindPrice as GpuSecondPrice, metrics)
+        if (cost.computed === null) continue
+        if (await db.call("reconcile_provider_call", row.id, poll.kind === "completed" ? "succeeded" : "failed", cost.computed.toString(),
+          "computed_from_usage", toJson({ credits: metrics.cost ?? null, inference_time: metrics.inferenceTime ?? null }))) settled++
+      } else if (row.provider === "fal") {
+        const model = row.model as FalTryOnModel | undefined
+        const falClient = (model && deps.falReconcilers?.[model]) || (deps.fal && (!model || deps.fal.model === model) ? deps.fal : null)
+        if (!falClient) continue
+        const price = findPrice("fal", falClient.model)
+        if (!price || price.kind !== "per_image") continue
+        const poll = await falClient.poll(row.provider_request_id)
+        if (poll.kind !== "completed" && poll.kind !== "failed") continue
+        const cost = falCost(price, poll.kind === "completed" ? "completed" : "failed", poll.kind === "completed" ? 1 : 0)
+        if (cost.computed === null) continue
+        const metrics = poll.kind === "completed" ? poll.result.metrics : poll.metrics
+        if (await db.call("reconcile_provider_call", row.id, poll.kind === "completed" ? "succeeded" : "failed", cost.computed.toString(),
+          "computed_from_usage", toJson({ images: poll.kind === "completed" ? 1 : 0, inference_time: metrics.inferenceTime ?? null }))) settled++
+      }
     }
     return settled
   }

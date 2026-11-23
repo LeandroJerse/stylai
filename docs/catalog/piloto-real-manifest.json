@@ -1,0 +1,23 @@
+{
+  "batchId": "pilot-real-cc0-2026-11-21",
+  "items": [
+    {
+      "externalProductId": "pilot-camisa-offwhite-met-2011-46",
+      "name": "Camisa social off-white manga longa",
+      "category": "shirts",
+      "color": "branco",
+      "variantLabel": "Peça fotografada",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/2/2b/Dress_shirt_MET_2011.46_F.jpeg",
+      "rights": {
+        "basis": "cc0",
+        "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Dress_shirt_MET_2011.46_F.jpeg",
+        "author": "The Metropolitan Museum of Art (Open Access)",
+        "licenseLabel": "CC0 1.0",
+        "evidence": "Foto de estúdio frontal isolada em fundo neutro cinza, verificada visualmente em 2026-11-21 (879x1464, sem pessoas, sem marcas comerciais na peça). Página do arquivo no Wikimedia Commons comprova CC0 1.0 Universal.",
+        "verifiedAt": "2026-11-21",
+        "reviewer": "Gemini QA/MVP Triage",
+        "tryOnAllowed": true
+      }
+    }
+  ]
+}

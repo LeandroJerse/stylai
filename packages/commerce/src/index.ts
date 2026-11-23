@@ -11,4 +11,7 @@ export interface SourceIdentity {
 }
 export interface CheckoutIntent { orderId: string; quoteId: string; total: MoneyMinor }
 export const paymentProcessor = "asaas" as const
-export const implementationStatus = "not_implemented" as const
+export const implementationStatus = "tiktok_creator_ready_locally" as const
+
+export * from "./sources/tiktok-shop/index.js"
+export * from "./sources/aliexpress/index.js"

@@ -41,8 +41,7 @@ import type { CatalogSource,
   StudioCapabilities,
   StudioConfig,
   UploadedImage,
-  User,
-} from "./types"
+  User, Composition, CompositionCandidate, CompositionSlot, CompositionSlotId } from "./types"
 
 type Obj = Record<string, unknown>
 
@@ -352,6 +351,45 @@ export function parseStudioConfig(raw: unknown): StudioConfig {
     unit: isObj(o.unit) && str(o.unit.singular) && str(o.unit.plural) ? { singular: String(o.unit.singular), plural: String(o.unit.plural) } : { singular: "moeda", plural: "moedas" },
     quotaStatus: o.quotaStatus === "provisional" ? "provisional" : "final",
     photoPolicyVersion: str(o.photoPolicyVersion),
+  }
+}
+
+const SLOT_IDS: readonly CompositionSlotId[] = ["upper", "lower", "dress", "outer"]
+const slotOf = (v: unknown): CompositionSlotId | null => (SLOT_IDS as readonly unknown[]).includes(v) ? (v as CompositionSlotId) : null
+
+/** Outfit composition: every link goes through parseProduct (https only); unknown slots are dropped. */
+export function parseComposition(raw: unknown): Composition {
+  const o = obj(raw, "composition")
+  const g = isObj(o.generation) ? o.generation : {}
+  const slots = arr(o.slots).flatMap((s): CompositionSlot[] => {
+    if (!isObj(s)) return []
+    const slot = slotOf(s.slot)
+    if (!slot) return []
+    const candidates = arr(s.candidates).flatMap((c): CompositionCandidate[] => {
+      try { return isObj(c) ? [{ product: parseProduct(c), slot, generationEligible: c.generationEligible === true }] : [] } catch { return [] }
+    })
+    const rawChoice = isObj(s.choice) ? s.choice : null
+    const choiceId = rawChoice ? str(rawChoice.productId) : null
+    const choice = rawChoice && choiceId && candidates.some((c) => c.product.id === choiceId) ? { productId: choiceId, reason: str(rawChoice.reason) ?? "" } : null
+    return [{ slot, label: str(s.label) ?? slot, candidates, choice, error: str(s.error) }]
+  })
+  return {
+    id: reqStr(o.id, "composition.id"),
+    source: str(o.source) ?? "unknown",
+    selectionMethod: o.selectionMethod === "agent" ? "agent" : "rules_fallback",
+    model: str(o.model),
+    slots,
+    totalPrice: money(o.totalPrice),
+    missingSlots: arr(o.missingSlots).map(slotOf).filter((x): x is CompositionSlotId => x !== null),
+    generation: {
+      eligible: g.eligible === true,
+      blockedReason: str(g.blockedReason),
+      layers: num(g.layers) ?? 0,
+      render: g.render === "sequential_layers_unverified" ? "sequential_layers_unverified" : "single_garment",
+      estimatedProviderUsd: num(g.estimatedProviderUsd) ?? 0,
+      coins: num(g.coins) ?? 0,
+      coinsNote: str(g.coinsNote) ?? "",
+    },
   }
 }
 

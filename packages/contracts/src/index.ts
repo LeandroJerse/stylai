@@ -25,4 +25,6 @@ export function apiError(code: string, message: string): ApiErrorBody {
 export * from "./photo-validation.js"
 export * from "./coins.js"
 export * from "./catalog-source.js"
+export * from "./pilot-catalog.js"
 export * from "./search-rules.js"
+export * from "./composition.js"

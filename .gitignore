@@ -27,3 +27,4 @@ apps/web/dist-demo
 # Demo assets copied by apps/web/demo/prepare-assets.mjs
 apps/web/demo/public/mediapipe/
 apps/web/demo/public/test-catalog/
+scripts/.resume-private-review.generated.mjs

@@ -10,7 +10,7 @@
 export interface CatalogSourceCapabilities {
   /** Where search runs: StylAI rules over imported items, or a source search API. */
   search: "stylai_rules" | "source_api"
-  variants: "source" | "test_data"
+  variants: "source" | "test_data" | "none"
   /** Stock is never confirmed by the test catalog. */
   stock: "unknown" | "source"
   price: "test_price" | "observed" | "source" | "none"
@@ -21,9 +21,20 @@ export interface CatalogSourceCapabilities {
   imageRights: "per_item_evidence"
 }
 
+export type CatalogSourceMode = "curated_pilot" | "tiktok_shop" | "aliexpress_affiliate" | "test_catalog"
+
+export interface CatalogItemCapabilities {
+  /** Authorized to display product metadata, image and external link in discovery/Estúdio. */
+  displayAndLink: boolean
+  /** Authorized to send the product image as input to an external AI try-on provider. */
+  aiTryOn: boolean
+  /** Stable reason when aiTryOn is false (never presumed from display access). */
+  aiTryOnBlockedReason: string | null
+}
+
 export interface NormalizedVariant { externalVariantId: string; label: string; available: boolean | null }
 export interface NormalizedCatalogItem {
-  source: "curated" | "shein" | "aliexpress"
+  source: "curated" | "shein" | "aliexpress" | "tiktok_shop"
   seller: string
   sellerName: string
   externalProductId: string
@@ -38,8 +49,10 @@ export interface NormalizedCatalogItem {
   productUrl: string | null
   /** Image path (test catalog) or absolute https URL (real source). */
   image: string
-  rights: { basis: "owner_authorized" | "licensed" | "test_fixture"; evidence: string; tryOnAllowed: boolean }
+  rights: { basis: "owner_authorized" | "licensed" | "test_fixture" | "unconfirmed"; evidence: string; tryOnAllowed: boolean }
   fixture: boolean
+  /** Explicit separation between display/link capability and AI try-on capability. */
+  capabilities?: CatalogItemCapabilities
   /** Synthetic edge case for automated tests (failure, no price, display-only, sold out): kept out of the main demo. */
   edgeCase?: boolean
 }

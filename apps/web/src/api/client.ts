@@ -27,11 +27,12 @@ import {
   parseSession,
   parseSignUpResult,
   parseSearchResult,
+  parseComposition,
   parseStudioConfig,
   parseUpload,
   parseUser,
 } from "./parse"
-import type { BodyAngle, Measurements, PreferenceRules } from "./types"
+import type { BodyAngle, CompositionSlotId, Measurements, PreferenceRules } from "./types"
 
 export const http: HttpClient = createHttpClient({ baseUrl: env.apiBaseUrl })
 
@@ -156,6 +157,16 @@ export const api = {
         auth: "required",
         headers: { "Idempotency-Key": idempotencyKey },
         body: input.parentLookId ? { sourceLookId: input.parentLookId, productIds: [input.productId], variantId: input.variantId } : { productId: input.productId, variantId: input.variantId },
+      }).then(parseJob),
+    /** Outfit composition: interpretation -> candidates per slot -> agent selection (never generates). */
+    compose: (input: { prompt: string; locked: Partial<Record<CompositionSlotId, string>> }) =>
+      http.request<unknown>("/studio/compositions", { method: "POST", body: input, auth: "required", timeoutMs: 90_000 }).then(parseComposition),
+    composition: (id: string) => get(`/studio/compositions/${encodeURIComponent(id)}`, parseComposition, { auth: "required" }),
+    /** Generates the confirmed composition (every piece re-validated by the server). New version when parentLookId is set. */
+    generateComposition: (input: { compositionId: string; choices: { slot: CompositionSlotId; productId: string; variantId: string | null }[]; parentLookId: string | null }, idempotencyKey: string) =>
+      http.request<unknown>(input.parentLookId ? "/studio/try-ons" : "/studio/generations", {
+        method: "POST", auth: "required", headers: { "Idempotency-Key": idempotencyKey },
+        body: input.parentLookId ? { compositionId: input.compositionId, choices: input.choices, sourceLookId: input.parentLookId } : { compositionId: input.compositionId, choices: input.choices },
       }).then(parseJob),
     /** Search step: request + preferences -> candidates. Never generates. */
     search: (input: { prompt: string; rules: PreferenceRules | null }) => http.request<unknown>("/studio/searches", { method: "POST", body: input, auth: "required" }).then(parseSearchResult),

@@ -363,7 +363,7 @@ export function ProductDetailSheet({ productId, back, role, warnings }: { produc
           </dl>
         ) : null}
 
-        {updated ? <Hint>Preço e estoque conferidos na loja em {updated}; podem ter mudado desde então.</Hint> : null}
+        {updated ? <Hint>Preço observado na loja em {updated}; pode ter mudado desde então. Estoque não confirmado.</Hint> : null}
         <StoreLinkNote product={shown} />
       </div>
     </Sheet>

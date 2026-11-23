@@ -1,52 +1,59 @@
-# StylAI monorepo
+# StylAI Monorepo (`stylai-motor`)
 
-Origin: [LeandroJerse/stylai](https://github.com/LeandroJerse/stylai).
+Origem: [LeandroJerse/stylai](https://github.com/LeandroJerse/stylai) · Branch ativa: `feat/motor-first-slice` · Atualizado em **2026-11-22**.
 
-**Start with [docs/START-HERE.md](docs/START-HERE.md).** It links the self-contained context, complete implementation plan, integration specifications, original project/UX snapshots and current verification evidence. No chat history or external vault is required.
+Para um resumo completo em português pronto para compartilhar sobre visão de produto, estado atual e pendências, veja [../ESTRUTURA-PROJETO.md](../ESTRUTURA-PROJETO.md). Para o registro técnico detalhado de execução e evidências, veja [docs/qa/mvp-real-curado-execucao.md](docs/qa/mvp-real-curado-execucao.md) e [docs/START-HERE.md](docs/START-HERE.md).
 
-## Current delivery
+## Estado Atual (2026-11-22)
 
-The existing React frontend is under apps/web. Runnable Fastify API and idle Node worker foundations, shared packages, environment examples, local Supabase configuration and verification CI are provided.
+- **Frontend (`apps/web`):** React + Vite + Tailwind + React Query com **Explorar**, **Estúdio (Procurar / Vestir)**, **Perfil (3 slots de foto)** e **Closet** (em evolução), além do modo **Demo** determinístico em simulação.
+- **API (`apps/api`):** Fastify BFF com sessões criptografadas (`HttpOnly` + cofre privado AES-256-GCM), consentimento/upload/validação/remoção física de fotos, modos explícitos de catálogo (`curated_pilot`, `tiktok_shop`, `test_catalog` sem fallback silencioso), busca do Estúdio, criação/acompanhamento de jobs e rotas TikTok (`/v1/integrations/tiktok/status`, `/api/integrations/tiktok/callback`).
+- **Worker (`apps/worker`):** Consumo de fila durável em Postgres (`private.ai_jobs`) com fencing token, concorrência 1, `0` retries automáticos em envios pagos, relay HTTPS restrito por job (`cloudflared`), seleção de provedor no servidor (**Segmind `try-on-diffusion`**, **fal.ai `fal-ai/fashn/tryon/v1.6`** e **fal.ai `fal-ai/image-apps-v2/virtual-try-on`**), reconciliação de chamadas `unknown` e expurgo físico de assets.
+- **Orçamento persistente do piloto (`supabase/migrations/20261121235500_pilot_budget.sql` e `20261122001000_pilot_shared_providers_fal.sql`):** Teto TOTAL compartilhado de **US$ 2,00 e 5 tentativas** entre Segmind e fal.ai (`server_boundary_version = 20261122001000`). **Consumido até o momento: 0/5 tentativas, US$ 0,00 (nenhuma geração paga executada).**
+- **Validação de fotos (`tools/pose-validator`):** MediaPipe (`mp-pose-full-1.2.3/a2 + pose-rules/4`) validando enquadramento, cabeça cortada e compatibilidade por categoria.
+- **Conector TikTok Shop (`packages/commerce/src/sources/tiktok-shop/`):** Assinatura HMAC-SHA256, OAuth de criador (`user_type = 1`), busca somente leitura `v202405` (`Search Open Collaboration Products` + `Get Open Collaboration Product List By Product Ids`), normalização BR/BRL, cache TTL de 5 min com deduplicação e separação explícita entre **exibir/linkar** (`displayAndLink: true`) e **enviar para provador de IA** (`aiTryOn: false`). Aguarda avaliação de segurança no Partner Center, conta de criador/sandbox BR autorizada e credenciais locais.
+- **Pendências principais:** decisão financeira sobre a 1ª geração real (Segmind vs fal.ai), ativação externa do TikTok Shop, aprovação SHEIN/Admitad, habilitação completa do `#/closet`, checkout Asaas/fulfillment e deploy em produção.
 
-The Supabase foundation includes isolated SDK clients, a starter SQL/RLS migration, private buckets and a bounded database readiness probe. The starter foundation is applied and verified on `stylai-dev`; follow [hosted setup](docs/SUPABASE-SETUP.md). App auth, catalog endpoints, Segmind, Asaas and fulfillment remain future implementation. Business API routes return unavailable. API readiness is 200 only when the expected schema RPC succeeds; the idle worker stays nonready.
+## Estrutura
 
-Confirmed stack: React/Vite + TypeScript/Fastify + Supabase + Segmind Try-On Diffusion + **Asaas** + AliExpress/Shopee/TikTok Shop adapters. The project architecture reference is documented, not a requirement to adopt every illustrated technology.
+```text
+apps/web/             Frontend oficial + Demo (React/Vite)
+apps/api/             API Fastify BFF (auth, fotos, catálogo, estúdio, integrações)
+apps/worker/          Worker de jobs de try-on, relay HTTPS restrito e expurgo
+packages/contracts/   Contratos browser-safe, moedas (30/120), busca, validação e catálogo piloto
+packages/ai/          Adaptadores Segmind e fal.ai, preços em micros USD e telemetria OTLP
+packages/commerce/    Conector TikTok Shop Creator (v202405) e contratos de comércio
+packages/supabase/    Clientes isolados e RPCs da fronteira privada
+supabase/             Migrations SQL/RLS/papéis e testes isolados em PostgreSQL 17
+tools/pose-validator/ Validador local Python/MediaPipe (a2 + pose-rules/4)
+scripts/              Importação de catálogo piloto, CLI do piloto, diagnóstico TikTok e checks
+docs/                 Planos, decisões, comparações de provedores, segurança e relatórios QA
+```
 
-## Structure
+## Comandos de Verificação (sem chamadas pagas)
 
-    apps/web/        existing mobile-first frontend, tests and assets
-    apps/api/        HTTP foundation and documented future domain modules
-    apps/worker/     idle health service and future durable handler locations
-    packages/        contracts, config, supabase, ai and commerce boundaries
-    supabase/        starter migration, isolated PostgreSQL tests and future email templates
-    scripts/         boundary guard, doctor, database checks and built-service smoke
-    docs/            complete handoff, plans, context, integrations and evidence
+```sh
+bun install --frozen-lockfile
+bun run lint
+bun run typecheck
+bun x tsc --noEmit -p apps/web/tsconfig.demo.json
+bun run test
+bun run test:web:demo
+bun run test:db
+```
 
-## Run and verify
+Diagnósticos e operação local (somente leitura / sem expor segredos):
 
-Use Node 26.13.0 LTS and Bun 1.3.12. Run from this root:
+```sh
+node --conditions=development --import tsx scripts/check-tiktok-access.ts
+node --conditions=development --import tsx scripts/pilot.ts report
+```
 
-    bun install --frozen-lockfile
-    bun run doctor
-    bun run check
-    bun run test:e2e:install
-    bun run test:e2e
-    bun run dev
+## Documentação Principal
 
-Web runs on localhost:5190, API on 127.0.0.1:3000, worker health on 127.0.0.1:3001. Each also has a root dev:web/dev:api/dev:worker command. Copy each app's .env.example into an ignored .env.local if needed. Web config is public; never put secrets there.
-
-The root check verifies imports, types, tests, builds and real built Node services. Fixture browser E2E does not prove real provider integration. `test:db` runs isolated PostgreSQL role/RLS tests. `supabase:check` probes the configured hosted foundation; `db:types` needs the actual migrated project and CLI authentication. The owner created `stylai-dev`; its ignored API env is local only. No app deployment or credentials are committed. See the [current verification record](docs/qa/2026-11-10-node26-supabase-foundation.md).
-
-## Successor handoff
-
-- [Complete context](docs/handoff/CONTEXT.md)
-- [Detailed implementation plan and verification inventory](docs/handoff/IMPLEMENTATION-PLAN.md)
-- [Asaas protocol, money invariants and acceptance tests](docs/integrations/asaas.md)
-- [Segmind and commercial-use/data/quality gates](docs/integrations/segmind-try-on-diffusion.md)
-- [Three marketplace connector plan](docs/superpowers/plans/2026-11-10-marketplace-connectors.md)
-- [Current scaffold verification](docs/qa/scaffold-progress.md)
-- [Phase 1 readiness and current access facts](docs/decisions/phase-1-readiness.md)
-- [Current launch decisions and prepared artifacts](docs/decisions/2026-11-10-launch-answers.md)
-- [Phase 1 verification](docs/qa/2026-11-10-phase-1-baseline.md)
-
-The owner committed the monorepo baseline as `a096c92`; the frontend move is tracked. Phase 1 and subsequent launch decisions are maintained in focused local commits. The owner handles pushes. Do not stage node_modules, build outputs or actual environment values. Verify new-remote history before the first push; inherited tracking refs may describe the old frontend repository.
+- [Visão geral atualizada do projeto (pt-BR)](../ESTRUTURA-PROJETO.md)
+- [Registro de execução do MVP e piloto](docs/qa/mvp-real-curado-execucao.md)
+- [Comparação documental de provedores de try-on](docs/integrations/2026-11-21-comparacao-provedores-tryon.md)
+- [Evidências de catálogo real (TikTok Shop / SHEIN)](docs/integrations/2026-11-21-catalogo-real-evidencias.md)
+- [Início técnico e histórico do handoff](docs/START-HERE.md)
+- [Especificação Asaas](docs/integrations/asaas.md) e [Fronteira privada do banco](docs/operations/private-database-boundary.md)

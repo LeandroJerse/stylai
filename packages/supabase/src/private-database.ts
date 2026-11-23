@@ -1,6 +1,6 @@
 import { Pool, type PoolClient } from "pg"
 import { privateDatabaseRoles, type DatabasePurpose, type PrivateDatabaseConfig } from "./private-config.js"
-import { decodePrivateResult, privateBoundaryVersion, privateOperations, type Arguments, type Operation, type Result } from "./private-transactions.js"
+import { decodePrivateResult, encodePrivateArgs, privateBoundaryVersion, privateOperations, type Arguments, type Operation, type Result } from "./private-transactions.js"
 
 export type PrivateDatabaseStatus = "ready"|"unavailable"
 export class PrivateDatabaseError extends Error {
@@ -38,7 +38,7 @@ export function createPrivateDatabase<P extends DatabasePurpose>(config: Private
   // Fatal socket errors also emit on that client after rejecting its query.
   pool.on('connect',client=>client.on('error',()=>{}))
   pool.on('error',()=>{})
-  const operations: Record<string,{sql:string;arity:number;signature:string;result:Parameters<typeof decodePrivateResult>[0]}>=privateOperations[config.purpose]
+  const operations: Record<string,{sql:string;arity:number;signature:string;types:readonly string[];result:Parameters<typeof decodePrivateResult>[0]}>=privateOperations[config.purpose]
   const expectedFunctions=['server_boundary_version()',...Object.values(operations).map(op=>op.signature)].sort()
   async function authorize(client: PoolClient) {
     const {rows}=await client.query(identitySql)
@@ -58,7 +58,7 @@ export function createPrivateDatabase<P extends DatabasePurpose>(config: Private
         client=await pool.connect()
         await authorize(client)
         dispatched=true
-        const response=await client.query<{value:unknown}>(descriptor.sql,[...args])
+        const response=await client.query<{value:unknown}>(descriptor.sql,encodePrivateArgs(descriptor.types,args))
         if(response.rows.length!==1) throw new Error('Invalid private result')
         return decodePrivateResult(descriptor.result,response.rows[0]?.value) as Result<P,N>
       } catch(error) {

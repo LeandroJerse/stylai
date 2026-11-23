@@ -17,7 +17,10 @@ function vendorChunk(id: string): string | undefined {
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   // Same-origin API in development: the browser talks to /v1 on the Vite port (cookies stay first-party).
-  server: { proxy: { "/v1": { target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:3000", changeOrigin: false } } },
+  server: { proxy: {
+    "/v1": { target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:3000", changeOrigin: false },
+    "/api/integrations/tiktok/callback": { target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:3000", changeOrigin: false },
+  } },
   build: {
     target: "es2022",
     sourcemap: true,

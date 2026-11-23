@@ -2,7 +2,7 @@ import type { Json } from "./database.types.js"
 import type { DatabasePurpose } from "./private-config.js"
 
 /** Must match private.server_boundary_version() of the latest boundary migration. */
-export const privateBoundaryVersion = "20261121000400"
+export const privateBoundaryVersion = "20261123210932"
 
 // bigint inputs/outputs remain decimal text: never silently round money/fences.
 type Call<A extends unknown[], R> = { args: A; result: R }
@@ -11,10 +11,18 @@ export interface PrivateTransactions {
     enqueue_ai_job: Call<[actor: string,key: string,hash: string,photo: string,category: string,policy: string,query: string,product: string|null,variant: string|null],string>
     cancel_ai_job: Call<[actor: string,job: string],boolean>
     request_account_deletion: Call<[actor: string],string>
+    tiktok_access_allowed: Call<[],boolean>
     save_ai_look: Call<[actor: string,job: string],string>
     set_favorite_product: Call<[actor: string,product: string,saved: boolean],void>
     enqueue_look_job: Call<[actor: string,key: string,hash: string,policy: string,product: string,variant: string|null,parentVersion: string|null],string>
     read_ai_job: Call<[actor: string,job: string],Json|null>
+    enqueue_composition_job: Call<[actor: string,key: string,hash: string,policy: string,items: Json,parentVersion: string|null,composition: string|null],string>
+    save_look_composition: Call<[actor: string,source: "curated"|"aliexpress_affiliate"|"tiktok_shop",method: "agent"|"rules_fallback",model: string|null,plan: Json],string>
+    read_look_composition: Call<[actor: string,composition: string],Json|null>
+    list_look_version_items: Call<[actor: string,version: string],Json|null>
+    take_provider_call_slot: Call<[provider: "aliexpress"|"anthropic",limit: number],boolean>
+    take_provider_daily_slot: Call<[provider: "aliexpress"|"anthropic",limit: number],boolean>
+    composition_quota_available: Call<[actor: string],boolean>
     read_look: Call<[actor: string,look: string],Json|null>
     read_look_version: Call<[actor: string,version: string],Json|null>
     list_looks: Call<[actor: string,limit: number],Json|null>
@@ -56,6 +64,7 @@ export interface PrivateTransactions {
     next_ai_job: Call<[],string|null>
     renew_ai_job_lease: Call<[job: string,fence: string],boolean>
     load_ai_job: Call<[job: string,fence: string],Json|null>
+    record_job_item_snapshot: Call<[job: string,fence: string,position: number,snapshot: Json],boolean>
     register_generated_asset: Call<[job: string,fence: string,objectKey: string,bytes: number,mime: string,width: number,height: number],string>
     complete_look_job: Call<[job: string,fence: string,asset: string],string|null>
     fail_look_job: Call<[job: string,fence: string,code: string],boolean>
@@ -64,6 +73,8 @@ export interface PrivateTransactions {
     settle_provider_call: Call<[call: string,status: string,requestId: string|null,units: Json,report: Json,estimated: string|null,computed: string|null,confirmed: string|null,source: string,latencyMs: number|null,error: string|null],boolean>
     reconcile_provider_call: Call<[call: string,status: string,confirmed: string,source: string,report: Json],boolean>
     list_unreconciled_calls: Call<[limit: number],Json|null>
+    reserve_pilot_dispatch: Call<[pilot: string,call: string,fence: string,mode: "real"|"simulated",params: Json],Json|null>
+    pilot_status: Call<[pilot: string],Json|null>
     enqueue_telemetry_event: Call<[key: string,job: string|null,payload: Json],boolean>
     claim_telemetry_events: Call<[limit: number],Json|null>
     mark_telemetry_event: Call<[id: string,outcome: "sent"|"retry"|"unknown"|"dead"],boolean>
@@ -83,9 +94,17 @@ export type Arguments<P extends DatabasePurpose,N extends Operation<P>> = Privat
 export type Result<P extends DatabasePurpose,N extends Operation<P>> = PrivateTransactions[P][N] extends Call<unknown[],infer R> ? R : never
 
 type ResultKind = "uuid"|"nullable_uuid"|"boolean"|"fence"|"void"|"json"|"count"
+/**
+ * node-postgres serializes JS arrays as Postgres array literals ("{...}"), which a ::jsonb cast rejects.
+ * jsonb parameters are therefore always sent as JSON text.
+ */
+export function encodePrivateArgs(types: readonly string[], args: readonly unknown[]): unknown[] {
+  return args.map((arg, i) => (types[i] === 'jsonb' && arg !== null && arg !== undefined ? JSON.stringify(arg) : arg))
+}
+
 function transaction(name: string, types: string[], result: ResultKind) {
   return {
-    signature: `${name}(${types.join(', ')})`, result, arity: types.length,
+    signature: `${name}(${types.join(', ')})`, result, arity: types.length, types,
     sql: `select private.${name}(${types.map((type,i)=>`$${i+1}::${type}`).join(',')})::text as value`,
   }
 }
@@ -95,12 +114,20 @@ export const privateOperations = {
     enqueue_ai_job: transaction('enqueue_ai_job',['uuid','text','text','uuid','text','text','text','uuid','uuid'],'uuid'),
     cancel_ai_job: transaction('cancel_ai_job',['uuid','uuid'],'boolean'),
     request_account_deletion: transaction('request_account_deletion',['uuid'],'uuid'),
+    tiktok_access_allowed: transaction('tiktok_access_allowed',[],'boolean'),
     save_ai_look: transaction('save_ai_look',['uuid','uuid'],'uuid'),
     set_favorite_product: transaction('set_favorite_product',['uuid','uuid','boolean'],'void'),
     enqueue_look_job: transaction('enqueue_look_job',['uuid','text','text','text','uuid','uuid','uuid'],'uuid'),
     read_ai_job: transaction('read_ai_job',['uuid','uuid'],'json'),
     read_look: transaction('read_look',['uuid','uuid'],'json'),
     read_look_version: transaction('read_look_version',['uuid','uuid'],'json'),
+    enqueue_composition_job: transaction('enqueue_composition_job',['uuid','text','text','text','jsonb','uuid','uuid'],'uuid'),
+    save_look_composition: transaction('save_look_composition',['uuid','text','text','text','jsonb'],'uuid'),
+    read_look_composition: transaction('read_look_composition',['uuid','uuid'],'json'),
+    list_look_version_items: transaction('list_look_version_items',['uuid','uuid'],'json'),
+    take_provider_call_slot: transaction('take_provider_call_slot',['text','integer'],'boolean'),
+    take_provider_daily_slot: transaction('take_provider_daily_slot',['text','integer'],'boolean'),
+    composition_quota_available: transaction('composition_quota_available',['uuid'],'boolean'),
     list_looks: transaction('list_looks',['uuid','integer'],'json'),
     read_version_asset: transaction('read_version_asset',['uuid','uuid'],'json'),
     list_catalog_products: transaction('list_catalog_products',['integer','integer','text'],'json'),
@@ -140,6 +167,7 @@ export const privateOperations = {
     next_ai_job: transaction('next_ai_job',[],'nullable_uuid'),
     renew_ai_job_lease: transaction('renew_ai_job_lease',['uuid','bigint'],'boolean'),
     load_ai_job: transaction('load_ai_job',['uuid','bigint'],'json'),
+    record_job_item_snapshot: transaction('record_job_item_snapshot',['uuid','bigint','smallint','jsonb'],'boolean'),
     register_generated_asset: transaction('register_generated_asset',['uuid','bigint','text','integer','text','integer','integer'],'uuid'),
     complete_look_job: transaction('complete_look_job',['uuid','bigint','uuid'],'nullable_uuid'),
     fail_look_job: transaction('fail_look_job',['uuid','bigint','text'],'boolean'),
@@ -148,6 +176,8 @@ export const privateOperations = {
     settle_provider_call: transaction('settle_provider_call',['uuid','text','text','jsonb','jsonb','bigint','bigint','bigint','text','integer','text'],'boolean'),
     reconcile_provider_call: transaction('reconcile_provider_call',['uuid','text','bigint','text','jsonb'],'boolean'),
     list_unreconciled_calls: transaction('list_unreconciled_calls',['integer'],'json'),
+    reserve_pilot_dispatch: transaction('reserve_pilot_dispatch',['text','uuid','bigint','text','jsonb'],'json'),
+    pilot_status: transaction('pilot_status',['text'],'json'),
     enqueue_telemetry_event: transaction('enqueue_telemetry_event',['text','uuid','jsonb'],'boolean'),
     claim_telemetry_events: transaction('claim_telemetry_events',['integer'],'json'),
     mark_telemetry_event: transaction('mark_telemetry_event',['uuid','text'],'boolean'),

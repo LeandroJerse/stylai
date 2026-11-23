@@ -15,6 +15,7 @@ import { useAuth } from "../auth/AuthProvider"
 import { nameError, NAME_MAX, newPasswordError, passwordChecks } from "../auth/validation"
 import { formatDay, coins } from "../lib/format"
 import { ErrorState, LoadingState, Notice, Segmented, Sheet, Switch } from "./ui"
+import { TikTokConnection } from "./TikTokConnection"
 
 const SECTIONS = [
   { id: "cfg-conta", label: "Conta" },
@@ -283,6 +284,7 @@ export function SettingsSheet() {
         <Group id="cfg-privacidade" title="Privacidade e dados" description="Fotos do corpo e medidas ficam na sua conta e só são usadas para montar e provar looks.">
           <PrivacyGroup />
         </Group>
+        <TikTokConnection />
       </div>
     </Sheet>
   )

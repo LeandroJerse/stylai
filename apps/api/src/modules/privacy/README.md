@@ -1,5 +1,7 @@
-# privacy module — not implemented
+# Privacy module — implementation status
 
-Versioned consent and explicit photo/result/account deletion. Tasks T8/T14. Do not claim completed deletion when cleanup is queued.
+POST /v1/privacy/deletion-requests accepts `{ confirm: true }` with an authenticated session and exact app Origin. The actor comes exclusively from the session. Returns 202 `{ requestId, status: "pending" }`; never claims completed erasure.
 
-Create cohesive routes/service/repository files here when the corresponding task is implemented. The current API fallback returns 503; do not add fake success handlers. Read the root docs/START-HERE.md and docs/handoff/IMPLEMENTATION-PLAN.md.
+Database request revokes app sessions and photo consent and cancels pending jobs. Migration 20261122163645_account_deletion_asset_purge additionally queues the account's private images for the existing physical purger. This migration has been tested in an isolated PostgreSQL container; deployment to the active database must be tracked separately.
+
+Remaining: frontend request UI, final metadata/Auth removal, export/correction workflow, deletion replay after backup restoration, and completion receipts. Do not advertise complete account erasure. Photo consent/removal routes already live under modules/photos.

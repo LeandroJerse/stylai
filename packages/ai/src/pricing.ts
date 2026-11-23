@@ -3,7 +3,7 @@
  * Each entry records where and when it was checked. A price is evidence for a
  * computed cost, never a provider confirmation. Update by adding a new version.
  */
-export type Provider = "anthropic" | "gemini" | "segmind"
+export type Provider = "anthropic" | "gemini" | "segmind" | "fal"
 
 export interface TokenPrice {
   kind: "tokens"
@@ -30,7 +30,18 @@ export interface GpuSecondPrice {
   checkedAt: string
 }
 
-export type PriceEntry = TokenPrice | GpuSecondPrice
+export interface PerImagePrice {
+  kind: "per_image"
+  provider: Provider
+  model: string
+  priceVersion: string
+  /** Fixed USD micros per generated output image. */
+  perImageMicros: bigint
+  source: string
+  checkedAt: string
+}
+
+export type PriceEntry = TokenPrice | GpuSecondPrice | PerImagePrice
 
 export const priceTable: readonly PriceEntry[] = [
   {
@@ -40,10 +51,28 @@ export const priceTable: readonly PriceEntry[] = [
     checkedAt: "2026-11-20",
   },
   {
+    kind: "tokens", provider: "anthropic", model: "claude-opus-5-5", priceVersion: "anthropic-opus-5-5-2026-11-23",
+    inputPerMTok: 4_000_000n, outputPerMTok: 20_000_000n,
+    source: "Anthropic models table (claude-api skill, cached 2026-11-03): $4/$20 per MTok",
+    checkedAt: "2026-11-23",
+  },
+  {
     kind: "gpu_seconds", provider: "segmind", model: "try-on-diffusion", priceVersion: "segmind-try-on-diffusion-2026-11-20",
     perGpuSecond: 7_200n,
     source: "https://www.segmind.com/models/try-on-diffusion/pricing (serverless $0.0072 per GPU second, read 2026-11-20)",
     checkedAt: "2026-11-20",
+  },
+  {
+    kind: "per_image", provider: "fal", model: "fal-ai/fashn/tryon/v1.6", priceVersion: "fal-fashn-tryon-v1.6-2026-11-21",
+    perImageMicros: 75_000n,
+    source: "https://fal.ai/models/fal-ai/fashn/tryon/v1.6 ($0.075 fixed per generation/output image, read 2026-11-21)",
+    checkedAt: "2026-11-21",
+  },
+  {
+    kind: "per_image", provider: "fal", model: "fal-ai/image-apps-v2/virtual-try-on", priceVersion: "fal-image-apps-v2-vton-2026-11-21",
+    perImageMicros: 40_000n,
+    source: "https://fal.ai/models/fal-ai/image-apps-v2/virtual-try-on ($0.04 fixed per output image, read 2026-11-21)",
+    checkedAt: "2026-11-21",
   },
 ]
 
@@ -69,6 +98,12 @@ export function gpuCostMicros(price: GpuSecondPrice, seconds: number): bigint | 
   // Round to whole microseconds first so float noise (8.06*1000=8060.000000000001) cannot add a millisecond.
   const millis = BigInt(Math.ceil(Math.round(seconds * 1_000_000) / 1000))
   return ceilDiv(millis * price.perGpuSecond, 1000n)
+}
+
+/** Fixed per-image billing (exact integer micros; unknown/invalid count stays null). */
+export function perImageCostMicros(price: PerImagePrice, imageCount: number): bigint | null {
+  if (!Number.isSafeInteger(imageCount) || imageCount < 0 || imageCount > 10) return null
+  return BigInt(imageCount) * price.perImageMicros
 }
 
 /** Formats micros for humans; never use the result for arithmetic. */

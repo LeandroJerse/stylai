@@ -3,6 +3,7 @@
  * start a job on the API and follow it until the look arrives. Costs, balance, progress, results,
  * versions and history all come from the server (useStudio, api/queries.ts).
  */
+import { CompositionPanel } from "../components/CompositionPanel"
 import { useEffect, useId, useRef, useState } from "react"
 import type { ChangeEvent, ReactNode } from "react"
 import { useMutation, useQuery } from "@tanstack/react-query"
@@ -344,10 +345,11 @@ function PreferenceRow() {
 
 const ACTION_LABEL: Record<StudioMode, string> = { procurar: "Procurar e vestir", vestir: "Vestir peças" }
 
-/** Procurar on the curated catalog: the search step comes before any generation. */
+/** Procurar: single-piece search, or a full outfit composed by the agent. Neither generates. */
 function SearchRow({ onSearch }: { onSearch: () => void }) {
   const studio = useStudio()
-  const busy = studio.searching
+  const { draft, notify } = useStore()
+  const busy = studio.searching || studio.composing
   return (
     <div className="sa-cta-dock">
       <button type="button" className="sa-btn sa-btn-primary sa-btn-block" aria-disabled={busy || undefined} onClick={() => !busy && onSearch()} data-testid="search-button">
@@ -361,10 +363,15 @@ function SearchRow({ onSearch }: { onSearch: () => void }) {
           </>
         )}
       </button>
+      <button type="button" className="sa-btn sa-btn-secondary sa-btn-block mt-2" aria-disabled={busy || undefined} data-testid="compose-button"
+        onClick={() => { if (!busy) void studio.compose().then((r) => { if (!r.ok) notify(r.message) }) }}>
+        {studio.composing ? <><CircleNotch size={18} className="sa-spin" aria-hidden="true" /> Montando o look…</> : <>Montar look completo com o agente</>}
+      </button>
       <p className="sa-caption sa-muted mt-2">
         {studio.caps?.searchScope === "curated_catalog" ? "Busca no catálogo selecionado pelo StylAI (não é uma busca ao vivo nas lojas). " : ""}
-        Buscar não gera imagem e não gasta moedas. Depois, escolha a peça e toque em Vestir.
+        Buscar ou montar o look não gera imagem e não gasta moedas. Você confirma as peças e o custo antes de gerar.
       </p>
+      {draft.composition ? <CompositionPanel key={draft.composition.id} composition={draft.composition} /> : null}
     </div>
   )
 }
@@ -1514,6 +1521,8 @@ export function StudioScreen() {
           {look ? (
             <>
               <ResultDetails look={look} />
+              {/* Same durable composition: swap/lock a piece and generate a NEW version (whole chain re-rendered). */}
+              {draft.composition && !showComposer ? <CompositionPanel key={`look-${draft.composition.id}`} composition={draft.composition} /> : null}
               {look.candidatesCount > 0 ? <SearchCatalogPanel look={look} /> : null}
               <div className="sa-hide-xl">
                 <PiecesGrid look={look} />

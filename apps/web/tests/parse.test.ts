@@ -114,3 +114,27 @@ describe("session", () => {
     expect(() => parseSession({ user: { id: "u1", email: "a@b.co" } })).toThrow(ApiError)
   })
 })
+
+describe("parseComposition", () => {
+  const product = (id: string, affiliateUrl: string | null) => ({
+    id, name: `Peça ${id}`, category: { id: "tops", label: "Blusas" }, partner: { id: "p", name: "Loja" },
+    price: { amount: 50, currency: "BRL" }, images: [], variants: [], links: { productUrl: "https://pt.aliexpress.com/item/1.html", affiliateUrl },
+  })
+  test("keeps https links only, drops unknown slots and choices outside the candidates", async () => {
+    const { parseComposition } = await import("../src/api/parse")
+    const c = parseComposition({
+      id: "c1", source: "aliexpress_affiliate", selectionMethod: "agent", model: "claude-opus-5-5",
+      slots: [
+        { slot: "upper", label: "Parte de cima", candidates: [{ ...product("a", "http://evil.test/x"), generationEligible: false }], choice: { productId: "a", reason: "ok" }, error: null },
+        { slot: "lower", label: "Parte de baixo", candidates: [{ ...product("b", "https://s.click.aliexpress.com/e/_x"), generationEligible: false }], choice: { productId: "invented", reason: "x" }, error: null },
+        { slot: "shoes", label: "?", candidates: [], choice: null, error: null },
+      ],
+      totalPrice: null, missingSlots: ["lower"], generation: { eligible: false, blockedReason: "ai_image_rights_unconfirmed", layers: 2, render: "sequential_layers_unverified", estimatedProviderUsd: 0.15, coins: 10, coinsNote: "" },
+    })
+    expect(c.slots.map((s) => s.slot)).toEqual(["upper", "lower"])
+    expect(c.slots[0]!.candidates[0]!.product.links.affiliateUrl).toBeNull()
+    expect(c.slots[1]!.candidates[0]!.product.links.affiliateUrl).toBe("https://s.click.aliexpress.com/e/_x")
+    expect(c.slots[1]!.choice).toBeNull()
+    expect(c.generation).toMatchObject({ eligible: false, blockedReason: "ai_image_rights_unconfirmed" })
+  })
+})
