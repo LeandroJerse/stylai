@@ -18,13 +18,24 @@ const rootEnvFile = resolve(root, "../.env.local")
 const rootEnv = existsSync(rootEnvFile) ? parseEnv(readFileSync(rootEnvFile, "utf8")) : {}
 const plan = planPilotRuntime({ argv, rootEnv })
 const aliexpress = plan.catalog === "aliexpress_affiliate"
-console.log(JSON.stringify({ ...plan.report, catalog: plan.catalog, real: plan.real, aliexpressFromDpapi: aliexpress, errors: plan.errors }, null, 2))
-if (!plan.ok) process.exit(2)
-if (argv.includes("--dry-run")) { console.log("Dry-run: nada iniciado, nenhuma porta/banco/processo tocado."); process.exit(0) }
+// AliExpress credentials come from the DPAPI store: validated BEFORE any mutation (also in --dry-run; values never printed).
+let aliexpressEnv = {}
+let dpapi = aliexpress ? "não validado" : "não usado"
+if (aliexpress) {
+  try { aliexpressEnv = loadAliExpressEnvironment(); dpapi = "válido (App Key/Secret presentes; Tracking ID " + (aliexpressEnv.ALIEXPRESS_TRACKING_ID ? "presente" : "ausente") + ")" }
+  catch { dpapi = "INVÁLIDO/ausente"; plan.errors.push("AliExpress DPAPI configuration unavailable (run Set-AliExpressAffiliate.ps1)") }
+}
+console.log(JSON.stringify({ ...plan.report, catalog: plan.catalog, real: plan.real, aliexpressDpapi: dpapi, errors: plan.errors }, null, 2))
+if (plan.errors.length) process.exit(2)
+if (argv.includes("--dry-run")) { console.log("Dry-run: nada iniciado; portas, banco, papéis e processos não foram tocados."); process.exit(0) }
 
 const { assertReviewPortsAvailable } = await import("./review-ports.mjs")
 await assertReviewPortsAvailable([5198, 3100, 3101, 54391, ...(plan.real ? [] : [54395])])
-const status = JSON.parse(spawnSync(resolve(root, "node_modules/.bin/supabase"), ["status", "-o", "json"], { encoding: "utf8", windowsHide: true }).stdout || "{}")
+const supabaseBin = resolve(root, process.platform === "win32" ? "node_modules/.bin/supabase.exe" : "node_modules/.bin/supabase")
+const statusRun = spawnSync(supabaseBin, ["status", "-o", "json"], { encoding: "utf8", windowsHide: true })
+if (statusRun.error || statusRun.status !== 0) throw new Error("supabase status failed (is the local stack running?)")
+let status
+try { status = JSON.parse(statusRun.stdout) } catch { throw new Error("supabase status returned invalid JSON") }
 if (!status.API_URL || !["localhost", "127.0.0.1"].includes(new URL(status.API_URL).hostname)) throw new Error("Local Supabase is not running")
 // Roles only (no fixtures, no catalog/user/pilot reset): fresh per-run passwords for the restricted roles.
 const password = randomBytes(18).toString("base64url")
@@ -32,9 +43,8 @@ const roles = spawnSync("docker", ["exec", "-i", "supabase_db_stylai-local", "ps
   { encoding: "utf8", windowsHide: true, input: `begin; alter role stylai_api login password '${password}'; alter role stylai_ai_worker login password '${password}'; commit;` })
 if (roles.status !== 0) throw new Error("Local role initialization failed")
 
-const aliexpressEnv = aliexpress ? loadAliExpressEnvironment() : {}
 const clean = withoutAliExpressEnv(Object.fromEntries(Object.entries(process.env)
-  .filter(([k]) => !/^(STYLAI_|SUPABASE_|LANGFUSE_|SEGMIND_|ANTHROPIC_|GEMINI_|FAL_|TELEMETRY_|VITE_)/.test(k))))
+  .filter(([k]) => !/^(FAL_|TIKTOK_|OPENAI_|STYLAI_|SUPABASE_|LANGFUSE_|SEGMIND_|ANTHROPIC_|GEMINI_|TELEMETRY_|VITE_)/.test(k))))
 const supabase = { SUPABASE_URL: status.API_URL, SUPABASE_PUBLISHABLE_KEY: status.PUBLISHABLE_KEY, SUPABASE_SECRET_KEY: status.SECRET_KEY, STYLAI_OBJECT_STORE: "supabase" }
 const db = (role) => `postgres://${role}:${password}@127.0.0.1:54322/postgres`
 const origin = "http://localhost:5198"
