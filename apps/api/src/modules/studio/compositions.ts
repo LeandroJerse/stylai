@@ -14,7 +14,7 @@ import {
   type CandidatesBySlot, type CatalogSourceMode, type CompositionCandidate, type CompositionChoice, type CompositionIntent, type LockedSlots, type SlotId,
 } from "@stylai/contracts"
 import type { AliExpressCatalogService } from "@stylai/commerce"
-import type { Composer } from "@stylai/ai"
+import type { Composer, InterpretationCache } from "@stylai/ai"
 import type { PrivateDatabase } from "@stylai/supabase"
 import { PrivateDatabaseError } from "@stylai/supabase"
 import { parseCatalogPage, presentAliExpressProduct, presentProduct, type CatalogRow } from "../catalog/routes.js"
@@ -34,6 +34,8 @@ export interface CompositionDeps {
   aliexpressCatalog?: AliExpressCatalogService | null
   /** Null = no model configured: explicit deterministic fallback (labelled rules_fallback). */
   composer?: Composer | null
+  /** Shared, hash-keyed interpretation cache (null = no reuse). */
+  interpretationCache?: InterpretationCache | null
   /** Global (DB) budget for composer calls; false = use the rules fallback without calling the model. */
   acquireComposerCall?: () => Promise<boolean>
   /** Estimated provider cost per rendered layer (USD micros) from the versioned price table. */
@@ -173,9 +175,12 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
       let interpretedBy: "agent" | "rules_fallback" = "rules_fallback"
       try {
         if (!deps.composer) throw new Error("no_composer")
-        if (deps.acquireComposerCall && !(await deps.acquireComposerCall())) throw new Error("composer_budget")
-        const r = await deps.composer.interpret(input.data.prompt)
-        intent = r.intent; usage.push(r.usage); interpretedBy = "agent"
+        const acquire = deps.acquireComposerCall ?? (async () => true)
+        // Shared interpretation cache (same as the simple search): quota only on a miss.
+        const r = deps.interpretationCache
+          ? await deps.interpretationCache.interpret(deps.composer, input.data.prompt, acquire)
+          : await (async () => { if (!(await acquire())) throw new Error("composer_budget"); return await deps.composer!.interpret(input.data.prompt) })()
+        intent = r.intent; if (r.usage) usage.push(r.usage); interpretedBy = "agent"
       } catch (error) {
         if (deps.composer) request.log.warn({ stage: "interpret", reason: error instanceof Error ? error.message.slice(0, 40) : "unknown" }, "composer fallback")
         intent = interpretCompositionRules(input.data.prompt)
@@ -219,7 +224,8 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
           if (deps.acquireComposerCall && !(await deps.acquireComposerCall())) throw new Error("composer_budget")
           const selected = await deps.composer.select(intent, bySlot, locked)
           usage.push(selected.usage)
-          if (selected.ok && selected.choices.length) { choices = selected.choices; method = "agent" }
+          // A valid agent answer is final, including explicit abstentions: the rules never re-introduce a piece the agent rejected.
+          if (selected.ok) { choices = selected.choices; method = "agent" }
           else request.log.warn({ stage: "select", errors: selected.errors.slice(0, 5) }, "composer selection rejected by server validation")
         } catch (error) {
           request.log.warn({ stage: "select", reason: error instanceof Error ? error.message.slice(0, 40) : "unknown" }, "composer fallback")

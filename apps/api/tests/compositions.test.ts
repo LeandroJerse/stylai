@@ -198,3 +198,20 @@ describe("composition stages are explicit (P07)", () => {
     } finally { await t.app.close() }
   })
 })
+
+describe("agent abstention is respected (no rules fallback re-introducing rejected items)", () => {
+  test("an agent that abstains on every slot yields no pieces, not the rules' picks", async () => {
+    const composer = {
+      model: "claude-haiku-5-5",
+      interpret: async () => ({ intent: { slots: [{ slot: "lower", required: true }, { slot: "upper", required: true }], colors: [], terms: [], occasion: null, budgetTotalBrl: null, budgetMode: "prefer", avoid: [] }, usage: { inputTokens: 10, outputTokens: 5 }, requestId: null, promptVersion: "v" }),
+      select: async () => ({ ok: true, choices: [], totalMinor: null, errors: [], abstained: ["lower", "upper"], usage: { inputTokens: 10, outputTokens: 5 }, requestId: null, promptVersion: "v" }),
+    } as unknown as Composer
+    const t = await build({ composer })
+    try {
+      const c = (await post(t.app, "/v1/studio/compositions", { prompt: "calça e blusa" })).json()
+      expect(c).toMatchObject({ selectionMethod: "agent", stages: { selection: "agent" }, missingSlots: ["lower", "upper"] })
+      expect(c.slots.every((s: { choice: unknown }) => s.choice === null)).toBe(true)
+      expect(c.generation).toMatchObject({ eligible: false, blockedReason: "no_pieces" })
+    } finally { await t.app.close() }
+  })
+})

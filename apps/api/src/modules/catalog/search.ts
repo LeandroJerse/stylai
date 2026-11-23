@@ -7,7 +7,8 @@
  */
 import type { FastifyInstance, FastifyRequest } from "fastify"
 import { z } from "zod"
-import { apiError, PILOT_SELLER_NAME, searchCatalog, type CatalogSourceMode } from "@stylai/contracts"
+import { apiError, buildSlotQuery, interpretCompositionRules, PILOT_SELLER_NAME, searchCatalog, type CatalogSourceMode, type CompositionIntent } from "@stylai/contracts"
+import type { ComposerUsage, InterpretationCache, OutfitAgent } from "@stylai/ai"
 import type { AliExpressCatalogService, TikTokCatalogCache } from "@stylai/commerce"
 import type { PrivateDatabase } from "@stylai/supabase"
 import { presentAliExpressProduct, presentProduct, presentTikTokProduct, type CatalogRow } from "./routes.js"
@@ -34,6 +35,43 @@ export interface SearchDeps {
   catalogMode?: CatalogSourceMode
   tiktokCache?: TikTokCatalogCache | null
   aliexpressCatalog?: AliExpressCatalogService | null
+  /** Cheap interpretation agent (Haiku by default) turning the request into a store query; null = rules (P10). */
+  agent?: OutfitAgent | null
+  interpretationCache?: InterpretationCache | null
+  /** Global DB call budget for the agent; false = rules, no model call. */
+  acquireAgentCall?: () => Promise<boolean>
+  /** USD micros per million tokens of the agent model (null = cost not computable). */
+  agentPrice?: { inputPerMTok: bigint; outputPerMTok: bigint } | null
+}
+
+/** Request -> ONE store query: agent (cached) when available, otherwise deterministic rules. Never raw prompt text. */
+async function storeQuery(deps: SearchDeps, prompt: string, log: FastifyRequest["log"]) {
+  let intent: CompositionIntent | null = null
+  let usage: ComposerUsage | null = null
+  let cached = false
+  if (deps.agent) {
+    try {
+      // Quota is consumed only on a cache miss, right before the paid call (hits are free and survive an exhausted quota).
+      const acquire = deps.acquireAgentCall ?? (async () => true)
+      const r = deps.interpretationCache
+        ? await deps.interpretationCache.interpret(deps.agent, prompt, acquire)
+        : await (async () => { if (!(await acquire())) throw new Error("agent_budget"); return { ...(await deps.agent!.interpret(prompt)), cached: false } })()
+      intent = r.intent; usage = r.usage; cached = r.cached
+    } catch (error) {
+      log.warn({ stage: "search_interpret", reason: error instanceof Error ? error.message.slice(0, 40) : "unknown" }, "search agent fallback")
+    }
+  }
+  const interpretedBy = intent ? "agent" as const : "rules" as const
+  const finalIntent = intent ?? interpretCompositionRules(prompt)
+  const slot = finalIntent.slots.find((s) => s.query)?.slot ?? finalIntent.slots[0]!.slot
+  const micros = usage && deps.agentPrice
+    ? (BigInt(usage.inputTokens) * deps.agentPrice.inputPerMTok + BigInt(usage.outputTokens) * deps.agentPrice.outputPerMTok) / 1_000_000n
+    : usage ? null : 0n
+  return {
+    keywords: buildSlotQuery(finalIntent, slot), slot, interpretedBy,
+    model: interpretedBy === "agent" ? deps.agent!.model : null,
+    cached, usage, estimatedUsd: micros === null ? null : Number(micros) / 1_000_000,
+  }
 }
 
 const retryAfterSeconds = (until: string | null) => (until ? Math.max(1, Math.ceil((Date.parse(until) - Date.now()) / 1000)) : 30)
@@ -81,7 +119,8 @@ export async function registerSearchRoutes(app: FastifyInstance, deps: SearchDep
       if (!deps.aliexpressCatalog) {
         return reply.code(503).send(apiError("service_unavailable", "Busca AliExpress não configurada no servidor. Nenhum catálogo sintético foi usado como substituto."))
       }
-      const keywords = input.data.prompt.trim().replace(/\s+/g, " ").slice(0, 100)
+      const query = await storeQuery(deps, input.data.prompt, request.log)
+      const keywords = query.keywords
       let ae: Awaited<ReturnType<AliExpressCatalogService["search"]>>
       try { ae = await deps.aliexpressCatalog.search({ keywords, pageSize: ALIEXPRESS_PAGE_SIZE, viewer }) }
       catch { return reply.code(503).send(apiError("service_unavailable", "Busca no AliExpress temporariamente indisponível. Nenhum catálogo sintético foi usado como substituto.")) }
@@ -94,6 +133,8 @@ export async function registerSearchRoutes(app: FastifyInstance, deps: SearchDep
         source: "aliexpress_affiliate",
         catalog: "aliexpress_affiliate",
         sourceState: ae.state,
+        // How the request became a store query (transparent: agent vs rules, model, tokens, cost, cache).
+        query,
         // Honest empty: the provider itself reported no result (resp_code 405 "The result is empty").
         emptyReason: ae.emptyReason,
         ...(ae.emptyReason ? { provider: { name: "aliexpress", code: ae.errorCode, requestId: ae.requestId } } : {}),

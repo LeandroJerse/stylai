@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { createAliExpressAffiliateClient, createAliExpressCatalogService, type AliExpressFetch } from "@stylai/commerce"
+import { createAliExpressAffiliateClient, createAliExpressCatalogService, type AliExpressCatalogService, type AliExpressFetch } from "@stylai/commerce"
 import type { PrivateDatabase } from "@stylai/supabase"
 import { buildApp } from "../src/app"
 
@@ -126,4 +126,61 @@ test("Estúdio config declares a live store search (not the curated catalog) whe
     expect((await live.inject("/v1/studio/config")).json().capabilities.searchScope).toBe("stores")
     expect((await curated.inject("/v1/studio/config")).json().capabilities.searchScope).toBe("curated_catalog")
   } finally { await live.close(); await curated.close() }
+})
+
+describe("store search query building (P10 + Haiku interpretation)", () => {
+  const spyService = () => {
+    const keywords: string[] = []
+    const svc = { hasTrackingId: true, findFresh: async () => null, listFreshCached: async () => [],
+      search: async (q: { keywords: string }) => { keywords.push(q.keywords); return {
+        state: "ready", items: [], rejectedCount: 0, links: null, trackingIdEcho: null, linkErrorCode: null, observedAt: "t", expiresAt: null, fromCache: false,
+        requestId: null, errorKind: null, errorCode: null, errorMessage: null, backoffUntil: null, emptyReason: null } } } as unknown as AliExpressCatalogService
+    return { svc, keywords }
+  }
+  test("without an agent the rules build an audience/garment/colour-correct query (never a fixed feminine term)", async () => {
+    const { svc, keywords } = spyService()
+    const app = await buildApp({ appOrigin: "http://localhost:5200", search: { db, resolveActor: async () => ACTOR, catalogMode: "aliexpress_affiliate", aliexpressCatalog: svc } })
+    try {
+      const body = (await search(app, "Quero uma calça chino masculina azul marinho")).json()
+      expect(keywords[0]).toBe("calça masculina chino azul marinho")
+      expect(body.query).toMatchObject({ keywords: "calça masculina chino azul marinho", interpretedBy: "rules", model: null })
+    } finally { await app.close() }
+  })
+
+  test("with the Haiku agent: its sanitized slot query is used, cached on repeat, tokens and cost reported", async () => {
+    const { svc, keywords } = spyService()
+    const { createInterpretationCache } = await import("@stylai/ai")
+    let calls = 0
+    const agent = { model: "claude-haiku-5-5", select: async () => { throw new Error("unused") }, interpret: async () => {
+      calls++
+      return { intent: { audience: "masculino", slots: [{ slot: "upper", required: true, query: "camisa masculina linho branca", color: "branco" }], colors: ["branco"], terms: [], occasion: null, budgetTotalBrl: null, budgetMode: "prefer", avoid: [] },
+        usage: { inputTokens: 300, outputTokens: 50 }, requestId: null, promptVersion: "interpret/x" } } }
+    const app = await buildApp({ appOrigin: "http://localhost:5200", search: { db, resolveActor: async () => ACTOR, catalogMode: "aliexpress_affiliate", aliexpressCatalog: svc,
+      agent: agent as never, interpretationCache: createInterpretationCache(), agentPrice: { inputPerMTok: 100_000n, outputPerMTok: 500_000n } } })
+    try {
+      const first = (await search(app, "camisa de linho branca pra homem")).json()
+      expect(keywords[0]).toBe("camisa masculina linho branca")
+      expect(first.query).toMatchObject({ interpretedBy: "agent", model: "claude-haiku-5-5", cached: false, usage: { inputTokens: 300, outputTokens: 50 }, estimatedUsd: 0.000055 })
+      const second = (await search(app, "Camisa de linho branca  pra homem")).json()
+      expect(second.query).toMatchObject({ interpretedBy: "agent", cached: true, usage: null, estimatedUsd: 0 })
+      expect(calls).toBe(1)
+    } finally { await app.close() }
+  })
+
+  test("a cached interpretation is served even with the agent quota exhausted (quota only on miss)", async () => {
+    const { svc } = spyService()
+    const { createInterpretationCache } = await import("@stylai/ai")
+    let quota = 1, calls = 0
+    const agent = { model: "claude-haiku-5-5", select: async () => { throw new Error("unused") }, interpret: async () => { calls++; return {
+      intent: { audience: null, slots: [{ slot: "upper", required: true, query: "camisa branca", color: "branco" }], colors: [], terms: [], occasion: null, budgetTotalBrl: null, budgetMode: "prefer", avoid: [] },
+      usage: { inputTokens: 1, outputTokens: 1 }, requestId: null, promptVersion: "v" } } }
+    const app = await buildApp({ appOrigin: "http://localhost:5200", search: { db, resolveActor: async () => ACTOR, catalogMode: "aliexpress_affiliate", aliexpressCatalog: svc,
+      agent: agent as never, interpretationCache: createInterpretationCache(), acquireAgentCall: async () => quota-- > 0 } })
+    try {
+      expect((await search(app, "camisa branca")).json().query.interpretedBy).toBe("agent")
+      expect((await search(app, "camisa branca")).json().query).toMatchObject({ interpretedBy: "agent", cached: true })
+      expect((await search(app, "calça preta")).json().query.interpretedBy).toBe("rules")
+      expect(calls).toBe(1)
+    } finally { await app.close() }
+  })
 })

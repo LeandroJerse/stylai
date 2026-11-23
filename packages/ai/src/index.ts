@@ -4,6 +4,7 @@ export * from "./image.js"
 export * from "./segmind.js"
 export * from "./fal.js"
 export * from "./interpreter.js"
+export * from "./agent-prompts.js"
 export * from "./composer.js"
 export * from "./telemetry.js"
 

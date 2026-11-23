@@ -177,7 +177,7 @@ export interface CompositionValidation { ok: boolean; choices: CompositionChoice
 
 /** Server-side revalidation of any proposed composition (agent or person). */
 export function validateComposition(intent: CompositionIntent, bySlot: CandidatesBySlot, choices: readonly CompositionChoice[], locked: LockedSlots,
-  options: { requireAll?: boolean } = {}): CompositionValidation {
+  options: { requireAll?: boolean; abstained?: readonly SlotId[] } = {}): CompositionValidation {
   const errors: string[] = []
   const wanted = new Set(intent.slots.map((s) => s.slot))
   const out: CompositionChoice[] = []
@@ -202,6 +202,8 @@ export function validateComposition(intent: CompositionIntent, bySlot: Candidate
   if (options.requireAll) {
     for (const { slot } of intent.slots) {
       // One diagnosis per slot: an invalid choice for the slot already explains why it is missing.
+      // An explicit abstention ("no candidate fits") is a valid, safe answer, except for a locked slot.
+      if (options.abstained?.includes(slot) && !locked[slot]) continue
       if ((bySlot[slot]?.length ?? 0) > 0 && !out.some((x) => x.slot === slot) && !errors.some((e) => e.endsWith(`:${slot}`))) errors.push(`missing_required:${slot}`)
     }
   }
