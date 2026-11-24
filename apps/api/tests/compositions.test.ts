@@ -109,6 +109,23 @@ describe("outfit compositions", () => {
       expect(selectCalls).toBe(1)
       expect(c).toMatchObject({ selectionMethod: "rules_fallback", model: "claude-opus-5-5" })
       expect(c.slots.every((s: { choice: unknown }) => s.choice !== null)).toBe(true)
+      expect(c.generation).toMatchObject({ eligible: false, blockedReason: "selection_review_required" })
+      const generation = await post(t.app, "/v1/studio/generations", { compositionId: c.id,
+        choices: c.slots.map((s: { slot: string; choice: { productId: string } }) => ({ slot: s.slot, productId: s.choice.productId })) })
+      expect(generation.statusCode).toBe(409)
+      expect(generation.json().error.code).toBe("selection_review_required")
+      expect(t.enqueued).toHaveLength(0)
+      // Existing snapshots predate selectionReviewRequired but retain interpretation/selection provenance.
+      const saved = t.compositions.get(c.id)!
+      const legacy = JSON.parse(JSON.stringify(saved.plan))
+      delete legacy.selectionReviewRequired
+      t.compositions.set(c.id, { ...saved, plan: legacy })
+      const reopened = (await t.app.inject({ url: `/v1/studio/compositions/${c.id}`, headers: { "x-test-user": "a" } })).json()
+      expect(reopened.generation).toMatchObject({ eligible: false, blockedReason: "selection_review_required" })
+      const retry = await post(t.app, "/v1/studio/generations", { compositionId: c.id,
+        choices: c.slots.map((s: { slot: string; choice: { productId: string } }) => ({ slot: s.slot, productId: s.choice.productId })) })
+      expect(retry.statusCode).toBe(409)
+      expect(t.enqueued).toHaveLength(0)
     } finally { await t.app.close() }
   })
 
@@ -167,6 +184,17 @@ describe("composition lock and cost guards", () => {
 })
 
 describe("composition stages are explicit (P07)", () => {
+  test("generation cannot silently omit a required part of a complete outfit", async () => {
+    const t = await build()
+    try {
+      const c = (await post(t.app, "/v1/studio/compositions", { prompt: "camisa e calça" })).json()
+      const s = c.slots.find((x: { slot: string }) => x.slot === "lower")
+      const r = await post(t.app, "/v1/studio/generations", { compositionId: c.id, choices: [{ slot: "lower", productId: s.choice.productId }] })
+      expect(r.statusCode).toBe(409)
+      expect(r.json().error.code).toBe("composition_incomplete")
+      expect(t.enqueued).toHaveLength(0)
+    } finally { await t.app.close() }
+  })
   const emptyAliExpress = (state: "ready" | "degraded") => ({ hasTrackingId: true, findFresh: async () => null, search: async () => ({
     state, items: [], rejectedCount: 0, links: null, trackingIdEcho: null, linkErrorCode: null, observedAt: "t", expiresAt: null, fromCache: false,
     requestId: "r", errorKind: state === "ready" ? null : "network", errorCode: state === "ready" ? "405" : null, errorMessage: null, backoffUntil: null,
@@ -200,6 +228,18 @@ describe("composition stages are explicit (P07)", () => {
 })
 
 describe("agent abstention is respected (no rules fallback re-introducing rejected items)", () => {
+  test("zero selected garments cannot be a complete look even when every slot is optional", async () => {
+    const composer = {
+      model: "test", interpret: async () => ({ intent: { slots: [{ slot: "upper", required: false }], colors: [], terms: [], occasion: null, budgetTotalBrl: null, budgetMode: "prefer", avoid: [] }, usage: { inputTokens: 1, outputTokens: 1 } }),
+      select: async () => ({ ok: true, choices: [], totalMinor: null, errors: [], abstained: ["upper"], usage: { inputTokens: 1, outputTokens: 1 } }),
+    } as unknown as Composer
+    const t = await build({ composer })
+    try {
+      const c = (await post(t.app, "/v1/studio/compositions", { prompt: "blusa opcional" })).json()
+      expect(c.complete).toBe(false)
+      expect(c.generation).toMatchObject({ eligible: false, blockedReason: "no_pieces" })
+    } finally { await t.app.close() }
+  })
   test("an agent that abstains on every slot yields no pieces, not the rules' picks", async () => {
     const composer = {
       model: "claude-haiku-5-5",
@@ -233,7 +273,7 @@ describe("empty answers are observable (P14)", () => {
       expect(body.composed).toBe(false)
       expect(body.intent).toMatchObject({ occasion: "jantar", style: expect.arrayContaining(["estilo italiano"]), budgetTotalBrl: null })
       const upper = body.slots.find((s: { slot: string }) => s.slot === "upper")
-      expect(upper).toMatchObject({ error: "no_results", query: "camisa social",
+      expect(upper).toMatchObject({ error: "no_results", query: "camisa",
         retrieval: { provider: "aliexpress", outcome: "provider_empty", returned: 0, kept: 0, code: "405", requestId: "req-camisa", message: "The result is empty" } })
       expect(JSON.stringify(body)).not.toMatch(/app_?secret|sign=|access_token/i)
     } finally { await t.app.close() }
@@ -255,6 +295,48 @@ describe("empty answers are observable (P14)", () => {
       expect(body.composed).toBe(true)
       const lower = body.slots.find((s: { slot: string }) => s.slot === "lower")
       expect(lower).toMatchObject({ query: "calça", retrieval: { outcome: "ok", returned: 2, kept: 1 } })
+    } finally { await t.app.close() }
+  })
+
+  test("empty exact query broadens once and stops on compatible candidates", async () => {
+    const calls: string[] = []
+    const service = svc([])
+    service.search = async (q) => {
+      calls.push(q.keywords)
+      return svc(q.keywords === "camisa social" ? [item("3", "Camisa social", "shirts")] : []).search(q)
+    }
+    const t = await build({ mode: "aliexpress_affiliate", aliexpress: service })
+    try {
+      const body = (await post(t.app, "/v1/studio/compositions", { prompt: "camisa social alfaiataria para jantar" })).json()
+      expect(calls).toEqual(["camisa social alfaiataria", "camisa social"])
+      expect(body.slots[0].retrieval.attempts).toHaveLength(2)
+      expect(body.slots[0].candidates).toHaveLength(1)
+    } finally { await t.app.close() }
+  })
+
+  test("provider outages never trigger broader searches", async () => {
+    const calls: string[] = []
+    const service = svc([], { state: "degraded" })
+    const original = service.search
+    service.search = async (q) => { calls.push(q.keywords); return original(q) }
+    const t = await build({ mode: "aliexpress_affiliate", aliexpress: service })
+    try {
+      await post(t.app, "/v1/studio/compositions", { prompt: "camisa social alfaiataria para jantar" })
+      expect(calls).toHaveLength(1)
+    } finally { await t.app.close() }
+  })
+
+  test("retrieval can find a standalone garment beyond the first ten bundles without expanding model context", async () => {
+    const products = [...Array.from({ length: 26 }, (_, i) => item(String(i + 1), "Conjunto camisa e calça", "outfit_sets")), item("27", "Camisa social", "shirts")]
+    const service = svc([])
+    service.search = async (q) => svc(products.slice(0, q.pageSize ?? 20)).search(q)
+    const t = await build({ mode: "aliexpress_affiliate", aliexpress: service })
+    try {
+      const body = (await post(t.app, "/v1/studio/compositions", { prompt: "camisa social" })).json()
+      expect(body.composed).toBe(true)
+      expect(body.slots[0].choice.productId).toBe("aliexpress:27")
+      expect(body.slots[0].retrieval.attempts).toHaveLength(1)
+      expect(body.slots[0].candidates).toHaveLength(1)
     } finally { await t.app.close() }
   })
 })

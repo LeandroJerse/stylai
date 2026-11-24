@@ -32,6 +32,9 @@ const selectionOut = z.object({
 })
 
 export interface ComposerUsage { inputTokens: number; outputTokens: number }
+export class ComposerResponseError extends Error {
+  constructor(message: string, readonly usage: ComposerUsage) { super(message); this.name = "ComposerResponseError" }
+}
 const usageOf = (u: { input_tokens: number; output_tokens: number }): ComposerUsage => ({ inputTokens: u.input_tokens, outputTokens: u.output_tokens })
 
 export type SelectionResult = CompositionValidation & { abstained: SlotId[]; usage: ComposerUsage; requestId: string | null; promptVersion: string }
@@ -46,7 +49,8 @@ export interface OutfitAgent {
 export function createComposer(options: { client: MessagesClient; model?: string }): OutfitAgent {
   const model = options.model?.trim() || DEFAULT_COMPOSER_MODEL
   async function call<T extends z.ZodTypeAny>(prompt: AgentPrompt, content: string, schema: T): Promise<{ data: z.infer<T>; usage: ComposerUsage; requestId: string | null }> {
-    const response = await options.client.messages.parse({
+    // Read the raw message first: SDK parse() can throw on truncated JSON before exposing billable usage.
+    const response = await options.client.messages.create({
       model,
       max_tokens: prompt.maxTokens,
       system: prompt.system,
@@ -54,9 +58,12 @@ export function createComposer(options: { client: MessagesClient; model?: string
       // Low effort: short bounded classification/selection.
       output_config: { effort: "low", format: zodOutputFormat(schema) },
     })
-    if (response.stop_reason === "refusal" || response.stop_reason === "max_tokens") throw new Error(`composer_${response.stop_reason}`)
-    const parsed = schema.safeParse(response.parsed_output)
-    if (!parsed.success) throw new Error("composer_invalid")
+    if (response.stop_reason === "refusal" || response.stop_reason === "max_tokens") throw new ComposerResponseError(`composer_${response.stop_reason}`, usageOf(response.usage))
+    const text = response.content.filter((b) => b.type === "text").map((b) => b.text).join("")
+    let data: unknown
+    try { data = JSON.parse(text) } catch { throw new ComposerResponseError("composer_invalid", usageOf(response.usage)) }
+    const parsed = schema.safeParse(data)
+    if (!parsed.success) throw new ComposerResponseError("composer_invalid", usageOf(response.usage))
     return { data: parsed.data, usage: usageOf(response.usage), requestId: (response as { _request_id?: string | null })._request_id ?? null }
   }
 
@@ -90,7 +97,7 @@ export function createComposer(options: { client: MessagesClient; model?: string
       }))
       const plan = {
         audience: intent.audience ?? null,
-        slots: intent.slots.map((s) => ({ slot: s.slot, query: s.query ?? null, color: s.color ?? null })),
+        slots: intent.slots.map((s) => ({ slot: s.slot, required: s.required, query: s.query ?? null, color: s.color ?? null })),
         budget_total_cents: intent.budgetTotalBrl === null ? null : Math.round(intent.budgetTotalBrl * 100), budget_mode: intent.budgetMode,
         occasion: intent.occasion, style: intent.style ?? [], avoid: intent.avoid,
       }
@@ -142,7 +149,13 @@ export function createInterpretationCache(options: { ttlMs?: number; maxEntries?
       if (hit && hit.expiresAt > now()) return { intent: structuredClone(hit.intent), usage: null, cached: true, model: hit.model, promptVersion: hit.promptVersion }
       entries.delete(key)
       const pending = inFlight.get(key)
-      if (pending) { const r = await pending; return { ...r, intent: structuredClone(r.intent), usage: null, cached: true } }
+      if (pending) {
+        try { const r = await pending; return { ...r, intent: structuredClone(r.intent), usage: null, cached: true } }
+        catch (error) {
+          if (error instanceof ComposerResponseError) throw new ComposerResponseError(error.message, { inputTokens: 0, outputTokens: 0 })
+          throw error
+        }
+      }
       const run = (async (): Promise<Out> => {
         if (acquire && !(await acquire())) throw new Error("agent_budget")
         const r = await agent.interpret(text)

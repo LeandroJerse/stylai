@@ -59,8 +59,8 @@ function mapCategory(raw: AliExpressProductRaw): { id: string; label: string } {
   const title = raw.title.toLowerCase()
   const text = `${raw.secondLevelCategoryName ?? ""} ${title}`.toLowerCase()
   // A bundle is not a standalone garment: keep it discoverable, but never assign its full price/image to one slot.
-  const upper = /\b(camisas?|shirts?|blusas?|tops?|blouses?)\b/.test(title)
-  const lower = /\b(calças?|calcas?|pants|trousers?|shorts?|saias?|skirts?)\b/.test(title)
+  const upper = /\b(camisas?|shirts?|blusas?|tops?|blouses?|blazers?|jaquetas?|jackets?|casacos?|coats?|coletes?|vests?)\b/.test(title)
+  const lower = /\b(calças?|calcas?|pants|trousers?|shorts?|bermudas?|saias?|skirts?)\b/.test(title)
   if (upper && lower && /\b(conjuntos?|sets?|two[ -]piece|2[ -]piece|duas pe[çc]as)\b/.test(title)) {
     return { id: "outfit_sets", label: "Conjuntos (múltiplas peças)" }
   }

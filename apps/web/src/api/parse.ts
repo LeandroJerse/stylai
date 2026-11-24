@@ -384,7 +384,8 @@ export function parseComposition(raw: unknown): Composition {
     const rawChoice = isObj(s.choice) ? s.choice : null
     const choiceId = rawChoice ? str(rawChoice.productId) : null
     const choice = rawChoice && choiceId && candidates.some((c) => c.product.id === choiceId) ? { productId: choiceId, reason: str(rawChoice.reason) ?? "" } : null
-    return [{ slot, label: str(s.label) ?? slot, candidates, choice, error: str(s.error) }]
+    return [{ slot, required: s.required !== false, alternativeSearch: isObj(s.retrieval) && arr(s.retrieval.attempts).length > 1,
+      label: str(s.label) ?? slot, candidates, choice, error: str(s.error) }]
   })
   return {
     id: reqStr(o.id, "composition.id"),

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
-  interpretCompositionRules, renderOrder, selectCompositionRules, slotOfCategory, validateComposition,
+  buildSlotQueries, interpretCompositionRules, renderOrder, selectCompositionRules, slotOfCategory, validateComposition,
   type CompositionCandidate, type CompositionIntent,
 } from "../src/composition"
 
@@ -13,7 +13,35 @@ const intent = (over: Partial<CompositionIntent> = {}): CompositionIntent => ({
   budgetTotalBrl: null, budgetMode: "prefer", avoid: [], ...over,
 })
 
+test("progressive queries preserve garment, audience and colour with bounded alternatives", () => {
+  const plan = intent({ audience: "masculino", style: ["estilo italiano"], slots: [{ slot: "upper", required: true, query: "camisa masculina branca social alfaiataria", color: "branco" }] })
+  const queries = buildSlotQueries(plan, "upper")
+  expect(queries).toHaveLength(3)
+  expect(queries[0]).toBe("camisa masculina branca social alfaiataria")
+  expect(queries.slice(1).every((q) => q.includes("camisa") && q.includes("masculina") && q.includes("branco"))).toBe(true)
+  expect(new Set(queries).size).toBe(queries.length)
+  expect(buildSlotQueries(intent({ slots: [{ slot: "upper", required: true, query: "camisa" }] }), "upper")).toEqual(["camisa"])
+})
+
 describe("composition rules", () => {
+  test("alternative queries reject cross-slot text and retain constraints present only in query", () => {
+    const mixed = intent({ slots: [{ slot: "upper", required: true, query: "camisa social com calça de linho" }] })
+    expect(buildSlotQueries(mixed, "upper").every((q) => !q.includes("linho") && !q.includes("calça"))).toBe(true)
+    const implicit = intent({ slots: [{ slot: "upper", required: true, query: "camisa branca masculina de linho" }] })
+    const alternatives = buildSlotQueries(implicit, "upper").slice(1)
+    expect(alternatives.length).toBeGreaterThan(0)
+    expect(alternatives.every((q) => q.includes("masculina") && /branc[oa]/.test(q))).toBe(true)
+  })
+  test("broadening keeps the current garment material before falling back to the bare garment", () => {
+    const plan = intent({ slots: [
+      { slot: "upper", required: true, query: "camisa social alfaiataria linho" },
+      { slot: "lower", required: true, query: "calça social algodão" },
+    ] })
+    expect(buildSlotQueries(plan, "upper")).toEqual(["camisa social alfaiataria linho", "camisa linho", "camisa"])
+    expect(buildSlotQueries(plan, "lower")).toEqual(["calça social algodão", "calça algodão", "calça"])
+    const constrained = intent({ audience: "masculino", slots: [{ slot: "upper", required: true, query: "camisa masculina branca social linho", color: "branco" }] })
+    expect(buildSlotQueries(constrained, "upper")).toEqual(["camisa masculina branca social linho", "camisa masculina branco linho", "camisa masculina branco"])
+  })
   test("interprets multi-slot requests, total budget and exclusive dress", () => {
     const look = interpretCompositionRules("Quero um look com calça preta e blusa branca até R$ 300 para o trabalho")
     expect(look.slots.map((s) => s.slot).sort()).toEqual(["lower", "upper"])

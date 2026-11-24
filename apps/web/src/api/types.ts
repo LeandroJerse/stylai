@@ -411,6 +411,8 @@ export type CompositionSlotId = "upper" | "lower" | "dress" | "outer"
 export interface CompositionCandidate { product: Product; slot: CompositionSlotId; generationEligible: boolean }
 export interface CompositionSlot {
   slot: CompositionSlotId
+  required?: boolean
+  alternativeSearch?: boolean
   label: string
   candidates: CompositionCandidate[]
   choice: { productId: string; reason: string } | null

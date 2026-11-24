@@ -14,6 +14,8 @@ const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", curren
 const BLOCKED: Record<string, string> = {
   ai_image_rights_unconfirmed: "Geração bloqueada: as imagens destas peças não têm direito de uso comprovado para o provador (ex.: AliExpress). A pesquisa e os links continuam valendo; nenhuma outra peça é usada no lugar.",
   no_pieces: "Nenhuma peça encontrada para gerar.",
+  composition_incomplete: "Falta uma peça obrigatória. Busque uma alternativa para completar o look antes de gerar.",
+  selection_review_required: "O agente não concluiu a seleção. Peça uma nova sugestão antes de gerar a prévia.",
 }
 
 export function CompositionPanel({ composition }: { composition: Composition }) {
@@ -35,7 +37,8 @@ export function CompositionPanel({ composition }: { composition: Composition }) 
     return available.length === 1 ? available[0]!.id : available.some((v) => v.id === sizes[slot]) ? sizes[slot]! : null
   }
   const missingSize = chosen.some((c) => c.candidate.product.variants.some((v) => v.available) && !sizeOf(c.slot, c.candidate.product))
-  const eligible = chosen.length > 0 && chosen.every((c) => c.candidate.generationEligible)
+  const complete = chosen.length > 0 && composition.slots.every((s) => s.required === false || chosen.some((c) => c.slot === s.slot))
+  const eligible = composition.generation.blockedReason !== "selection_review_required" && complete && chosen.length > 0 && chosen.every((c) => c.candidate.generationEligible)
 
   const recompose = async () => {
     const keep = Object.fromEntries(Object.entries(picked).filter(([slot]) => locked[slot as CompositionSlotId]))
@@ -50,7 +53,7 @@ export function CompositionPanel({ composition }: { composition: Composition }) 
   return (
     <section className="mt-4 grid gap-3" aria-label="Look montado pelo agente" data-testid="composition-panel">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="sa-title-sm">Look sugerido</h2>
+        <h2 className="sa-title-sm">{complete ? "Look sugerido" : "Look em montagem — faltam peças"}</h2>
         <span className="sa-caption sa-muted" data-testid="composition-method">
           {composition.selectionMethod === "agent" ? `Selecionado pelo agente (${composition.model ?? "IA"}), conferido pelo servidor` : "Seleção por regras (sem agente)"}
           {composition.stages ? ` · interpretação: ${composition.stages.interpretation === "agent" ? "agente" : "regras"} · busca: ${composition.stages.retrieval} · fonte: ${composition.source === "aliexpress_affiliate" ? "API AliExpress" : composition.source === "curated" ? "catálogo local" : composition.source}` : ""}
@@ -68,8 +71,9 @@ export function CompositionPanel({ composition }: { composition: Composition }) 
               </button>
             ) : null}
           </legend>
-          {slot.candidates.length === 0 ? <p className="sa-body-sm sa-muted">{slot.error ? "Fonte indisponível para esta parte agora." : "Nenhuma peça encontrada para esta parte."}</p> : null}
+          {slot.candidates.length === 0 ? <p className="sa-body-sm sa-muted">{slot.error && slot.error !== "no_results" ? "Fonte indisponível para esta parte agora." : "Nenhuma peça compatível encontrada para esta parte."}</p> : null}
           {slot.choice && picked[slot.slot] === slot.choice.productId ? <p className="sa-caption sa-muted">Motivo: {slot.choice.reason}</p> : null}
+          {slot.alternativeSearch && slot.candidates.length > 0 ? <p className="sa-caption sa-muted">Encontrada em uma busca alternativa para completar o estilo pedido.</p> : null}
           {(() => {
             const piece = slot.candidates.find((x) => x.product.id === picked[slot.slot])
             const options = piece ? piece.product.variants.filter((v) => v.available && v.id) : []

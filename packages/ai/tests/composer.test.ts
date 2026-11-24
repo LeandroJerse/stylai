@@ -1,14 +1,15 @@
 import { describe, expect, test } from "bun:test"
+import Anthropic from "@anthropic-ai/sdk"
 import type { CompositionCandidate } from "@stylai/contracts"
-import { createComposer, type MessagesClient } from "../src/index"
+import { ComposerResponseError, createComposer, createInterpretationCache, type MessagesClient } from "../src/index"
 
 type Reply = { parsed_output: unknown; stop_reason?: string }
 function fake(replies: Reply[]) {
   const seen: { system: unknown; content: string; model: string }[] = []
-  const client = { messages: { parse: async (params: { system: unknown; model: string; messages: { content: string }[] }) => {
+  const client = { messages: { create: async (params: { system: unknown; model: string; messages: { content: string }[] }) => {
     seen.push({ system: params.system, content: params.messages[0]!.content, model: params.model })
     const r = replies.shift()!
-    return { parsed_output: r.parsed_output, stop_reason: r.stop_reason ?? "end_turn", usage: { input_tokens: 1000, output_tokens: 200 }, _request_id: "req_x" }
+    return { content: [{ type: "text", text: JSON.stringify(r.parsed_output) }], stop_reason: r.stop_reason ?? "end_turn", usage: { input_tokens: 1000, output_tokens: 200 }, _request_id: "req_x" }
   } } } as unknown as MessagesClient
   return { composer: createComposer({ client, model: "claude-opus-5-5" }), seen }
 }
@@ -16,6 +17,26 @@ const cand = (id: string, slot: CompositionCandidate["slot"], price: number, nam
   ({ id, slot, categoryId: slot === "upper" ? "tops" : "pants", name, priceMinor: price, colorTags: [], generationEligible: false })
 
 describe("AI composer", () => {
+  test("real SDK preserves billing when the HTTP response contains truncated JSON", async () => {
+    const client = new Anthropic({ apiKey: "test-only", maxRetries: 0, fetch: async () => new Response(JSON.stringify({
+      id: "msg_test", type: "message", role: "assistant", model: "test", content: [{ type: "text", text: '{"choices":[' }],
+      stop_reason: "max_tokens", stop_sequence: null, usage: { input_tokens: 30, output_tokens: 350 },
+    }), { status: 200, headers: { "content-type": "application/json" } }) })
+    await expect(createComposer({ client }).interpret("look italiano")).rejects.toMatchObject({
+      message: "composer_max_tokens", usage: { inputTokens: 30, outputTokens: 350 },
+    })
+  })
+  test("single-flight failed interpretation bills only its original caller", async () => {
+    const cache = createInterpretationCache()
+    let fail!: (reason: Error) => void
+    const agent = { model: "test", interpret: () => new Promise<never>((_resolve, reject) => { fail = reject }), select: async () => { throw new Error("unused") } }
+    const first = cache.interpret(agent, "look italiano")
+    const second = cache.interpret(agent, "look italiano")
+    fail(new ComposerResponseError("composer_max_tokens", { inputTokens: 30, outputTokens: 350 }))
+    const results = await Promise.allSettled([first, second])
+    const usages = results.map((r) => r.status === "rejected" && r.reason instanceof ComposerResponseError ? r.reason.usage : null)
+    expect(usages).toEqual([{ inputTokens: 30, outputTokens: 350 }, { inputTokens: 0, outputTokens: 0 }])
+  })
   test("interprets into normalized slots with a total budget", async () => {
     const { composer, seen } = fake([{ parsed_output: { audience: null, style: [], slots: [{ slot: "upper", required: true, query: null, color: "preto" }, { slot: "lower", required: true, query: null, color: null }, { slot: "dress", required: false, query: "vestido preto", color: "preto" }], occasion: "trabalho", budget_total_brl: 400, budget_mode: "require", avoid: [] } }])
     const out = await composer.interpret("look preto de alfaiataria para o trabalho até 400")
@@ -45,6 +66,12 @@ describe("AI composer", () => {
     const malformed = fake([{ parsed_output: { slots: "nope" } }])
     await expect(malformed.composer.interpret("x")).rejects.toThrow("composer_invalid")
   })
+  test("truncated structured output retains billable usage", async () => {
+    const truncated = fake([{ parsed_output: null, stop_reason: "max_tokens" }])
+    await expect(truncated.composer.interpret("look italiano")).rejects.toMatchObject({
+      message: "composer_max_tokens", usage: { inputTokens: 1000, outputTokens: 200 },
+    })
+  })
 })
 
 describe("AI composer hardening", () => {
@@ -60,9 +87,9 @@ describe("specialized agents (Haiku, minimal context)", () => {
   type Seen = { system: unknown; content: string; model: string; max_tokens: number }
   function spy(replies: unknown[]) {
     const seen: Seen[] = []
-    const client = { messages: { parse: async (p: { system: unknown; model: string; max_tokens: number; messages: { content: string }[] }) => {
+    const client = { messages: { create: async (p: { system: unknown; model: string; max_tokens: number; messages: { content: string }[] }) => {
       seen.push({ system: p.system, content: p.messages[0]!.content, model: p.model, max_tokens: p.max_tokens })
-      return { parsed_output: replies.shift(), stop_reason: "end_turn", usage: { input_tokens: 300, output_tokens: 60 } }
+      return { content: [{ type: "text", text: JSON.stringify(replies.shift()) }], stop_reason: "end_turn", usage: { input_tokens: 300, output_tokens: 60 } }
     } } } as unknown as MessagesClient
     return { seen, client }
   }
@@ -119,7 +146,7 @@ describe("interpretation cache", () => {
 describe("selector context is minimal but complete", () => {
   test("sends id/t/p/e per candidate and the plan's occasion; nothing else", async () => {
     const seen: string[] = []
-    const client = { messages: { parse: async (p: { messages: { content: string }[] }) => { seen.push(p.messages[0]!.content); return { parsed_output: { choices: [] }, stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } } } } } as unknown as MessagesClient
+    const client = { messages: { create: async (p: { messages: { content: string }[] }) => { seen.push(p.messages[0]!.content); return { content: [{ type: "text", text: JSON.stringify({ choices: [] }) }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } } } } } as unknown as MessagesClient
     const composer = createComposer({ client })
     const intent = { slots: [{ slot: "upper" as const, required: true }], colors: [], terms: [], occasion: "trabalho", budgetTotalBrl: null, budgetMode: "prefer" as const, avoid: [] }
     await composer.select(intent, { upper: [{ ...cand("u1", "upper", 100, "Camisa"), generationEligible: true, colorTags: ["branco"] }] }, {})
@@ -127,6 +154,7 @@ describe("selector context is minimal but complete", () => {
     expect(Object.keys(block.upper[0]).sort()).toEqual(["e", "id", "p", "t"])
     expect(block.upper[0].e).toBe(true)
     expect(seen[0]).toContain("\"occasion\":\"trabalho\"")
+    expect(JSON.parse(seen[0]!.split("\n")[0]!.slice(6)).slots[0].required).toBe(true)
   })
 })
 

@@ -171,6 +171,7 @@ export function interpretCompositionRules(text: string): CompositionIntent {
 function sanitizeSlotQuery(raw: string | null | undefined, slot: SlotId): string | null {
   if (!raw) return null
   const tokens = stripOriginClaims(raw.split(/\s+/).filter((w) => /^[\p{L}-]{2,20}$/u.test(w)).map((w) => w.toLowerCase())).slice(0, 6)
+  if (tokens.some((w) => { const g = garmentSlot(normalizeText(w)); return g && g.slot !== slot })) return null
   if (!tokens.some((w) => garmentSlot(normalizeText(w))?.slot === slot)) return null
   return tokens.join(" ")
 }
@@ -190,6 +191,22 @@ export function buildSlotQuery(intent: CompositionIntent, slot: SlotId): string 
   return [display, ...(audience ? [audienceWord(audience, noun)] : []), ...(hint?.qualifier ? [hint.qualifier] : []), ...(req?.color ? [req.color] : [])].join(" ")
 }
 
+/** Broaden retrieval only; the selector still receives the original constraints. Never loop on an outage. */
+export function buildSlotQueries(intent: CompositionIntent, slot: SlotId): string[] {
+  const exact = buildSlotQuery(intent, slot)
+  const noun = exact.split(/\s+/).find((w) => garmentSlot(normalizeText(w))?.slot === slot) ?? SLOT_SEARCH_TERMS[slot]
+  const req = intent.slots.find((s) => s.slot === slot)
+  const words = exact.split(/\s+/).map(normalizeText)
+  const audience = intent.audience ?? audienceOf(words)
+  const color = req?.color ?? words.map(colorOf).find((c) => c !== null)
+  const base = [noun, ...(audience ? [audienceWord(audience, normalizeText(noun))] : []), ...(color ? [color] : [])]
+  const formal = (intent.style ?? []).some((s) => FORMAL_STYLES.has(s)) || /jantar|trabalho|casamento/.test(intent.occasion ?? "")
+  // Keep the current garment's fabric before broadening to a bare noun; never borrow another slot's terms.
+  const material = exact.split(/\s+/).find((w) => /^(linho|algodao|seda|la|jeans|couro|veludo|viscose|cetim)$/.test(normalizeText(w)))
+  const middle = [...base, ...(material ? [material] : formal && slot !== "outer" ? ["social"] : [])].join(" ")
+  return [...new Set([exact, middle, base.join(" ")])].slice(0, 3)
+}
+
 export interface CompositionCandidate {
   /** Server id (catalog uuid or source canonical key). */
   id: string
@@ -202,6 +219,10 @@ export interface CompositionCandidate {
   generationEligible: boolean
 }
 export interface CompositionChoice { slot: SlotId; productId: string; reason: string }
+/** Legacy snapshots already record a failed selector through interpretation/selection provenance. */
+export function requiresSelectionReview(plan: { selectionReviewRequired?: boolean; interpretedBy?: string; selectionMethod?: string }): boolean {
+  return plan.selectionReviewRequired === true || (plan.interpretedBy === "agent" && plan.selectionMethod === "rules_fallback")
+}
 export type CandidatesBySlot = Partial<Record<SlotId, CompositionCandidate[]>>
 export type LockedSlots = Partial<Record<SlotId, string>>
 

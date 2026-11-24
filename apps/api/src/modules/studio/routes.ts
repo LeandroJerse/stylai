@@ -12,7 +12,7 @@
 import { createHash } from "node:crypto"
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify"
 import { z } from "zod"
-import { apiError, CATEGORY_GROUP, COIN_UNIT, COINS_PER_REQUEST, coinsFromRequests, MAX_COMPOSITION_ITEMS, PLAN_COINS, PLAN_LABEL, renderOrder, slotOfCategory, type SlotId } from "@stylai/contracts"
+import { apiError, CATEGORY_GROUP, COIN_UNIT, COINS_PER_REQUEST, coinsFromRequests, MAX_COMPOSITION_ITEMS, PLAN_COINS, PLAN_LABEL, renderOrder, requiresSelectionReview, slotOfCategory, type SlotId } from "@stylai/contracts"
 import { PrivateDatabaseError, type PrivateDatabase } from "@stylai/supabase"
 import { signMediaUrl, type SessionKeys } from "../auth/session-crypto.js"
 import { displayImageUrl } from "../catalog/routes.js"
@@ -56,8 +56,8 @@ const compositionBody = z.object({
   choices: z.array(z.object({ slot: slotId, productId: z.string().min(1).max(200), variantId: uuid.nullable().optional() })).min(1).max(3),
 }).strict()
 /** Stored plan subset the generation route trusts (written by the server itself). */
-const storedPlan = z.object({ plan: z.object({ slots: z.array(z.object({
-  slot: slotId, candidates: z.array(z.object({ id: z.string(), generationEligible: z.boolean() }).passthrough()),
+const storedPlan = z.object({ plan: z.object({ selectionReviewRequired: z.boolean().optional(), interpretedBy: z.string().optional(), selectionMethod: z.string().optional(), slots: z.array(z.object({
+  slot: slotId, required: z.boolean().default(true), candidates: z.array(z.object({ id: z.string(), generationEligible: z.boolean() }).passthrough()),
 }).passthrough()) }).passthrough() }).passthrough()
 const tryOnBody = z.object({ sourceLookId: uuid, productIds: z.array(uuid).max(6), variantId: uuid.nullable().optional() }).strict()
 const idempotencyKey = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/)
@@ -299,10 +299,11 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
   }
 
   /** Composition confirmed by the person: every chosen id must be a generation-eligible candidate of its slot. */
-  async function piecesFromComposition(user: string, compositionId: string, choices: { slot: SlotId; productId: string; variantId?: string | null }[]): Promise<Piece[] | "not_found" | "invalid" | "blocked"> {
+  async function piecesFromComposition(user: string, compositionId: string, choices: { slot: SlotId; productId: string; variantId?: string | null }[]): Promise<Piece[] | "not_found" | "invalid" | "blocked" | "incomplete" | "review"> {
     const raw = await deps.db.call("read_look_composition", user, compositionId)
     const plan = storedPlan.safeParse(raw)
     if (!plan.success) return "not_found"
+    if (requiresSelectionReview(plan.data.plan)) return "review"
     const out: Piece[] = []
     for (const choice of choices) {
       const slot = plan.data.plan.slots.find((x) => x.slot === choice.slot)
@@ -312,12 +313,15 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
       // The person's size choice (validated by the database against the product); null only when one size exists.
       out.push({ slot: choice.slot, productId: cand.id, variantId: choice.variantId ?? null })
     }
+    if (plan.data.plan.slots.some((s) => s.required && !choices.some((c) => c.slot === s.slot))) return "incomplete"
     return out
   }
 
   async function routeComposition(request: FastifyRequest, reply: FastifyReply, user: string, body: z.infer<typeof compositionBody>, parent: string | null) {
     const pieces = await piecesFromComposition(user, body.compositionId, body.choices)
     if (pieces === "not_found") return reply.code(404).send(apiError("not_found", "Composição não encontrada. Monte o look de novo."))
+    if (pieces === "review") return reply.code(409).send(apiError("selection_review_required", "O agente não concluiu a seleção. Peça uma nova sugestão antes de gerar."))
+    if (pieces === "incomplete") return reply.code(409).send(apiError("composition_incomplete", "Falta uma peça obrigatória do look. Busque uma alternativa antes de gerar."))
     if (pieces === "invalid") return reply.code(422).send(apiError("validation", "As peças escolhidas não pertencem a esta composição."))
     if (pieces === "blocked") return reply.code(409).send(apiError("try_on_rights_missing", "Esta composição tem peças sem direito de uso de imagem para o provador (ex.: AliExpress). A pesquisa e os links continuam disponíveis; a geração com essas peças está bloqueada."))
     return enqueueComposition(request, reply, user, { pieces, parent, compositionId: body.compositionId })

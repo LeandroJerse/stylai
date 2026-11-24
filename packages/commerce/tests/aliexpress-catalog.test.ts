@@ -13,6 +13,10 @@ describe("AliExpress catalog normalization", () => {
     for (const [title, category] of [
       ["Conjunto masculino camisa e calça linho", "outfit_sets"],
       ["Men shirt and pants two piece set", "outfit_sets"],
+      ["Conjunto de Moda Masculina em Linho, Blazer + Calças", "outfit_sets"],
+      ["Conjunto de 2 Peças: Jaqueta com Zíper + Calças Retas", "outfit_sets"],
+      ["Conjunto Colete com Fivela + Calças de Cintura Alta", "outfit_sets"],
+      ["Conjunto blazer + bermuda", "outfit_sets"],
       ["Men dress shirt long sleeve", "shirts"],
       ["Jaqueta jeans masculina", "jackets"],
       ["Camisa masculina de linho", "shirts"],
