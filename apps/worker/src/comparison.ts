@@ -40,7 +40,7 @@ export async function assembleComparison(panels: readonly { label: string; bytes
   const labels = panels.map((p, i) => {
     const cell = layout.panels[i]!
     const text = `${i + 1} · ${p.label}`
-    return `<text x="${cell.x + cell.width / 2}" y="${cell.y + cell.height + 46}" text-anchor="middle" font-family="sans-serif" font-size="30" fill="#2b2622">${escapeSvg(text.length > 44 ? `${text.slice(0, 43)}…` : text)}</text>`
+    return `<text x="${cell.x + cell.width / 2}" y="${cell.y + cell.height + 46}" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, DejaVu Sans, sans-serif" font-size="30" fill="#2b2622">${escapeSvg(text.length > 44 ? `${text.slice(0, 43)}…` : text)}</text>`
   }).join("")
   const images = await Promise.all(panels.map(async (p, i) => ({
     input: await sharp(p.bytes, { limitInputPixels: 24_000_000, failOn: "error" }).rotate().flatten({ background: BACKGROUND })

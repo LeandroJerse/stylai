@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { interpretCompositionRules, type CompositionIntent } from "../src/composition"
 import {
-  buildBundleQueries, MAX_OUTFITS, outfitSlotOfCategory, rankCandidates, selectOutfitsRules, styleConflict, validateOutfits,
+  buildBundleQueries, MAX_OUTFITS, outfitSlotOfCategory, rankCandidates, searchPlan, selectOutfitsRules, styleConflict, validateOutfits,
   type OutfitCandidate, type OutfitPools, type OutfitSlot,
 } from "../src/outfits"
 
@@ -13,6 +13,24 @@ const intent = (over: Partial<CompositionIntent> = {}): CompositionIntent => ({
   budgetTotalBrl: null, budgetMode: "prefer", avoid: [], style: [], audience: null, ...over,
 })
 const PLUSH_PANTS = "Calças compridas masculinas com forro de lã, grossas, quentes, macias e confortáveis para a pele, ideais para uso doméstico, lazer e atividades ao ar livre, calças de moletom para outono e inverno."
+
+test("audience in the plural is understood and steers queries and ranking", () => {
+  const i = interpretCompositionRules("roupas italianas elegantes masculinas para jantar, camisa social e calça de alfaiataria")
+  expect(i.audience).toBe("masculino")
+  expect(interpretCompositionRules("looks femininos de verão com blusa e calça").audience).toBe("feminino")
+  expect(buildBundleQueries(i).every((q) => q.includes("masculino"))).toBe(true)
+  // A listing that names the audience beats an unlabelled one, even when the unlabelled matches more words.
+  const { kept } = rankCandidates(i, [c("a", "set", "Conjunto elegante social alfaiataria calças de perna larga e colete"), c("b", "set", "Conjunto masculino blazer e calça")])
+  expect(kept.map((x) => x.id)).toEqual(["b", "a"])
+  expect(rankCandidates(i, [c("a", "set", "Conjunto blusa cropped e saia")]).rejected[0]?.reason).toBe("audience")
+})
+
+test("a bare trousers query is completed: stores answer it with sets", () => {
+  const lower = (text: string) => searchPlan(interpretCompositionRules(text)).filter((q) => q.slot === "lower").map((q) => q.query)
+  expect(lower("roupas de frio masculinas, casaco, suéter e calça")).toEqual(["calça masculina", "calça masculina jeans"])
+  expect(lower("look elegante masculino com camisa e calça")).toEqual(["calça masculina", "calça masculina social"])
+  expect(searchPlan(interpretCompositionRules("roupas de frio masculinas, casaco, suéter e calça")).length).toBeLessThanOrEqual(8)
+})
 
 describe("style compatibility", () => {
   test("regression 2026-11-24: plush/leisure trousers never satisfy casual elegante", () => {

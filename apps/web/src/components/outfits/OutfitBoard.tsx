@@ -3,6 +3,7 @@
  * and the images. Everything here is read from the server, so a reload shows the same state.
  */
 import { useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import { CircleNotch } from "@phosphor-icons/react"
 import type { OutfitQuote, OutfitSearch, OutfitSet } from "../../api/outfits"
 import { useStore } from "../../app/store"
@@ -63,7 +64,8 @@ function ConfirmSheet({ quote, outfits, onClose, onDone }: { quote: OutfitQuote;
     if (r.ok) onDone()
     else setError(r.message)
   }
-  return (
+  // Rendered at the app root: the page's entrance animation would otherwise trap a fixed overlay inside this section.
+  return createPortal(
     <Sheet title={quote.mode === "comparison" ? `Comparar ${quote.panels.length} conjuntos` : "Gerar esta imagem"} onClose={onClose}
       footer={(
         <div className="grid gap-2">
@@ -108,7 +110,8 @@ function ConfirmSheet({ quote, outfits, onClose, onDone }: { quote: OutfitQuote;
           </div>
         ) : null}
       </div>
-    </Sheet>
+    </Sheet>,
+    document.querySelector(".sa-root") ?? document.body,
   )
 }
 

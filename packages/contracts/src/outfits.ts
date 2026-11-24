@@ -46,6 +46,7 @@ export type LockedPieces = Partial<Record<OutfitSlot, string>>
 const NOT_OUTFIT = /\b(infantil|infantis|menin[oa]s?|bebes?|criancas?|kids|bonecas?|pijamas?|pajamas?|lingerie|calcinhas?|cuecas?|sutia|sutias|modelador(a|as|es)?|shapewear|fantasias?|cosplay|cachorros?|pet)\b/
 const LEISURE = /\b(moletom|moletons|jogger|joggers|pelucia|lazer|uso domestico|ao ar livre|academia|fitness|treino|corrida|caminhada|esportiv[oa]s?|agasalhos?|tactel|rasgad[oa]s?|sweatpants|tracksuit|trekking|pescaria)\b/
 const FORMAL_PIECE = /\b(social|sociais|alfaiataria|terno|smoking|blazer)\b/
+const FEMININE_GARMENT = /\b(saias?|vestidos?|cropped|boca de sino|acentua\w* a cintura)\b/
 const ELEGANT = /(italian|elegant|social|classic|sofisticad|chique|alfaiataria|formal|executiv)/
 const RELAXED = /(esportiv|streetwear|confortavel|relaxad|academia|lazer)/
 const SPORT = /(esportiv|academia|fitness)/
@@ -70,6 +71,7 @@ export function styleConflict(intent: CompositionIntent, name: string): string |
   if (NOT_OUTFIT.test(n)) return "not_outfit"
   const audience = audienceOfName(name)
   if (intent.audience && audience && audience !== intent.audience) return "audience"
+  if (intent.audience === "masculino" && audience === null && FEMININE_GARMENT.test(n)) return "audience"
   if (intent.avoid.some((a) => a.trim().length > 2 && n.includes(normalizeText(a.trim())))) return "avoided"
   if (wantsElegant(intent) && LEISURE.test(n)) return "leisure_for_elegant"
   if (SPORT.test(stylesOf(intent)) && FORMAL_PIECE.test(n)) return "formal_for_sport"
@@ -90,7 +92,8 @@ function score(intent: CompositionIntent, c: OutfitCandidate): number {
   for (const term of intent.terms) if (n.includes(normalizeText(term))) s += 1
   if (wantsElegant(intent) && FORMAL_PIECE.test(n)) s += 2
   if (intent.climate === "frio" && /\b(inverno|la|trico|tricot|termic[oa]|forrad[oa]|sobretudo)\b/.test(n)) s += 2
-  if (intent.audience && audienceOfName(c.name) === intent.audience) s += 1
+  // Unlabelled listings stay possible, but never ahead of one that names the requested audience.
+  if (intent.audience && audienceOfName(c.name) === intent.audience) s += 10
   if (c.priceMinor === null) s -= 1
   return s
 }
@@ -245,7 +248,12 @@ export function buildBundleQueries(intent: CompositionIntent): string[] {
 /** Ordered store queries of one search, bounded: complete outfits first, then each slot's progressive queries. */
 export function searchPlan(intent: CompositionIntent, extra: { bundles?: readonly string[]; slots?: Partial<Record<SlotId, readonly string[]>> } = {}): { slot: OutfitSlot; query: string }[] {
   const bundles = [...new Set([...(extra.bundles ?? []), ...buildBundleQueries(intent)])].slice(0, 2).map((query) => ({ slot: "set" as const, query }))
-  const perSlot = intent.slots.map(({ slot }) => [...new Set([...(extra.slots?.[slot] ?? []), ...buildSlotQueries(intent, slot)])].slice(0, 3).map((query) => ({ slot: slot as OutfitSlot, query })))
+  const perSlot = intent.slots.map(({ slot }) => {
+    const own = buildSlotQueries(intent, slot)
+    // "calça masculina" alone is answered mostly with complete sets (2026-11-24): a second, specific query follows it.
+    const specific = slot === "lower" && own.length < 2 && own[0]?.startsWith("calça") ? [`${own[0]} jeans`] : []
+    return [...new Set([...(extra.slots?.[slot] ?? []), ...own, ...specific])].slice(0, 3).map((query) => ({ slot: slot as OutfitSlot, query }))
+  })
   const out: { slot: OutfitSlot; query: string }[] = [...bundles]
   // Round robin: every requested slot gets its best query before any slot gets a second one.
   for (let round = 0; round < 3; round++) for (const list of perSlot) if (list[round]) out.push(list[round]!)

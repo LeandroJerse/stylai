@@ -82,7 +82,7 @@ const VESTIR_FORMS = new Set(["vista", "veste", "vestir", "vestindo", "vestida",
 const isOutfitWord = (w: string): boolean => OUTFIT_WORDS.includes(w) || OUTFIT_WORDS.some((o) => w === `${o}s` || w === `${o}es`) || VESTIR_FORMS.has(w)
 const CONNECTORS = new Set(["e", "com", "para", "pra", "ate", "mais", "num", "numa", "no", "na", "em", "sem", "por", "ou"])
 const STOP = new Set(["de", "do", "da", "um", "uma", "o", "a", "os", "as", "que", "quero", "me", "meu", "minha", "bem", "tipo", "estilo"])
-const AUDIENCE_WORDS: Record<Audience, string[]> = { masculino: ["masculino", "masculina", "homem", "homens", "masc"], feminino: ["feminino", "feminina", "mulher", "mulheres", "fem"] }
+const AUDIENCE_WORDS: Record<Audience, string[]> = { masculino: ["masculino", "masculina", "masculinos", "masculinas", "homem", "homens", "masc"], feminino: ["feminino", "feminina", "femininos", "femininas", "mulher", "mulheres", "fem"] }
 /** P13: style words -> descriptor. Formal styles also give generic slots concrete attributes (rules only). */
 const STYLE_WORDS: Record<string, string> = {
   italiano: "estilo italiano", italiana: "estilo italiano", italianos: "estilo italiano", italianas: "estilo italiano",

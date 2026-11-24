@@ -56,22 +56,32 @@ function canonicalProductUrl(raw: string | null): string | null {
 }
 
 function mapCategory(raw: AliExpressProductRaw): { id: string; label: string } {
-  const title = raw.title.toLowerCase()
+  // Styling advice ("combina com camisa e blazer") names other garments, not what is sold.
+  const whole = raw.title.toLowerCase()
+  const title = whole.replace(/[\s,;]*(combina[a-z]*|para usar|ideal para)\b.*$/, "").trim() || whole
   const text = `${raw.secondLevelCategoryName ?? ""} ${title}`.toLowerCase()
   // A bundle is not a standalone garment: keep it discoverable, but never assign its full price/image to one slot.
-  const upper = /\b(camisas?|shirts?|blusas?|tops?|blouses?|blazers?|jaquetas?|jackets?|casacos?|coats?|coletes?|vests?)\b/.test(title)
   const lower = /\b(calças?|calcas?|pants|trousers?|shorts?|bermudas?|saias?|skirts?)\b/.test(title)
   const bundleWord = /\b(conjuntos?|sets?|two[ -]piece|2[ -]piece|duas pe[çc]as)\b/.test(title)
-  const knit = /(su[ée]ter|tric[ôo]|moletom|agasalho|sweater|cardigan)/.test(title)
   // Sold as a set without naming both garments: only clothing sets, never homeware, jewellery, underwear or sleepwear.
   const clothing = /(masculin|feminin|\bmoda\b|men's clothing|women's clothing|alfaiataria)/.test(text)
   const notOutfit = /(lingerie|calcinha|cueca|suti[ãa]|pijama|panela|joia|j[óo]ias|colar|brinco|len[çc]ol|infantil|ferramenta)/.test(title)
   const pieceCount = /\b(conjuntos?|sets?)\b/.test(title) && /\b([23]|duas|tr[êe]s)\s*(pe[çc]as|pcs|piece)/.test(title)
   const suit = /\bternos?\b/.test(title) && !/(cal[çc]as? (de|do) terno|blazer (de|do) terno|colete (de|do) terno)/.test(title)
-  if (!notOutfit && ((bundleWord && lower && (upper || knit)) || (pieceCount && clothing) || (suit && clothing))) {
+  // "Blusa ... com Calças": two garments sold together even without the word "conjunto" .
+  const joined = /\b(camisas?|blusas?|tops?|blazers?|jaquetas?|casacos?|coletes?|su[ée]ter(es)?)\b[^,;:]*\s(com|e|\+)\s+(uma?\s+)?(cal[çc]as?|saias?|shorts?|bermudas?)(?=[\s,;:.!]|$)/.test(title)
+  // Accessories, wigs and costumes often mention the garment they go with: what comes first in the title is what is sold.
+  const accessory = /\b(perucas?|broches?|gravatas?|len[çc]os?|abotoaduras?|suspens[óo]rios?|cintos?|cabides?|chap[ée]us?|bon[ée]s?|meias|sapatos?|t[êe]nis|rel[óo]gios?|bolsas?|mochilas?|pinos?|an[ée]is|caixas? de presente)\b/
+  const garment = /(cal[çc]as?|camisas?|blusas?|camisetas?|ternos?|blazers?|jaquetas?|casacos?|coletes?|conjuntos?|su[ée]ter|vestidos?|saias?|bermudas?|shorts?)/
+  const at = (re: RegExp) => { const i = title.search(re); return i < 0 ? Infinity : i }
+  const costume = /\b(fantasias?|halloween|cosplay|coaplay|carnaval|sereia|hussar)\b/.test(title)
+  const notGarment = costume || at(accessory) < at(garment)
+  if (notGarment) return { id: "uncategorized", label: raw.secondLevelCategoryName ?? "Categoria não mapeada" }
+  if (!notOutfit && (joined || (bundleWord && lower) || (pieceCount && clothing) || (suit && clothing && at(accessory) === Infinity))) {
     return { id: "outfit_sets", label: "Conjuntos (múltiplas peças)" }
   }
-  if (notOutfit) return { id: "uncategorized", label: raw.secondLevelCategoryName ?? "Categoria não mapeada" }
+  // Any other "conjunto" has contents we cannot tell apart: discoverable, but never a loose piece.
+  if (notOutfit || /\b(conjuntos?|two[ -]piece|2[ -]piece)\b/.test(title)) return { id: "uncategorized", label: raw.secondLevelCategoryName ?? "Categoria não mapeada" }
   // English "dress shirt" is a shirt, not a dress.
   if (/\bdress shirts?\b/.test(title)) return { id: "shirts", label: "Camisas" }
   if (/\b(vestido|dress)/.test(text)) return { id: "dresses", label: "Vestidos" }

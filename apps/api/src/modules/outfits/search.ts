@@ -50,6 +50,9 @@ export const toPools = (pools: StoredPools): OutfitPools =>
 const withoutBlocked = (pools: StoredPools, locked: LockedPieces = {}): StoredPools =>
   Object.fromEntries(Object.entries(pools).map(([slot, list]) => [slot, (list ?? []).filter((p) => p.blocked === null || locked[p.slot] === p.id)])) as StoredPools
 
+/** Repeated titles (rules use one label) get a number, so panels and labels can be told apart. */
+const titleOf = (titles: readonly string[], i: number): string => titles.filter((x) => x === titles[i]).length > 1 ? `${titles[i]} ${titles.slice(0, i + 1).filter((x) => x === titles[i]).length}` : titles[i]!
+
 export function createOutfitSearch(deps: OutfitSearchDeps) {
   const log = deps.log ?? (() => undefined)
   const acquire = deps.acquireAgentCall ?? (async () => true)
@@ -233,7 +236,7 @@ export function createOutfitSearch(deps: OutfitSearchDeps) {
       outfits = outfits.map((o) => ({ ...o, pieces: o.pieces.map((p) => ({ ...p, reference: unique.find((q) => q.id === p.id)!.reference, blocked: unique.find((q) => q.id === p.id)!.blocked })) }))
       outfits = await repair(intent, pools, outfits, notes)
       const sets = outfits.map((o, i) => ({
-        kind: o.pieces.some((p) => p.slot === "set") ? "bundle" : "assembled", recommended: i === 0, title: o.outfit.title, rationale: o.outfit.rationale,
+        kind: o.pieces.some((p) => p.slot === "set") ? "bundle" : "assembled", recommended: i === 0, title: titleOf(outfits.map((x) => x.outfit.title), i), rationale: o.outfit.rationale,
         missingSlots: o.outfit.missingSlots, totalMinor: totalOf(o.pieces), pieces: o.pieces,
       }))
       await finish("succeeded", null, selected.method, plan, JSON.parse(JSON.stringify(sets)) as Json)
