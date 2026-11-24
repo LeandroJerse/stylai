@@ -16,6 +16,7 @@ import { registerTikTokIntegrationRoutes, type TikTokRouteDeps } from "./modules
 import { registerCompositionRoutes, type CompositionDeps } from "./modules/studio/compositions.js"
 import { registerAliExpressIntegrationRoutes, type AliExpressRouteDeps } from "./modules/integrations/aliexpress/routes.js"
 import type { PrivateDatabase } from "@stylai/supabase"
+import { registerOutfitRoutes, type OutfitRouteDeps } from "./modules/outfits/routes.js"
 import { registerPrivacyRoutes, type PrivacyDeps } from "./modules/privacy/routes.js"
 
 export interface AppDependencies {
@@ -30,6 +31,7 @@ export interface AppDependencies {
   catalog?: { db: PrivateDatabase<"api">; publicBaseUrl?: string; pilotOnly?: boolean; catalogMode?: CatalogSourceMode; tiktokCache?: TikTokCatalogCache | null; aliexpressCatalog?: AliExpressCatalogService | null; resolveActor?: (request: import("fastify").FastifyRequest) => Promise<string | null> }
   search?: SearchDeps
   compositions?: CompositionDeps
+  outfits?: OutfitRouteDeps
   tiktok?: TikTokRouteDeps
   aliexpress?: AliExpressRouteDeps
   privacy?: PrivacyDeps
@@ -73,6 +75,7 @@ export async function buildApp(deps: AppDependencies) {
   if (deps.catalog) await registerCatalogRoutes(app, deps.catalog)
   if (deps.search) await registerSearchRoutes(app, deps.search, parseCatalogPage)
   if (deps.compositions) await registerCompositionRoutes(app, deps.compositions)
+  if (deps.outfits) await registerOutfitRoutes(app, deps.outfits)
   if (deps.photos) await registerPhotoRoutes(app, deps.photos)
   if (deps.studio) await registerStudioRoutes(app, deps.studio)
   if (deps.tiktok) await registerTikTokIntegrationRoutes(app, deps.tiktok)

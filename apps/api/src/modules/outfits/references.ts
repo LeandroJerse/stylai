@@ -18,7 +18,8 @@ const PERMANENT = new Set(["host_not_allowed", "private_address", "redirect_refu
 
 export interface PieceReference { productId: string; variantId: string; imageUrl: string; sha256: string }
 export type PreparedReference = { status: "ready"; reference: PieceReference } | { status: "blocked"; code: string }
-export interface ReferencePreparer { prepare(items: readonly NormalizedAliExpressCatalogItem[]): Promise<Map<string, PreparedReference>> }
+export type ReferenceItem = Pick<NormalizedAliExpressCatalogItem, "source" | "canonicalKey" | "seller" | "sellerName" | "externalProductId" | "category" | "name" | "priceMinor" | "priceObservedAt" | "productUrl" | "image">
+export interface ReferencePreparer { prepare(items: readonly ReferenceItem[]): Promise<Map<string, PreparedReference>> }
 
 const row = z.object({ externalProductId: z.string(), imageUrl: z.string(), productId: z.string().uuid(), variantId: z.string().uuid() })
 const cachedRow = row.extend({ sha256: z.string().regex(/^[0-9a-f]{64}$/) })
@@ -35,7 +36,7 @@ export function createReferencePreparer(deps: {
   const inFlight = new Map<string, Promise<PreparedReference>>()
   const negative = new Map<string, { code: string; until: number }>()
 
-  async function prepareOne(item: NormalizedAliExpressCatalogItem): Promise<PreparedReference> {
+  async function prepareOne(item: ReferenceItem): Promise<PreparedReference> {
     if (outfitSlotOfCategory(item.category) === null) return { status: "blocked", code: "category_not_renderable" }
     if (!item.productUrl) return { status: "blocked", code: "product_link_missing" }
     if (!/^aliexpress-shop-\d+$/.test(item.seller)) return { status: "blocked", code: "seller_unidentified" }
@@ -61,7 +62,7 @@ export function createReferencePreparer(deps: {
     } catch (error) { return { status: "blocked", code: databaseCode(error) } }
   }
 
-  function shared(item: NormalizedAliExpressCatalogItem): Promise<PreparedReference> {
+  function shared(item: ReferenceItem): Promise<PreparedReference> {
     const key = `${item.canonicalKey} ${item.image}`
     const running = inFlight.get(key)
     if (running) return running

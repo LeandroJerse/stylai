@@ -352,6 +352,22 @@ begin
   return p_base+1;
 end $$;
 
+-- Locks are a working preference of the current revision (kept across reloads), not content: no new revision.
+create function private.set_outfit_locks(p_user uuid,p_set uuid,p_base integer,p_locked jsonb) returns boolean
+language plpgsql security definer set search_path='' as $$
+declare s private.outfit_sets%rowtype;
+begin
+  select * into s from private.outfit_sets where id=p_set and user_id=p_user for update;
+  if not found then raise exception 'outfit unavailable' using errcode='42501'; end if;
+  if s.current_revision<>p_base then raise exception 'stale revision' using errcode='40001'; end if;
+  if jsonb_typeof(p_locked) is distinct from 'array' or exists(select 1 from jsonb_array_elements_text(p_locked) l
+      where l not in (select x->>'slot' from private.outfit_set_revisions r, jsonb_array_elements(r.pieces) x where r.set_id=p_set and r.revision=p_base)) then
+    raise exception 'lock without piece' using errcode='23514';
+  end if;
+  update private.outfit_set_revisions set locked=p_locked where set_id=p_set and revision=p_base;
+  return true;
+end $$;
+
 -- ------------------------------------------------------------------ renders (batches), panels, budget holds
 create table private.outfit_renders (
   id uuid primary key default gen_random_uuid(),
@@ -1144,7 +1160,7 @@ revoke all on function private.withdraw_policy_rights(),private.register_source_
   private.create_outfit_search(uuid,text,text,text,text,text),private.update_outfit_search(uuid,uuid,text,jsonb),
   private.finish_outfit_search(uuid,uuid,text,text,text,jsonb,jsonb),private.cancel_outfit_search(uuid,uuid),private.outfit_set_json(private.outfit_sets),
   private.read_outfit_search(uuid,uuid),private.list_outfit_searches(uuid,integer),private.read_outfit_set(uuid,uuid),
-  private.save_outfit_set_revision(uuid,uuid,integer,text,jsonb,jsonb,bigint),private.release_outfit_hold(uuid),private.release_hold_of_settled_job(),
+  private.save_outfit_set_revision(uuid,uuid,integer,text,jsonb,jsonb,bigint),private.set_outfit_locks(uuid,uuid,integer,jsonb),private.release_outfit_hold(uuid),private.release_hold_of_settled_job(),
   private.outfit_budget(uuid,text,text,bigint,integer,text,uuid[]),private.pilot_allows_product(text,uuid),
   private.insert_ai_job(uuid,text,text,uuid,text,text,text,uuid,uuid,uuid,smallint),private.insert_composition_job(uuid,text,text,text,jsonb,uuid,uuid,uuid,smallint),
   private.hold_outfit_budget(uuid,text,text,bigint,text,uuid[],uuid[]),private.enqueue_outfit_render(uuid,text,text,text,text,text,text,bigint,text,jsonb),
@@ -1158,7 +1174,7 @@ grant execute on function private.register_source_reference(text,jsonb,jsonb),pr
   private.create_outfit_search(uuid,text,text,text,text,text),private.update_outfit_search(uuid,uuid,text,jsonb),
   private.finish_outfit_search(uuid,uuid,text,text,text,jsonb,jsonb),private.cancel_outfit_search(uuid,uuid),
   private.read_outfit_search(uuid,uuid),private.list_outfit_searches(uuid,integer),private.read_outfit_set(uuid,uuid),
-  private.save_outfit_set_revision(uuid,uuid,integer,text,jsonb,jsonb,bigint),
+  private.save_outfit_set_revision(uuid,uuid,integer,text,jsonb,jsonb,bigint),private.set_outfit_locks(uuid,uuid,integer,jsonb),
   private.outfit_budget(uuid,text,text,bigint,integer,text,uuid[]),private.enqueue_outfit_render(uuid,text,text,text,text,text,text,bigint,text,jsonb),
   private.retry_outfit_panel(uuid,uuid,smallint,text,text,text,bigint,text,boolean),private.cancel_outfit_render(uuid,uuid),private.finalize_outfit_render(uuid,uuid),
   private.read_outfit_render(uuid,uuid),private.list_outfit_renders(uuid,integer),private.read_comparison_asset(uuid,uuid) to stylai_api;

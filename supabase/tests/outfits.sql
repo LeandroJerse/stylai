@@ -84,6 +84,11 @@ begin
   begin perform private.save_outfit_set_revision(b,set_id,2,'swap','[{"slot":"upper","id":"x"}]','[]',1); raise exception 'foreign revision accepted'; exception when insufficient_privilege then null; end;
   rev := private.save_outfit_set_revision(a,set_id,2,'swap',jsonb_build_array(jsonb_build_object('slot','lower','id','aliexpress:1002'),jsonb_build_object('slot','upper','id','aliexpress:1001')),'["upper"]',24000);
   assert jsonb_array_length(private.read_outfit_set(a,set_id)->'revisions')=3, 'revision history lost';
+  assert private.set_outfit_locks(a,set_id,3,'["lower"]'), 'locks refused';
+  assert private.read_outfit_set(a,set_id)->'locked'='["lower"]'::jsonb and (private.read_outfit_set(a,set_id)->>'revision')::integer=3, 'locks not kept';
+  begin perform private.set_outfit_locks(a,set_id,3,'["dress"]'); raise exception 'lock without piece accepted'; exception when check_violation then null; end;
+  begin perform private.set_outfit_locks(a,set_id,2,'[]'); raise exception 'stale lock accepted'; exception when serialization_failure then null; end;
+  begin perform private.set_outfit_locks(b,set_id,3,'[]'); raise exception 'foreign lock accepted'; exception when insufficient_privilege then null; end;
   -- A cancelled search refuses further stages.
   s := private.create_outfit_search(a,'search-key-3',repeat('4',64),'frio','aliexpress_affiliate',null);
   assert private.cancel_outfit_search(a,(s->>'id')::uuid) and not private.update_outfit_search(a,(s->>'id')::uuid,'selecting','{}'), 'cancelled search kept running';

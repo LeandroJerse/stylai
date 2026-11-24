@@ -202,7 +202,8 @@ export function selectOutfitsRules(intent: CompositionIntent, pools: OutfitPools
   const { required } = requirements(intent, pools)
   const twoPiece = required.includes("upper") && required.includes("lower")
   const proposals: OutfitProposal[] = []
-  if (options.bundles !== false && twoPiece) {
+  const lockedPart = (["upper", "lower", "dress"] as const).some((s) => locked[s])
+  if (options.bundles !== false && twoPiece && !lockedPart) {
     for (const x of usable("set").slice(0, MAX_BUNDLES_BY_RULES)) {
       proposals.push({ title: "Conjunto completo", rationale: "Anúncio único com as peças do conjunto", pieces: [{ slot: "set", productId: x.id, reason: "Conjunto vendido completo" }] })
     }
@@ -216,7 +217,7 @@ export function selectOutfitsRules(intent: CompositionIntent, pools: OutfitPools
   combos.sort((a, b) => b.score - a.score)
   // Prefer outfits that reuse fewer pieces: the person compares real alternatives.
   const used = new Map<string, number>()
-  const room = Math.max(0, max - proposals.length) * 3
+  const room = max * 3
   for (let k = 0; k < room && combos.length; k++) {
     let best = 0
     const value = (x: (typeof combos)[number]) => x.score - x.pieces.reduce((a, q) => a + (locked[q.slot] ? 0 : (used.get(q.id) ?? 0) * 3), 0)

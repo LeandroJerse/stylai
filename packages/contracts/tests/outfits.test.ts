@@ -101,6 +101,8 @@ describe("rules selection", () => {
   })
   test("never fabricates: an empty required slot yields no assembled outfit; locks and exclusions are respected", () => {
     expect(selectOutfitsRules(intent(), { upper: pools.upper }, {})).toEqual([])
+    // A single outfit around a locked piece: a complete set can never hold it, so it must not use up the only place.
+    expect(selectOutfitsRules(intent(), pools, { max: 1, locked: { upper: "u1" } })[0]?.pieces.find((p) => p.slot === "upper")?.productId).toBe("u1")
     const locked = selectOutfitsRules(intent(), pools, { locked: { upper: "u1" }, exclude: ["l1"], bundles: false })
     expect(locked.map((o) => o.pieces.map((x) => x.productId))).toEqual([["l2", "u1"]])
   })
