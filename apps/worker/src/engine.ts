@@ -13,6 +13,7 @@ import {
   type FalClient, type FalTryOnModel, type GpuSecondPrice, type PerImagePrice, type SegmindCategory, type SegmindClient, type SegmindPreset, type SpanRecord, type AttributeValue,
 } from "@stylai/ai"
 import { PrivateDatabaseError, type Json, type PrivateDatabase, type PrivateObjectStore } from "@stylai/supabase"
+import type { GarmentLoader } from "./garments.js"
 import type { PhotoRelay, PhotoRelayLease } from "./photo-relay.js"
 
 /** Plain-data copy for jsonb parameters (drops undefined, rejects non-JSON values). */
@@ -43,7 +44,7 @@ export interface EngineConfig {
 }
 
 export const defaultEngineConfig: Omit<EngineConfig, "pseudonymKey" | "environment"> = {
-  categoryMap: { tops: "Upper body", jackets: "Upper body", shirts: "Upper body", bottoms: "Lower body", pants: "Lower body", dresses: "Dress" },
+  categoryMap: { tops: "Upper body", jackets: "Upper body", shirts: "Upper body", bottoms: "Lower body", pants: "Lower body", dresses: "Dress", outfit_sets: "Dress" },
   preset: defaultSegmindPreset,
   segmindReserveMicros: 500_000n,
   pollIntervalMs: 2_000,
@@ -59,6 +60,8 @@ export interface EngineDeps {
   segmind: SegmindClient | null
   segmindReconcilers?: Partial<Record<string, SegmindClient>>
   segmindOutfit?: SegmindOutfitClient | null
+  /** Verified private copies of garment references; absent = the provider client's own download. */
+  garments?: GarmentLoader
   gemini?: GeminiOutfitClient | null
   /** Optional fal.ai client when server selects provider="fal" (reuses the same worker, relay & ledger). */
   fal?: FalClient | null
@@ -86,7 +89,9 @@ const jobSchema = z.object({
   photo: z.object({ bucket: z.literal("body-photos"), object_key: z.string(), mime: z.string().nullable(), usable: z.boolean().optional() }),
   variant: variantSchema.nullable(),
   composition_id: z.string().uuid().nullable().optional(),
-  items: z.array(variantSchema.extend({ slot: z.enum(["upper", "lower", "dress", "outer"]), position: z.number().int().min(1).max(3) })).default([]),
+  render_id: z.string().uuid().nullable().optional(), panel: z.number().int().nullable().optional(),
+  items: z.array(variantSchema.extend({ slot: z.enum(["upper", "lower", "dress", "outer", "set"]), position: z.number().int().min(1).max(3),
+    reference: z.object({ sha256: z.string().regex(/^[0-9a-f]{64}$/), object_key: z.string(), mime: z.enum(["image/jpeg", "image/png", "image/webp"]) }).optional() })).default([]),
 })
 export type LoadedJob = z.infer<typeof jobSchema>
 
@@ -192,8 +197,9 @@ export function createEngine(deps: EngineDeps) {
     })
     const snapshot = {
       ...pieceSnapshot(planned[0]!),
-      selection_method: job.composition_id ? "composition_confirmed_by_person" : "explicit_user_choice",
+      selection_method: job.render_id ? "outfit_confirmed_by_person" : job.composition_id ? "composition_confirmed_by_person" : "explicit_user_choice",
       composition_id: job.composition_id ?? null,
+      ...(job.render_id ? { render_id: job.render_id, panel: job.panel ?? null } : {}),
       layers: planned.length,
       // Multi-layer renders are sequential single-garment try-ons: fidelity of earlier layers is NOT measured.
       render_plan: (activeProvider === "gemini" || (activeProvider === "segmind" && deps.segmindOutfit)) ? "joint_outfit_unverified" : planned.length > 1 ? "sequential_layers_unverified" : "single_garment",
@@ -220,7 +226,9 @@ export function createEngine(deps: EngineDeps) {
       "langfuse.observation.metadata.product_ids": planned.map((p) => p.v.product_id).join(","),
     } })
 
-    if (activeProvider === "gemini" || (activeProvider === "segmind" && deps.segmindOutfit)) return renderJointOutfit(job, fence, planned.map(p=>({category:p.category,imageUrl:p.clothImageUrl,garmentType:p.v.category_id??"",slot:p.v.slot})))
+    if (activeProvider === "gemini" || (activeProvider === "segmind" && deps.segmindOutfit)) return renderJointOutfit(job, fence, planned.map(p=>({category:p.category,imageUrl:p.clothImageUrl,garmentType:p.v.category_id??"",slot:p.v.slot,reference:"reference" in p.v ? p.v.reference : undefined})))
+    // Single-garment models cannot dress a whole set at once.
+    if (planned.some((p) => p.v.category_id === "outfit_sets")) throw new JobFailure("category_not_renderable")
     // 2. Generation (paid). Disabled provider = honest failure without spend.
     const activeFal = activeProvider === "fal" ? (deps.fal ?? null) : null
     const activeSegmind = activeProvider === "segmind" ? deps.segmind : null
@@ -314,7 +322,7 @@ export function createEngine(deps: EngineDeps) {
     }
   }
 
-  async function renderJointOutfit(job: LoadedJob, fence: string, pieces: {category: SegmindCategory; imageUrl: string; garmentType:string; slot:string|null}[]): Promise<string> {
+  async function renderJointOutfit(job: LoadedJob, fence: string, pieces: {category: SegmindCategory; imageUrl: string; garmentType:string; slot:string|null; reference?: Parameters<GarmentLoader>[1]}[]): Promise<string> {
     const provider = config.provider === "segmind" ? "segmind" : "gemini"
     const client = provider === "segmind" ? deps.segmindOutfit : deps.gemini
     const profile = provider === "segmind" && client ? segmindOutfitProfile(client.model) : null
@@ -323,10 +331,13 @@ export function createEngine(deps: EngineDeps) {
     const reserve = profile?.reserveMicros ?? (vertex ? VERTEX_OUTFIT_RESERVE : GEMINI_OUTFIT_RESERVE)
     const priceVersion = profile?.priceVersion ?? (vertex ? VERTEX_OUTFIT_PRICE_VERSION : GEMINI_OUTFIT_PRICE_VERSION)
     const resolution = profile?.resolution ?? (vertex ? '1K' : '2K')
-    if(!client || !config.pilotId) throw new JobFailure("provider_not_enabled")
+    if(!client) throw new JobFailure("provider_not_enabled")
+    // Real money always runs under an operator pilot; the loopback simulator costs nothing and needs none.
+    if(!config.simulatedProvider && !config.pilotId) throw new JobFailure("provider_not_enabled")
     if(job.photo.usable===false) throw new JobFailure("photo_removed")
     const person: {bytes:Uint8Array;mime:string;url?:string} = {bytes:await store.get("body-photos",job.photo.object_key),mime:job.photo.mime ?? "image/jpeg"}
-    const garments = await Promise.all(pieces.map(async p=>({...await client.garment(p.imageUrl),category:p.category,garmentType:p.garmentType,slot:p.slot}))).catch(()=>{throw new JobFailure("garment_download_failed")})
+    const garments = await Promise.all(pieces.map(async p=>({...await (deps.garments ? deps.garments(p.imageUrl,p.reference) : client.garment(p.imageUrl)),url:p.imageUrl,category:p.category,garmentType:p.garmentType,slot:p.slot})))
+      .catch((error:unknown)=>{throw new JobFailure(error instanceof Error && error.message==="garment_image_changed" ? "garment_image_changed" : "garment_download_failed")})
     try { validateGeminiOutfitInput({person,garments}) } catch { throw new JobFailure("outfit_input_invalid") }
     await renew(job.id,fence)
     let heartbeat = Promise.resolve()
@@ -346,13 +357,15 @@ export function createEngine(deps: EngineDeps) {
     }
     const fresh = jobSchema.safeParse(await db.call("load_ai_job",job.id,fence))
     if(!fresh.success || fresh.data.photo.usable===false || fresh.data.photo.object_key!==job.photo.object_key) throw new JobFailure("photo_removed")
-    const check = z.object({ok:z.boolean()}).safeParse(await db.call("check_layer_budget",job.id,fence,provider,1,reserve.toString(),config.pilotId))
+    const check = z.object({ok:z.boolean()}).safeParse(await db.call("check_layer_budget",job.id,fence,provider,1,reserve.toString(),config.pilotId ?? null))
     if(!check.success || !check.data.ok) throw new JobFailure("budget_insufficient_for_layers")
     const call = await db.call("reserve_provider_call",job.id,fence,provider,client.model,priceVersion,"generation",
       `gen_${job.id.replace(/-/g,"")}_joint`,reserve.toString(),pseudonymizeUser(job.user_id,config.pseudonymKey),config.environment)
-    const gate = z.object({ok:z.boolean(),reason:z.string().optional()}).parse(await db.call("reserve_pilot_dispatch",config.pilotId,call,fence,"real",
-      {provider,model:client.model,images_per_call:1,pieces:pieces.length,resolution,render:"joint_outfit"}))
-    if(!gate.ok) throw new JobFailure(`pilot_${gate.reason??"blocked"}`)
+    if(config.pilotId) {
+      const gate = z.object({ok:z.boolean(),reason:z.string().optional()}).parse(await db.call("reserve_pilot_dispatch",config.pilotId,call,fence,config.simulatedProvider?"simulated":"real",
+        {provider,model:client.model,images_per_call:1,pieces:pieces.length,resolution,render:"joint_outfit",...(job.render_id?{panel:job.panel??null}:{})}))
+      if(!gate.ok) throw new JobFailure(`pilot_${gate.reason??"blocked"}`)
+    }
     try { if(!await db.call("begin_provider_call",call,fence)) throw new JobFailure("generation_needs_reconciliation") }
     catch(error) {
       if(error instanceof PrivateDatabaseError && error.outcome==="rejected") {

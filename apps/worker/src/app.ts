@@ -6,6 +6,8 @@ export interface WorkerLoopDeps {
   nextJob: () => Promise<string | null>
   flushTelemetry: () => Promise<unknown>
   probe: () => Promise<"ready" | "unavailable">
+  /** Server-side montage of a finished comparison (no AI); true when one was processed. */
+  comparison?: () => Promise<boolean>
   /** Physical removal of private objects queued for deletion (QA-002). */
   purge?: () => Promise<unknown>
   idleMs: number
@@ -29,10 +31,12 @@ export function createWorkerLoop(deps: WorkerLoopDeps) {
         const outcome = await deps.engine.processJob(jobId)
         log(`job ${jobId.slice(0, 8)}: ${outcome.status}${"code" in outcome ? ` (${outcome.code})` : ""}`)
       }
+      const assembled = deps.comparison ? await deps.comparison() : false
+      if (assembled) log("comparison montage processed")
       if (Date.now() - lastReconcile > 60_000) { lastReconcile = Date.now(); await deps.engine.reconcileOnce() }
       if (deps.purge && Date.now() - lastPurge > 5_000) { lastPurge = Date.now(); await deps.purge().catch(() => log("purge tick failed (sanitized)")) }
       await deps.flushTelemetry()
-      if (jobId && running) { schedule(0); return }
+      if ((jobId || assembled) && running) { schedule(0); return }
     } catch (error) {
       // Sanitized: error class and, for database errors, outcome/SQLSTATE only (never messages or data).
       const e = error as { name?: string; outcome?: string; sqlState?: string }

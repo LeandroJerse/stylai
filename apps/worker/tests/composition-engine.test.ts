@@ -14,7 +14,7 @@ const piece = (n: number, slot: "lower" | "upper", category: string) => ({
   slot, position: n,
 })
 
-function harness(opts: { segmindOutfit?: boolean; segmindModel?: string; nativeGate?: () => Promise<void>; largePhoto?: boolean; gemini?: boolean; revokeAtDispatch?: number; imageReferences?: boolean; failLayer?: number; revokeSnapshot?: number; changedSnapshot?: number; beginFalse?: boolean; bytesOutput?: boolean; budget?: { ok: boolean; limiting: string[] } | "unavailable" } = {}) {
+function harness(opts: { simulated?: boolean; reference?: boolean; garmentError?: string; set?: boolean; segmindOutfit?: boolean; segmindModel?: string; nativeGate?: () => Promise<void>; largePhoto?: boolean; gemini?: boolean; revokeAtDispatch?: number; imageReferences?: boolean; failLayer?: number; revokeSnapshot?: number; changedSnapshot?: number; beginFalse?: boolean; bytesOutput?: boolean; budget?: { ok: boolean; limiting: string[] } | "unavailable" } = {}) {
   const budgetChecks: unknown[][] = []
   const stored: string[] = []
   const removed: string[] = []
@@ -31,7 +31,9 @@ function harness(opts: { segmindOutfit?: boolean; segmindModel?: string; nativeG
         id: JOB, user_id: USER, category_id: "pants", search_query: "", parent_version_id: null, composition_id: "50000000-0000-4000-8000-000000000088",
         photo: { bucket: "body-photos", object_key: `${USER}/front.png`, mime: "image/png", usable: true },
         variant: piece(1, "lower", "pants"), items: [piece(1, "lower", "pants"), piece(2, "upper", "tops")].map((p) => opts.imageReferences
-          ? { ...p, source: "aliexpress", canonical_id: `aliexpress:${p.external_product_id}`, affiliate_url: "https://s.click.aliexpress.com/e/test", reference_kind: "image_reference", external_variant_id: null, variant_available: null, variant_label: "Referência visual; tamanho não informado" } : p),
+          ? { ...p, source: "aliexpress", canonical_id: `aliexpress:${p.external_product_id}`, affiliate_url: "https://s.click.aliexpress.com/e/test", reference_kind: "image_reference", external_variant_id: null, variant_available: null, variant_label: "Referência visual; tamanho não informado", ...(opts.reference ? { reference: { sha256: "a".repeat(64), object_key: "catalog/a.jpg", mime: "image/jpeg" } } : {}) } : p).slice(0, opts.set ? 1 : 2)
+          .map((p) => opts.set ? { ...p, slot: "set", category_id: "outfit_sets" } : p),
+        ...(opts.reference ? { render_id: "90000000-0000-4000-8000-000000000001", panel: 2 } : {}),
       }
       case "record_ai_selection": selections.push(args[4]); return true
       case "record_job_item_snapshot":
@@ -70,13 +72,15 @@ function harness(opts: { segmindOutfit?: boolean; segmindModel?: string; nativeG
     download: async () => TINY_PNG,
   } as unknown as FalClient
   const nativeInputs: unknown[] = []
+  const loaded: unknown[][] = []
   const gemini = { model: "gemini-3-pro-image", garment: async () => ({ bytes: TINY_PNG, mime: "image/png" }), generate: async (input: unknown) => { nativeInputs.push(input); await opts.nativeGate?.(); return { kind: "completed", bytes: TINY_PNG, requestId: "native-response", computedMicros: 140000n, usage: { input_tokens: 1000 } } } }
   const engine = createEngine({
     db, store, segmind: null, fal, segmindOutfit: opts.segmindOutfit ? {...gemini,model:opts.segmindModel??"nano-banana-pro"} as unknown as import("@stylai/ai").SegmindOutfitClient : null, gemini: opts.gemini ? gemini as unknown as import("@stylai/ai").GeminiOutfitClient : null,
-    config: { ...defaultEngineConfig, provider: opts.segmindOutfit ? "segmind" : opts.gemini ? "gemini" : "fal", environment: "development", pseudonymKey: "k".repeat(32), simulatedProvider: false, pilotId: "stylai-first-real-tryon-pilot" },
+    config: { ...defaultEngineConfig, provider: opts.segmindOutfit ? "segmind" : opts.gemini ? "gemini" : "fal", environment: "development", pseudonymKey: "k".repeat(32), simulatedProvider: opts.simulated ?? false, pilotId: opts.simulated ? null : "stylai-first-real-tryon-pilot" },
+    ...(opts.reference || opts.garmentError ? { garments: async (url: string, reference: unknown) => { loaded.push([url, reference]); if (opts.garmentError) throw new Error(opts.garmentError); return { bytes: TINY_PNG, mime: "image/png" } } } : {}),
     sleep: async () => {},
   })
-  return { engine, ops, settled, submits, snapshots, stored, removed, budgetChecks, selections, nativeInputs }
+  return { engine, ops, settled, submits, snapshots, stored, removed, budgetChecks, selections, nativeInputs, loaded }
 }
 
 describe("multi-piece composition engine", () => {
@@ -213,4 +217,35 @@ test('Flux joint rendering reserves 2 cents and never exposes the original throu
  expect((h.nativeInputs[0] as {person:{url?:string}}).person.url).toBeUndefined()
  expect(h.budgetChecks[0]!.slice(2,5)).toEqual(['segmind',1,'20000'])
  expect(h.ops.filter(x=>x==='reserve_pilot_dispatch')).toHaveLength(1)
+})
+
+describe("batch panels", () => {
+  test("a panel uses its verified reference copies and records the batch it belongs to", async () => {
+    const h = harness({ segmindOutfit: true, segmindModel: "flux-3-klein-image-edit", imageReferences: true, reference: true })
+    expect((await h.engine.processJob(JOB)).status).toBe("succeeded")
+    expect(h.loaded).toEqual([1, 2].map((n) => [`https://upload.wikimedia.org/garment-${n}.jpg`, { sha256: "a".repeat(64), object_key: "catalog/a.jpg", mime: "image/jpeg" }]))
+    expect(h.selections[0]).toMatchObject({ render_id: "90000000-0000-4000-8000-000000000001", panel: 2, selection_method: "outfit_confirmed_by_person" })
+  })
+  test("a complete set is one garment image of the joint call, never a single-garment layer", async () => {
+    const joint = harness({ segmindOutfit: true, segmindModel: "flux-3-klein-image-edit", imageReferences: true, set: true })
+    expect((await joint.engine.processJob(JOB)).status).toBe("succeeded")
+    expect((joint.nativeInputs[0] as { garments: { garmentType: string }[] }).garments.map((g) => g.garmentType)).toEqual(["outfit_sets"])
+    const layered = harness({ imageReferences: true, set: true })
+    expect(await layered.engine.processJob(JOB)).toEqual({ status: "failed", code: "category_not_renderable" })
+    expect(layered.ops).not.toContain("reserve_provider_call")
+  })
+  test("a changed or missing garment image stops before any reservation", async () => {
+    for (const [error, code] of [["garment_image_changed", "garment_image_changed"], ["x", "garment_download_failed"]] as const) {
+      const h = harness({ segmindOutfit: true, segmindModel: "flux-3-klein-image-edit", imageReferences: true, garmentError: error })
+      expect(await h.engine.processJob(JOB)).toEqual({ status: "failed", code })
+      expect(h.ops).not.toContain("reserve_provider_call")
+    }
+  })
+  test("simulation runs the same path without a pilot and is labelled; real without a pilot never starts", async () => {
+    const h = harness({ segmindOutfit: true, segmindModel: "flux-3-klein-image-edit", imageReferences: true, simulated: true })
+    expect((await h.engine.processJob(JOB)).status).toBe("succeeded")
+    expect(h.ops).not.toContain("reserve_pilot_dispatch")
+    expect(h.ops).toContain("reserve_provider_call")
+    expect(h.selections[0]).toMatchObject({ render_mode: "simulated" })
+  })
 })

@@ -45,9 +45,9 @@ export function buildOutfitPrompt(input: OutfitInput): string {
   return [
         "Create one photorealistic virtual try-on photograph. Image 1 is the only identity reference: preserve this exact person's face, glasses, hair, skin tone, body proportions, pose, hands, background and camera viewpoint.",
         "Replace only the requested clothing with the garments from the following images, composing the entire outfit in one coherent edit. Keep the garment's actual color, texture, cut, seams and details. Do not copy the reference models' faces, bodies, pose, background, advertising text or graphics.",
-        ...(input.garments.some(g=>g.garmentType==="pants") ? ["For trousers preserve full length to the ankles with a natural hem and clean continuous fabric on both legs. Do not shorten trousers into shorts."] : []),
+        ...(input.garments.some(g=>g.garmentType==="pants" || g.garmentType==="outfit_sets") ? ["For trousers preserve full length to the ankles with a natural hem and clean continuous fabric on both legs. Do not shorten trousers into shorts."] : []),
         "Preserve each garment's actual type and length: never change a skirt, dress or shorts into trousers. No white patches, duplicate legs, invented logos, exposed underwear or text on the waistband. Clothing must meet naturally at the waist; render a believable fit, not a pasted cutout. Preserve the original footwear. Keep the whole original person in frame.",
-        ...input.garments.map((g,i)=>`Image ${i+2}: ${g.garmentType??g.category}, slot ${g.slot??g.category}${g.slot==="outer"?", worn over the inner shirt/top":""}. Ignore any other garments shown in this reference.`),
+        ...input.garments.map((g,i)=>g.garmentType==="outfit_sets" ? `Image ${i+2}: a complete outfit sold as one set. Dress the person in EVERY garment of this set (top and bottom, plus blazer or vest when shown), keeping each garment exactly as shown.` : `Image ${i+2}: ${g.garmentType??g.category}, slot ${g.slot??g.category}${g.slot==="outer"?", worn over the inner shirt/top":""}. Ignore any other garments shown in this reference.`),
         "Return only one finished image. Before finalizing, check face consistency, anatomy, hands, garment boundaries, correct garment length, and absence of copied advertising text.",
       ].join("\n")
 }

@@ -53,3 +53,18 @@ test('Flux Klein uses inline references without a relay, native fields, and one 
  expect(calls).toBe(1);expect(result.kind).toBe('completed')
  if(result.kind==='completed')expect(result.computedMicros).toBe(12870n)
 })
+
+test('the simulator is loopback only and free',async()=>{
+ for(const url of ['https://api.segmind.com','http://10.0.0.1:54395','http://evil.test'])expect(()=>createSegmindOutfitClient({apiKey:'x',model:'flux-3-klein-image-edit',simulatorUrl:url})).toThrow('outfit_simulator_must_be_loopback')
+ const client=createSegmindOutfitClient({apiKey:'x',model:'flux-3-klein-image-edit',simulatorUrl:'http://127.0.0.1:54395',fetch:async url=>{expect(String(url)).toBe('http://127.0.0.1:54395/v1/flux-3-klein-image-edit');return new Response(png,{headers:{'content-type':'image/png'}})}})
+ const result=await client.generate({person:{bytes:png,mime:'image/png'},garments})
+ expect(result).toMatchObject({kind:'completed',computedMicros:0n})
+})
+test('a complete set asks for every garment of the set and full-length trousers',async()=>{
+ const client=createSegmindOutfitClient({apiKey:'x',model:'flux-3-klein-image-edit',fetch:async(_url,init)=>{
+  const prompt=String(JSON.parse(String(init?.body)).prompt)
+  expect(prompt).toContain('EVERY garment of this set');expect(prompt).not.toContain('Ignore any other garments');expect(prompt).toContain('full length')
+  return new Response(png,{headers:{'content-type':'image/png'}})
+ }})
+ expect((await client.generate({person:{bytes:png,mime:'image/png'},garments:[{...photo,category:'Dress',garmentType:'outfit_sets',slot:'set'}]})).kind).toBe('completed')
+})

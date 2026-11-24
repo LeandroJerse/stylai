@@ -11,6 +11,22 @@ const claimed = z.array(z.object({ id: z.string().uuid(), bucket: z.enum(["body-
 
 export interface PurgeResult { claimed: number; removed: number; failed: number }
 
+/** Cached product references: expired or withdrawn with their source policy. The record goes only after the bytes. */
+export function createReferencePurger(deps: { db: PrivateDatabase<"ai_worker">; store: PrivateObjectStore; batch?: number }) {
+  return async function purgeReferences(): Promise<PurgeResult> {
+    const keys = z.array(z.string()).parse((await deps.db.call("claim_reference_purges", deps.batch ?? 20)) ?? [])
+    let removed = 0, failed = 0
+    for (const key of keys) {
+      try {
+        await deps.store.remove("references", key)
+        await deps.db.call("finish_reference_purge", key, true)
+        removed++
+      } catch { failed++ }
+    }
+    return { claimed: keys.length, removed, failed }
+  }
+}
+
 export function createPurger(deps: { db: PrivateDatabase<"ai_worker">; store: PrivateObjectStore; batch?: number }) {
   return async function purgeOnce(): Promise<PurgeResult> {
     const rows = claimed.parse((await deps.db.call("claim_asset_purges", deps.batch ?? 10)) ?? [])

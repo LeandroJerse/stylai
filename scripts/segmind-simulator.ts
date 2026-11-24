@@ -44,15 +44,38 @@ function render(seed: string): Buffer {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", new Uint8Array())])
 }
 
+// One-shot faults for the next joint-outfit call (E2E of partial failure): POST /__next?mode=reject|unknown
+let nextFault: "reject" | "unknown" | null = null
 interface Job { createdAt: number; seed: string; fail: boolean; photoStatus: number | string }
 const jobs = new Map<string, Job>()
-const stats = { submits: 0, photoFetches: 0, photoOk: 0, keys: [] as string[] }
+const stats = { outfits: 0, outfitImages: [] as number[], submits: 0, photoFetches: 0, photoOk: 0, keys: [] as string[] }
 
 const server = createServer(async (req, res) => {
   const send = (status: number, body: unknown) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)) }
   const url = new URL(req.url ?? "/", "http://127.0.0.1")
   if (url.pathname === "/__stats") return send(200, { ...stats, jobs: jobs.size })
+  if (req.method === "POST" && url.pathname === "/__next") {
+    const mode = url.searchParams.get("mode")
+    nextFault = mode === "reject" || mode === "unknown" ? mode : null
+    return send(200, { nextFault })
+  }
   if (!req.headers["x-api-key"]) return send(401, { error: "missing key" })
+  // Joint outfit (FLUX 3 Klein shape): inline images, synchronous PNG answer. Same garments -> same synthetic picture.
+  if (req.method === "POST" && url.pathname === "/v1/flux-3-klein-image-edit") {
+    const parts: Buffer[] = []
+    for await (const c of req) parts.push(c as Buffer)
+    let images: unknown
+    try { images = (JSON.parse(Buffer.concat(parts).toString("utf8")) as { images?: unknown }).images } catch { return send(400, { error: "bad json" }) }
+    if (!Array.isArray(images) || images.length < 2 || images.length > 4 || images.some((x) => typeof x !== "string" || !x)) return send(400, { error: "invalid input" })
+    const fault = nextFault; nextFault = null
+    stats.outfits++; stats.outfitImages.push(images.length)
+    await new Promise((r) => setTimeout(r, delayMs))
+    if (fault === "reject") return send(429, { error: "simulated rejection" })
+    if (fault === "unknown") { req.socket.destroy(); return }
+    res.writeHead(200, { "content-type": "image/png", "x-request-id": randomUUID() })
+    res.end(render(images.slice(1).join("|")))
+    return
+  }
   if (req.method === "POST" && url.pathname === "/v2/try-on-diffusion") {
     const chunks: Buffer[] = []
     for await (const c of req) chunks.push(c as Buffer)

@@ -14,7 +14,10 @@ export function segmindOutfitProfile(model:string) {
  }
  return profiles[model]??null
 }
-export function createSegmindOutfitClient(config:{apiKey:string;model?:string;fetch?:FetchLike}) {
+export function createSegmindOutfitClient(config:{apiKey:string;model?:string;fetch?:FetchLike;/** Loopback simulator (development/test): free, never the provider. */simulatorUrl?:string}) {
+ const simulator=config.simulatorUrl===undefined?null:new URL(config.simulatorUrl)
+ if(simulator&&(simulator.protocol!=='http:'||!['127.0.0.1','localhost'].includes(simulator.hostname)))throw new Error('outfit_simulator_must_be_loopback')
+ const origin=simulator?.origin??'https://api.segmind.com'
  const profile=segmindOutfitProfile(config.model??SEGMIND_OUTFIT_MODEL)
  if(!profile)throw new Error("unsupported_outfit_model")
  const http=config.fetch??fetch
@@ -28,7 +31,7 @@ export function createSegmindOutfitClient(config:{apiKey:string;model?:string;fe
    const images=[input.person,...input.garments]
    if(!profile.inlineInputs && images.some(i=>{try{const u=new URL(i.url??'');return u.protocol!=='https:'||Boolean(u.username||u.password)||['localhost','127.0.0.1','::1'].includes(u.hostname)}catch{return true}}))throw new Error('invalid_outfit_urls')
    try{
-    const response=await http(`https://api.segmind.com/v1/${profile.model}`,{
+    const response=await http(`${origin}/v1/${profile.model}`,{
      method:'POST',headers:{'x-api-key':config.apiKey,'Content-Type':'application/json'},redirect:'error',signal:AbortSignal.timeout(100000),
      body:JSON.stringify(profile.inlineInputs
       ? {prompt:buildOutfitPrompt(input),images:images.map(i=>Buffer.from(i.bytes).toString('base64')),aspect_ratio:'3:4',resolution:profile.resolution,steps:16,safety_tolerance:2,output_format:'png'}
@@ -46,7 +49,7 @@ export function createSegmindOutfitClient(config:{apiKey:string;model?:string;fe
      bytes=parsed.image.kind==='url'?await output.download(parsed.image.url,12582912):Buffer.from(parsed.image.data,'base64')
     }
     validateOutputImage(bytes)
-    return {kind:'completed',bytes,requestId:response.headers.get('x-request-id'),computedMicros:profile.priceMicros,usage:{images:1}}
+    return {kind:'completed',bytes,requestId:response.headers.get('x-request-id'),computedMicros:simulator?0n:profile.priceMicros,usage:{images:1}}
    }catch{return {kind:'unknown',code:'segmind_transport_or_response_unknown'}}
   },
  }
