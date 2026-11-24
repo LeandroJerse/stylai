@@ -14,7 +14,7 @@ Registrado em 2026-11-24, a pedido de Leandro ("anote tudo isso, pois mais tarde
 
 Busca `b3f1637a-a47b-4031-a7f0-3eb24b5a8614`, "me vista com roupas de verão", 18:08:22 a 18:08:50 UTC: `succeeded`, 3 conjuntos, seleção pelo agente. Haiku real: 3 chamadas, 4.939 tokens de entrada e 1.394 de saída, US$ 0,00119 calculado. A tela consultou até 18:08:51, depois do fim, e parou de consultar, o que indica que recebeu o resultado. Cópia do log: `test-results/pilot-api-busca-verao-20261124.log` (não versionada).
 
-**Causa provável (por leitura do código, ainda NÃO reproduzida no navegador):**
+**Causa, confirmada por Leandro em seguida ("os conjuntos aparecem só la em baixo, a geração também"); ainda não reproduzida em teste:**
 - `OutfitBoard` fica depois de toda a coluna do composer e dos looks recentes; com os títulos gigantes, os conjuntos ficam muitas telas abaixo.
 - `OutfitSearchRow.start` chama `scrollIntoView` em `#conjuntos` na hora do clique; na primeira busca a seção está vazia e `.sa-outfits:not(:has(> *))` a deixa com `display:none`, então não há rolagem.
 - O E2E não pegou: conta nova sem looks recentes, e os localizadores acham o cartão em qualquer ponto da página.
@@ -51,9 +51,9 @@ Skill usada: `impeccable` (polish), modo Operate. Preservar a identidade atual (
 
 - Worktree separado criado e limpo: `C:/Users/leand/Documents/stylai/stylai-motor-ui`, branch `feat/studio-ui-cleanup` (a partir de 230c6c7). Trabalhar nele: o Vite da aplicação no ar recarrega a cada arquivo salvo no `stylai-motor`.
 - NÃO rodar E2E nem `start-pilot` enquanto a aplicação real estiver em uso: os dois trocam a senha dos papéis do banco e derrubam a sessão. Para conferir visual sem isso, usar Playwright com respostas simuladas.
-- Aplicação deixada no ar em modo REAL com Haiku: http://localhost:5198. Piloto 11 de 15 (4 gerações livres), nenhuma imagem real gerada neste fluxo ainda. Termo `2026-11-24-inline` já aceito pela conta do piloto.
+- Aplicação deixada no ar em modo REAL com Haiku: http://localhost:5198. Piloto 12 de 15 (3 gerações livres): uma imagem individual real gerada às 18:10:52 UTC, com sucesso, US$ 0,01287. Termo `2026-11-24-inline` já aceito pela conta do piloto.
 - Licença local expira em 2026-11-25 00:00 UTC (21:00 de Brasília); depois valem as 3 gerações grátis do dia. Haiku: 18 chamadas no dia, teto 25; o contador zera no mesmo horário.
-- Ordem sugerida: (1) reproduzir e corrigir o "nada retornou"; (2) títulos curtos; (3) composer e layout; (4) filtros; (5) qualidade da seleção; (6) E2E e só então a validação real das 4 gerações.
+- Ordem sugerida: (1) reproduzir e corrigir o "nada retornou"; (2) títulos curtos; (3) composer e layout; (4) filtros; (5) qualidade da seleção; (6) E2E e só então as 3 gerações reais restantes.
 
 ## Segunda captura de Leandro (painel "Peças encontradas", modo real)
 
@@ -70,3 +70,13 @@ Defeitos a tratar:
 - **Moedas:** 40 = 4 gerações, coerente com a licença até 21:00.
 
 Decidir ao retomar: unir os dois caminhos (avulsas como alternativa dentro dos conjuntos) ou manter os dois, com a busca avulsa usando o mesmo preparo, filtros e relatório. Recomendação: um caminho só, com "peças avulsas" como troca dentro do conjunto.
+
+## Terceiro relato de Leandro
+
+"as telas estão bagunçadas, os conjuntos aparecem só la em baixo, a geração também, temos muitos pontos do front para ajustar, deixe issor egistrado"
+
+- Os conjuntos **e as imagens geradas** ficam no fim da página: `OutfitBoard` é renderizado depois de todo o Estúdio, e dentro dele as imagens vêm depois dos cartões, da barra de comparação e do relatório. Depois de confirmar, só há um aviso curto; a pessoa não é levada ao progresso nem ao resultado.
+- É o problema número 1: o resultado principal tem de ficar no topo, à vista, em busca, geração e resultado, no celular e no desktop.
+- Ao retomar, reorganizar a tela inteira do Estúdio (não só remendar): uma etapa por vez, pedido -> conjuntos -> conferência -> imagem, com o histórico recolhido.
+- A primeira imagem real deste fluxo já existe (render `15f1e044-2c86-49cc-a1e3-9cbe0fc5f663`). Falta avaliar com Leandro rosto, corpo e peças; o custo já foi conferido no registro (US$ 0,01287).
+- Ele disse que há muitos pontos: levantar a lista completa com ele, tela a tela, antes de implementar.
