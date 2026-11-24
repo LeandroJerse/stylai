@@ -42,7 +42,8 @@ export interface CompositionDeps {
   /** Estimated provider cost per rendered layer (USD micros) from the versioned price table (fixed-price providers). */
   renderPricePerLayerMicros: bigint
   /** Worker render provider and its per-layer reservation: the real budget ceiling per layer (P04). */
-  renderProvider?: "segmind" | "fal"
+  jointOutfit?: boolean
+  renderProvider?: "segmind" | "fal" | "gemini"
   reservePerLayerMicros?: bigint
   /** USD micros per million tokens of the composer model (null when unknown). */
   composerPrice?: { inputPerMTok: bigint; outputPerMTok: bigint } | null
@@ -177,12 +178,12 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
         eligible,
         blockedReason: eligible ? null : chosen.length === 0 ? "no_pieces" : !complete ? "composition_incomplete" : reviewRequired ? "selection_review_required" : "ai_image_rights_unconfirmed",
         layers: chosen.length,
-        render: chosen.length > 1 ? "sequential_layers_unverified" : "single_garment",
+        render: (deps.jointOutfit || deps.renderProvider === "gemini") ? "joint_outfit_unverified" : chosen.length > 1 ? "sequential_layers_unverified" : "single_garment",
         provider: deps.renderProvider ?? "fal",
         // Segmind bills per GPU-second (no fixed price before the call): only the reservation ceiling is known.
-        estimatedProviderUsd: (deps.renderProvider ?? "fal") === "segmind" ? null : Number(BigInt(chosen.length) * deps.renderPricePerLayerMicros) / 1_000_000,
+        estimatedProviderUsd: deps.renderProvider === "segmind" || deps.renderProvider === "gemini" ? null : Number(BigInt(chosen.length) * deps.renderPricePerLayerMicros) / 1_000_000,
         reservePerLayerUsd: Number(deps.reservePerLayerMicros ?? deps.renderPricePerLayerMicros) / 1_000_000,
-        maxReservedUsd: Number(BigInt(chosen.length) * (deps.reservePerLayerMicros ?? deps.renderPricePerLayerMicros)) / 1_000_000,
+        maxReservedUsd: Number(BigInt((deps.jointOutfit || deps.renderProvider === "gemini") ? Number(chosen.length>0) : chosen.length) * (deps.reservePerLayerMicros ?? deps.renderPricePerLayerMicros)) / 1_000_000,
         budgetNote: "O orçamento é conferido para TODAS as camadas antes da primeira; se não couber, nada é enviado ao provador.",
         coins: COINS_PER_REQUEST,
         coinsNote: "Preço provisório: uma composição consome um pedido diário (10 moedas) até decisão comercial por camada.",

@@ -73,6 +73,6 @@ start("worker", process.execPath, [...tsx, "apps/worker/src/server.ts"], {
 })
 start("web", process.execPath, [resolve(root, "node_modules/vite/bin/vite.js"), "--port", "5198", "--strictPort"],
   { VITE_API_BASE_URL: `${origin}/v1`, VITE_API_PROXY_TARGET: "http://127.0.0.1:3100" }, resolve(root, "apps/web"))
-console.log(`Piloto local (${plan.real ? "SEGMIND REAL" : "simulação"}): ${origin} · logs test-results/pilot-*.log`)
+console.log(`Piloto local (${plan.real ? `${plan.worker.STYLAI_TRYON_PROVIDER.toUpperCase()} REAL` : "simulação"}): ${origin} · logs test-results/pilot-*.log`)
 const stop = () => { for (const c of children) { if (process.platform === "win32" && c.pid) spawnSync("taskkill", ["/pid", String(c.pid), "/T", "/F"], { windowsHide: true }); else c.kill() } process.exit(0) }
 process.on("SIGINT", stop); process.on("SIGTERM", stop)

@@ -2,6 +2,15 @@ import { expect, test } from "bun:test"
 import { planPilotRuntime } from "../pilot-runtime.mjs"
 
 const rootEnv = { SEGMIND_API_KEY: "seg-secret-value", SEGMIND_MODEL: "try-on-diffusion", ANTHROPIC_API_KEY: "ant-secret-value", GEMINI_API_KEY: "g", UNRELATED: "x" }
+test("native Gemini uses only its worker key and informs the API of the same provider", () => {
+  const plan=planPilotRuntime({argv:["--real","--provider=gemini","--pilot=existing-pilot"],rootEnv})
+  expect(plan.ok).toBe(true)
+  expect(plan.worker.GEMINI_API_KEY).toBe("g")
+  expect(plan.worker.SEGMIND_API_KEY).toBeUndefined()
+  expect(plan.api.STYLAI_TRYON_PROVIDER).toBe("gemini")
+  expect(plan.api.GEMINI_API_KEY).toBeUndefined()
+  expect(planPilotRuntime({argv:["--provider=gemini"],rootEnv}).ok).toBe(false)
+})
 
 test("real pilot plan: Segmind only to the worker, Haiku composer only to the API, no other names leak", () => {
   const plan = planPilotRuntime({ argv: ["--real", "--pilot=stylai-first-real-tryon-pilot", "--relay=cloudflared", "--composer", "--catalog=aliexpress_affiliate"], rootEnv })
@@ -27,4 +36,13 @@ test("simulation by default (no paid flag), composer model override allowed", ()
   const plan = planPilotRuntime({ argv: ["--composer=claude-sonnet-5-5"], rootEnv })
   expect(plan.worker.STYLAI_PAID_CALLS_ENABLED).toBeUndefined()
   expect(plan.api).toMatchObject({ STYLAI_GENERATION_MODE: "simulated", STYLAI_COMPOSER_MODEL: "claude-sonnet-5-5" })
+})
+
+test("Segmind Pro model is consistent between API and worker without leaking its key",()=>{
+ const plan=planPilotRuntime({argv:["--real","--provider=segmind","--segmind-model=nano-banana-pro","--pilot=existing-pilot","--relay=cloudflared"],rootEnv})
+ expect(plan.ok).toBe(true)
+ expect(plan.api.SEGMIND_MODEL).toBe("nano-banana-pro")
+ expect(plan.worker.SEGMIND_MODEL).toBe("nano-banana-pro")
+ expect(plan.api.SEGMIND_API_KEY).toBeUndefined()
+ expect(planPilotRuntime({argv:["--segmind-model=nano-banana-pro"],rootEnv}).ok).toBe(false)
 })

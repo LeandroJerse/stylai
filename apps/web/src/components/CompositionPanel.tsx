@@ -36,6 +36,8 @@ export function CompositionPanel({ composition }: { composition: Composition }) 
     const available = p.variants.filter((v) => v.available && v.id)
     return available.length === 1 ? available[0]!.id : available.some((v) => v.id === sizes[slot]) ? sizes[slot]! : null
   }
+  const joint = composition.generation.render === "joint_outfit_unverified"
+  const renderCalls = joint ? Number(chosen.length > 0) : chosen.length
   const missingSize = chosen.some((c) => c.candidate.product.variants.some((v) => v.available) && !sizeOf(c.slot, c.candidate.product))
   const complete = chosen.length > 0 && composition.slots.every((s) => s.required === false || chosen.some((c) => c.slot === s.slot))
   const eligible = composition.generation.blockedReason !== "selection_review_required" && complete && chosen.length > 0 && chosen.every((c) => c.candidate.generationEligible)
@@ -117,14 +119,14 @@ export function CompositionPanel({ composition }: { composition: Composition }) 
         {eligible ? (
           <>
             <p className="sa-body-sm" data-testid="composition-cost">
-              Gerar a prévia usa {composition.generation.coins} moedas (um pedido do dia) e {chosen.length} {chosen.length === 1 ? "etapa" : "etapas"} de render
+              Gerar a prévia usa {composition.generation.coins} moedas (um pedido do dia) e {renderCalls} {renderCalls === 1 ? "etapa" : "etapas"} de render
               {composition.generation.provider ? ` (${composition.generation.provider})` : ""}.
               {composition.generation.estimatedProviderUsd !== null
                 ? ` Custo estimado do provedor ≈ US$ ${(chosen.length * (composition.generation.estimatedProviderUsd / Math.max(composition.generation.layers, 1))).toFixed(3)}.`
                 : " O provedor cobra por uso: o custo real só é conhecido depois."}
-              {composition.generation.reservePerLayerUsd !== null ? ` Reserva máxima: US$ ${(chosen.length * composition.generation.reservePerLayerUsd).toFixed(2)} (todas as camadas são conferidas antes da primeira).` : ""}
+              {composition.generation.reservePerLayerUsd !== null ? ` Reserva máxima: US$ ${(renderCalls * composition.generation.reservePerLayerUsd).toFixed(2)} (todas as camadas são conferidas antes da primeira).` : ""}
             </p>
-            <p className="sa-caption sa-muted">{composition.generation.coinsNote} {chosen.length > 1 ? "Prévia ilustrativa: as peças são vestidas em camadas e a fidelidade de cada camada não foi medida." : ""}</p>
+            <p className="sa-caption sa-muted">{composition.generation.coinsNote} {joint ? "Prévia ilustrativa: conjunto gerado em uma única imagem; fidelidade ainda não medida." : chosen.length > 1 ? "Prévia ilustrativa: as peças são vestidas em camadas e a fidelidade de cada camada não foi medida." : ""}</p>
           </>
         ) : (
           <p className="sa-body-sm" data-testid="composition-blocked">{BLOCKED[composition.generation.blockedReason ?? (chosen.length ? "ai_image_rights_unconfirmed" : "no_pieces")] ?? BLOCKED.no_pieces}</p>

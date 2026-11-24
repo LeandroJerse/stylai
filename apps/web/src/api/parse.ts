@@ -400,7 +400,7 @@ export function parseComposition(raw: unknown): Composition {
       eligible: g.eligible === true,
       blockedReason: str(g.blockedReason),
       layers: num(g.layers) ?? 0,
-      render: g.render === "sequential_layers_unverified" ? "sequential_layers_unverified" : "single_garment",
+      render: g.render === "joint_outfit_unverified" ? "joint_outfit_unverified" : g.render === "sequential_layers_unverified" ? "sequential_layers_unverified" : "single_garment",
       estimatedProviderUsd: num(g.estimatedProviderUsd),
       provider: str(g.provider),
       reservePerLayerUsd: num(g.reservePerLayerUsd),

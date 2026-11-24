@@ -171,7 +171,7 @@ function presentLook(v: z.infer<typeof versionRow>, base: string, keys: SessionK
     ...(s.catalog_kind === "curated" ? ["Catálogo curado"] : []),
     ...(s.fixture === true ? ["Produto de teste (não é oferta real; sem estoque nem link)"] : []),
     ...(s.render_mode === "simulated" ? ["Imagem simulada para teste, não gerada pelo provador real"] : []),
-    ...(multi ? ["Prévia ilustrativa: composição por camadas sem fidelidade medida"] : []),
+    ...(multi ? [s.render_plan === "joint_outfit_unverified" ? "Prévia ilustrativa: conjunto gerado em uma imagem sem fidelidade medida" : "Prévia ilustrativa: composição por camadas sem fidelidade medida"] : []),
   ]
   return {
     id: v.id,

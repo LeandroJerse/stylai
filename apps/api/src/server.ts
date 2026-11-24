@@ -60,7 +60,9 @@ const tiktokCache = tiktokClient ? createTikTokCatalogCache({ client: tiktokClie
   onAuthorizationFailure: async (token) => { await tiktokConnection?.invalidate(token) },
 }) : null
 // Shown before a paid call. Estimate: mean public inference ~8.06 s x US$ 0.0072/GPU-s; reserve per call = worker ceiling.
-const realProvider = { provider: "Segmind", model: "try-on-diffusion", callsPerGeneration: 1, estimatedUsdPerCall: 0.06, maxUsdPerCall: 0.5 }
+const nativeGemini = process.env.STYLAI_TRYON_PROVIDER === "gemini"
+const segmindOutfit = process.env.STYLAI_TRYON_PROVIDER === "segmind" && process.env.SEGMIND_MODEL === "nano-banana-pro"
+const realProvider = segmindOutfit ? {provider:"Segmind",model:"nano-banana-pro",callsPerGeneration:1,estimatedUsdPerCall:0.152273,maxUsdPerCall:0.20} : nativeGemini ? {provider:"Google Gemini",model:"gemini-3-pro-image",callsPerGeneration:1,estimatedUsdPerCall:0.15,maxUsdPerCall:0.35} : { provider: "Segmind", model: "try-on-diffusion", callsPerGeneration: 1, estimatedUsdPerCall: 0.06, maxUsdPerCall: 0.5 }
 
 // AliExpress Affiliates API: app-level signature only (no seller OAuth). Values come from the process environment.
 const aliexpressAppKey = process.env.ALIEXPRESS_APP_KEY?.trim() || null
@@ -101,8 +103,8 @@ const composerPrice = composerPriceEntry?.kind === "tokens" ? { inputPerMTok: co
 // One shared, hash-keyed interpretation cache for the simple search and the composition (quota only on a miss).
 const interpretationCache = composer ? createInterpretationCache() : null
 // Render estimate shown before confirmation must match the worker's provider and per-layer reservation (P04).
-const renderProvider = process.env.STYLAI_TRYON_PROVIDER?.trim() === "fal" ? "fal" as const : "segmind" as const
-const reservePerLayerMicros = BigInt(renderProvider === "fal"
+const renderProvider = nativeGemini ? "gemini" as const : process.env.STYLAI_TRYON_PROVIDER?.trim() === "fal" ? "fal" as const : "segmind" as const
+const reservePerLayerMicros = segmindOutfit ? 200_000n : nativeGemini ? 350_000n : BigInt(renderProvider === "fal"
   ? (process.env.FAL_RESERVE_USD_MICROS?.trim() || "75000") : (process.env.SEGMIND_RESERVE_USD_MICROS?.trim() || "500000"))
 const renderPrice = findPrice("fal", FAL_FASHN_MODEL)
 
@@ -125,7 +127,7 @@ const app = await buildApp({
       agent: composer, interpretationCache, agentPrice: composerPrice,
       acquireAgentCall: async () => await database.call("take_provider_call_slot", "anthropic", composerCallsPerMinute)
         && await database.call("take_provider_daily_slot", "anthropic", composerCallsPerDay) },
-    compositions: { db: database, resolveActor, publicBaseUrl, catalogMode, aliexpressCatalog, composer, interpretationCache, renderProvider, reservePerLayerMicros,
+    compositions: { db: database, resolveActor, publicBaseUrl, catalogMode, aliexpressCatalog, composer, interpretationCache, renderProvider, jointOutfit: segmindOutfit || nativeGemini, reservePerLayerMicros,
       acquireComposerCall: async () => await database.call("take_provider_call_slot", "anthropic", composerCallsPerMinute)
         && await database.call("take_provider_daily_slot", "anthropic", composerCallsPerDay),
       renderPricePerLayerMicros: renderPrice?.kind === "per_image" ? renderPrice.perImageMicros : 75_000n,

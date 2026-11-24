@@ -1,6 +1,6 @@
 import { readServiceConfig } from "@stylai/config"
 import {
-  createFalClient, createOtlpExporter, createSegmindClient, FAL_FASHN_MODEL, FAL_IMAGE_APPS_MODEL, readLangfuseConfig,
+  createSegmindOutfitClient, createGeminiOutfitClient, createFalClient, createOtlpExporter, createSegmindClient, FAL_FASHN_MODEL, FAL_IMAGE_APPS_MODEL, readLangfuseConfig,
   type FalClient, type FalTryOnModel,
 } from "@stylai/ai"
 import {
@@ -45,10 +45,13 @@ const falReconcilers: Partial<Record<FalTryOnModel, FalClient>> = runtime.fal.ap
 const langfuse = readLangfuseConfig(process.env)
 const exporter = langfuse ? createOtlpExporter(langfuse) : null
 
-const activeSimulated = runtime.provider === "fal" ? runtime.fal.simulated : runtime.segmind.simulated
-const photoRelay = runtime.photoRelay === "cloudflared" && !activeSimulated ? createCloudflaredPhotoRelay() : null
+const segmindOutfit = runtime.provider === "segmind" && runtime.segmind.model === "nano-banana-pro" && runtime.paidCallsEnabled && runtime.segmind.apiKey ? createSegmindOutfitClient({apiKey:runtime.segmind.apiKey}) : null
+const segmindReconcilers = runtime.segmind.apiKey && !runtime.segmind.simulated ? {"try-on-diffusion":createSegmindClient({apiKey:runtime.segmind.apiKey,model:"try-on-diffusion"})} : {}
+const gemini = runtime.paidCallsEnabled && runtime.gemini.apiKey ? createGeminiOutfitClient({apiKey:runtime.gemini.apiKey}) : null
+const activeSimulated = runtime.provider === "gemini" ? false : runtime.provider === "fal" ? runtime.fal.simulated : runtime.segmind.simulated
+const photoRelay = runtime.provider !== "gemini" && runtime.photoRelay === "cloudflared" && !activeSimulated ? createCloudflaredPhotoRelay() : null
 const engine = db && runtime.engine.pseudonymKey
-  ? createEngine({ db, store, segmind, fal, falReconcilers, photoRelay, config: { ...runtime.engine, pseudonymKey: runtime.engine.pseudonymKey } })
+  ? createEngine({ db, store, segmind, gemini, segmindOutfit, segmindReconcilers, fal, falReconcilers, photoRelay, config: { ...runtime.engine, pseudonymKey: runtime.engine.pseudonymKey } })
   : null
 const loop = createWorkerLoop({
   engine,

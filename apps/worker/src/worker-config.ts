@@ -9,11 +9,12 @@ import { defaultEngineConfig, type EngineConfig } from "./engine.js"
 export interface WorkerRuntimeConfig {
   engine: Omit<EngineConfig, "pseudonymKey"> & { pseudonymKey: string | null }
   /** Active server-side try-on provider ("segmind" default preserves existing integration). */
-  provider: "segmind" | "fal"
+  provider: "segmind" | "fal" | "gemini"
   /** Paid provider dispatch requires an explicit opt-in, independent of the key. */
   paidCallsEnabled: boolean
   /** simulated: base URL is a loopback simulator (dev/test only); never a paid call. */
   segmind: { apiKey: string | null; model: string; baseUrl: string; simulated: boolean }
+  gemini: { apiKey: string | null }
   fal: { apiKey: string | null; model: FalTryOnModel; baseUrl: string; simulated: boolean; fashnMode: FalFashnMode }
   objectStore: { kind: "local"; dir: string } | { kind: "supabase" }
   photoRelay: "none" | "cloudflared"
@@ -25,8 +26,8 @@ export function readWorkerConfig(env: Record<string, string | undefined>, cwd = 
   const environment = (env.STYLAI_ENVIRONMENT ?? (env.NODE_ENV === "production" ? "production" : env.NODE_ENV === "test" ? "test" : "development"))
   if (!["development", "test", "staging", "production"].includes(environment)) throw new Error("Invalid STYLAI_ENVIRONMENT")
   const providerRaw = env.STYLAI_TRYON_PROVIDER?.trim() || "segmind"
-  if (providerRaw !== "segmind" && providerRaw !== "fal") throw new Error("Invalid STYLAI_TRYON_PROVIDER")
-  const provider: "segmind" | "fal" = providerRaw
+  if (providerRaw !== "segmind" && providerRaw !== "fal" && providerRaw !== "gemini") throw new Error("Invalid STYLAI_TRYON_PROVIDER")
+  const provider: "segmind" | "fal" | "gemini" = providerRaw
   const int = (name: string, fallback: number, min: number, max: number) => {
     const value = Number(env[name] ?? fallback)
     if (!Number.isInteger(value) || value < min || value > max) throw new Error(`Invalid ${name}`)
@@ -72,8 +73,8 @@ export function readWorkerConfig(env: Record<string, string | undefined>, cwd = 
   const paidCallsEnabled = env.STYLAI_PAID_CALLS_ENABLED === "true"
   const segmindApiKey = env.SEGMIND_API_KEY?.trim() || null
   const falApiKey = env.FAL_API_KEY?.trim() || null
-  const activeSimulated = provider === "fal" ? falSimulated : segmindSimulated
-  const activeApiKey = provider === "fal" ? falApiKey : segmindApiKey
+  const activeSimulated = provider === "gemini" ? false : provider === "fal" ? falSimulated : segmindSimulated
+  const activeApiKey = provider === "gemini" ? env.GEMINI_API_KEY?.trim() : provider === "fal" ? falApiKey : segmindApiKey
   const pilotId = env.STYLAI_PILOT_ID?.trim() || null
   if (pilotId !== null && !/^[a-z0-9][a-z0-9_-]{2,63}$/.test(pilotId)) throw new Error("Invalid STYLAI_PILOT_ID")
   if (paidCallsEnabled && !activeSimulated && activeApiKey && !pilotId) {
@@ -103,6 +104,7 @@ export function readWorkerConfig(env: Record<string, string | undefined>, cwd = 
       submitRetries: pilotId || !activeSimulated ? 0 : requestedRetries,
     },
     paidCallsEnabled,
+    gemini: { apiKey: env.GEMINI_API_KEY?.trim() || null },
     segmind: {
       apiKey: segmindApiKey,
       model: env.SEGMIND_MODEL?.trim() || "try-on-diffusion",

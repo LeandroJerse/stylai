@@ -2,6 +2,7 @@
 export * from "./pricing.js"
 export * from "./image.js"
 export * from "./segmind.js"
+export * from "./gemini-outfit.js"
 export * from "./fal.js"
 export * from "./interpreter.js"
 export * from "./agent-prompts.js"
@@ -10,3 +11,4 @@ export * from "./telemetry.js"
 
 /** Garment categories the try-on provider can render in this slice (config-driven). */
 export const implementationStatus = "first_slice" as const
+export * from "./segmind-outfit.js"

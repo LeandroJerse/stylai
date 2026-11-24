@@ -81,6 +81,17 @@ do $$ begin
  assert not exists(select 1 from public.product_variants where id='63000000-0000-4000-8000-000000000005'), 'public reference leaked as SKU';
 end $$;
 reset role;
+-- Photo removal/revocation after the worker loaded its bytes must still block dispatch.
+update private.assets set state='deleting' where id='65000000-0000-4000-8000-00000000000a';
+set local role stylai_ai_worker;
+do $$ begin
+ begin
+  perform private.begin_provider_call(current_setting('test.reference_call')::uuid,current_setting('test.reference_fence')::bigint);
+  raise exception 'removed person photo dispatched';
+ exception when sqlstate 'SA005' then null; end;
+end $$;
+reset role;
+update private.assets set state='ready' where id='65000000-0000-4000-8000-00000000000a';
 update private.catalog_image_rights set try_on_allowed=false where image_id='64000000-0000-4000-8000-000000000001';
 set local role stylai_api;
 do $$ begin

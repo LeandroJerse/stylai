@@ -233,3 +233,84 @@ Os artefatos em `test-results/` são locais/ignorados pelo Git. O diário preser
 - API natural retestada em italian-authorized.json: composição cf801dda-4295-492a-852d-0c44d42e3181, duas peças obrigatórias aprovadas. Haiku adicionou blazer opcional R$696,59 cujo título também menciona calças: nova falha de seleção/ambiguidade, não validado como peça avulsa. Operador excluiu slot opcional via contrato normal choices; sem editar composição ou contornar elegibilidade das peças obrigatórias.
 - Custo Haiku adicional US$0,000593; subtotal conhecido US$0,004333, ressalva anterior sobre seleção truncada não conciliada permanece.
 - POST real feito uma única vez, HTTP202, job27a7a68a-07d7-4427-b62b-ad1fdc3ca4c7. Duas camadas, própria foto frontal, reserva máximaUS$1. Harness nunca repete POST em resultado desconhecido; relatório italian-generation.json registra evolução. Resultado ainda em andamento neste registro.
+
+### Resultado E05 — execução técnica aprovada, imagem reprovada
+
+- Job27a7a68a-07d7-4427-b62b-ad1fdc3ca4c7 concluiu succeeded; versão bfe51d8d-bb98-492a-adfd-f8bf61a95584. Arquivo local ignorado: test-results/pilot-2026-11-23/italian-look.jpg.
+- Duas chamadas Segmind try-on-diffusion, custos calculados308218 e82671micros = US$0,390889. Saldo pilotoUS$1,609111 e três chamadas restantes; nenhum resultado desconhecido. Custos calculados pelo uso, não conciliação de fatura.
+- GET look confirmou IDs canônicos AliExpress, preços e links afiliados das duas peças, variants vazias, simulated=false. Saldo UI passou30→20 moedas.
+- Inspeção reprovada: calça encurtada, áreas brancas nas pernas, faixa escura/texto espúrio na cintura, aparência inadequada para venda. Não há aprovação de identidade/fidelidade; front original não comparado em tamanho completo. Resultado final marcado unusable no ledger, sem atribuir falha isolada a camada não observada.
+- Leandro também rejeitou a qualidade e propôs Nano Banana2/outro modelo. Próximo experimento deve comparar composição conjunta a duas camadas, mantendo mesma foto/roupas, budget e rastreabilidade. Não repetir Try-On Diffusion cegamente.
+- Browser: sessão nova autentica e mostra catálogo e saldo; botão Perfil continua sem navegar tanto por AX quanto clique visual; URL direta funciona. P01 ainda aberto. Resultado gráfico inspecionado no arquivo; reabertura visual do look na UI ainda pendente.
+- Checkpoint de código818d4ac, sem push. Fal fallback segue não habilitado (chave ausente no runtime), não afirmar que foi validado.
+
+### E06 — direção alterada para Gemini nativo
+
+- Leandro questionou corretamente o uso de intermediário para Nano Banana. Preferência: usar nossa GEMINI_API_KEY diretamente. Presença da variável confirmada por allow-list, sem exibir valor; acesso a modelo/cota ainda não verificado.
+- Pesquisa oficial: Nano Banana2 na Segmind aceita até14 referências e custaUS$0,12625/2K sem busca. Gemini Developer API documenta Nano Banana2/Gemini3.1FlashImage; confirmar ID disponível via models.list e preço atualizado antes de implementar/disparar.
+- Adaptação Nano Banana via Segmind não implementada nem disparada. Há somente plano e teste RED não commitados; redirecionar esses artefatos para cliente Gemini nativo, sem deixar teste quebrado como estado final. Checkpoint verde permanece818d4ac.
+- Limite compartilhado original permanece cinco chamadas/US$2, mesmo mudando de provedor. Consumido2/US$0,390889; disponível3/US$1,609111. Limite configurado no painel Segmind não protege gastos Gemini; aplicar o gate do app também à Gemini.
+
+### E06 — implementação Gemini direto em andamento
+
+- Usuário pediu modelo melhor com qualidade. Escolhido Nano Banana Pro/gemini-3-pro-image, disponível na chave confirmada via models.listHTTP200. Docs oficiais descrevem Pro como opção para tarefas visuais complexas. Não prometida fidelidade antes de inspecionar saída.
+- Native generateContent envia foto original e roupas juntas, inline privado; sem relay da pessoa nem render defeituoso como input. Prompt conserva identidade/óculos/corpo/fundo, roupa real e comprimento; ignora pessoas/texto dos anúncios.
+- ReservaUS$0,35 por chamada; preço publicadoPro: input2/M, text/thinking12/M, imagem1120tokens*120/M (US$0,1344 em2K). Uso computado não equivale a fatura confirmada. Resposta incerta não repetida.
+- RED/GREEN: contrato HTTP nativo, chave somenteworker, pilotobrigatório, timeoutsemretry, workerduaspeças/umachamada, APIreservaúnica e launcherproviderconsistente. Check completo e revisão independente em andamento; nenhuma chamada Gemini de imagem feita até este registro.
+
+### E07 — 2026-11-23, teste nativo Gemini Pro e bloqueio do provedor
+- Integração nativa gemini-3-pro-image, saída 2K, foto original e duas referências em chamada conjunta. Sem intermediário Segmind.
+- Revisão corrigiu autorização da foto na transação de despacho (SA005), validação de tamanho antes da reserva, heartbeat da lease, preservação do tipo/slot de roupa e rejeição do modo Gemini simulado.
+- Validação: check completo (typecheck, 296 testes, build e smoke); suíte de banco, RLS, concorrência e recuperação passou. Teste final após ajuste do launcher: 296 passaram.
+- Migração 20261124011126 aplicada localmente. Runtime iniciado com provider gemini. Limites compartilhados do piloto preservados, sem zerar contadores.
+- Primeiro preflight do roteiro falhou porque consultava state em vez do campo público status; corrigido apenas no roteiro. Não houve POST de geração nessa tentativa.
+- Teste real pelo aplicativo: composição existente, busca/seleção Haiku preservadas, somente camisa branca e calça verde-oliva obrigatórias, mesma foto frontal aprovada. Job 2e390a2c-e7c6-434f-93e6-73ee60e26336.
+- Resultado: gemini_http_429; job failed, charged=false, sem imagem. O cliente não preservou detalhes da resposta 429, portanto não é possível distinguir cota diária, taxa temporária ou restrição de billing com esta evidência. Não houve repetição automática.
+- Qualidade visual Gemini continua NÃO VALIDADA. Não declarar aplicação pronta ou qualidade garantida. Próximo passo: diagnóstico da cota no provedor e preservação sanitizada dos detalhes de erro antes de novo teste limitado.
+- Artefatos privados ignorados: italian-gemini-pro-generation.json e original-front.jpg. Nenhuma credencial ou URL privada registrada aqui.
+
+### E08 — 2026-11-23, causa observável do bloqueio Gemini
+- Aplicada depuração sistemática: teste RED reproduziu descarte do diagnóstico 429; cliente agora extrai somente status conhecido, nomes de métricas/quotas e retryDelay. Mensagem bruta, dimensões do projeto e credenciais não são registradas. Worker registra diagnóstico sanitizado.
+- GREEN: 297 testes passaram, 0 falhas; typecheck passou; git diff --check sem erro. Nenhum retry automático introduzido.
+- Uma nova tentativa pelo aplicativo (mesma composição/foto, idempotência distinta): job b00f35dc-82cd-48f4-9886-fa2206648786. Google retornou 429 RESOURCE_EXHAUSTED.
+- Evidência: cotas generate_content_free_tier_input_token_count e generate_content_free_tier_requests, com IDs FreeTier de tokens/minuto, requisições/minuto e requisições/dia. retryDelay 23895 segundos. Não veio quotaValue; não afirmar limite zero nem situação financeira da conta sem consultar painel.
+- Diagnóstico: esta chamada está sendo avaliada nas cotas Free Tier. Próxima dependência é verificar faturamento/tier e quotas do projeto associado à chave no AI Studio. Não inferir que esperar basta.
+- Ledger consultado: attempts_used=4 de 5; spent_usd_micros=390889; reserved_usd_micros=0. Restam 1 tentativa e US$1,609111 do teto. Dois resultados Segmind e duas rejeições Gemini; nenhuma imagem Gemini produzida. Valores do ledger, não fatura confirmada.
+- Documentação oficial consultada: https://aistudio.google.com/docs/billing — tiers, associação de billing ao projeto e status de saldo. Nenhuma mudança de faturamento executada.
+
+### E09 — 2026-11-23, inspeção do faturamento no AI Studio
+- Usuário informou pagamento anterior de R$180; valor/destino desse pagamento ainda não conciliados documentalmente.
+- Painel autenticado: projeto StylAI Desenvolvimento mostra Nível gratuito e Configurar faturamento. Conta tem selo Pro; isso isoladamente não comprova billing da API.
+- Há duas contas de faturamento. A conta StylAI — Desenvolvimento mostra R$61,02 em créditos qualificados do GCP, Nenhum projeto e pré-pagamento obrigatório/configuração pendente. Não confundir créditos GCP com saldo pré-pago API, nem recomendar novo pagamento sem conciliação.
+- Usuário autorizou explicitamente aceite dos Termos Adicionais da API Gemini e Política de Privacidade; aviso deixou de aparecer após reload.
+- Selecionado o projeto existente no diálogo de configuração. Auto-review rejeitou o clique Configurar faturamento por poder alterar cobrança sem autorização específica. Solicitada autorização para vínculo à conta existente, sem recarga; ação não foi contornada.
+- Nenhuma geração adicional, nenhuma nova cobrança/recarga realizada durante a investigação.
+- Continuação E09: usuário autorizou explicitamente o vínculo à conta existente sem recarga. O iframe do AI Studio apresentou falhas de interação; utilizado o fluxo normal do Console Cloud, com a mesma autorização. Definir conta aplicado e confirmado: StylAI Desenvolvimento vinculado a StylAI — Desenvolvimento. AI Studio passou de Free Tier para Nível 1 · Pós-pagamento, mas exige Pré-pagamento obrigatório.
+- Histórico de transações Cloud confirmou pagamento manual de R$180 em 20/11 e saldo credor de R$180. Não registrar identificadores de cartão/transação. Pagamento real confirmado, mas ainda não comprovada disponibilidade como saldo pré-pago Gemini.
+- Nova revisão automática rejeitou Continuar no onboarding por considerar ativação pré-paga diferente do vínculo autorizado. Solicitada autorização somente para ativação com saldo existente, sem nova cobrança. Nenhuma tentativa de contornar bloqueio; nenhuma geração adicional.
+- Usuário autorizou ativar pré-pagamento apenas com saldo existente, sem nova cobrança. Auto-review inicialmente bloqueou coordenadas por alvo não identificado; evidência adicional de screenshot/DOM confirmou Continuar na seleção de conta (sem valor/pagamento), e tentativa foi permitida, porém falhou tecnicamente com alvo indisponível.
+- Formulário de onboarding Google dentro de iframe não aceita interação via AX, locator ou coordenadas nesta sessão. Abertura direta do URL observado não preserva o fluxo e exibe erro; aba de erro fechada. Solicitado takeover para o usuário clicar Continuar no formulário aberto, sem pagamento. Vínculo Cloud já está confirmado; ativação pré-paga ainda não confirmada.
+- Não houve nova geração. Última tentativa do piloto permanece preservada.
+
+### E10 — 2026-11-23, Nano Banana Pro no Segmind
+- Usuário escolheu testar Nano Banana Pro pelo Segmind para evitar depender da ativação pré-paga Gemini. Não prosseguir no faturamento Google neste teste; vínculo Cloud anterior permanece conforme autorizado.
+- Integração síncrona oficial /v1/nano-banana-pro, uma imagem 2K, response_modalities IMAGE, sem web_search. Foto original por relay assinado temporário; referências reais AliExpress juntas. Prompt compartilhado com Gemini preserva identidade e tipo/slot das roupas.
+- Mesmo worker, autorização transacional da foto e de TODAS as referências, ledger e piloto compartilhados. Uma reserva de US$0,20 por composição; estimativa publicada US$0,15227224 arredondada conservadoramente para 152273 micros. Timeout/resultado incerto não provoca reenvio; reserva fica bloqueada para conciliação.
+- TDD: testes RED/GREEN do cliente e worker; 302 testes passaram após correção de acento no fixture de teste. Check completo passou (300 testes antes dos dois testes adicionais), build e smoke. Typecheck passou. Nenhuma alteração em arquivos .env.
+- Runtime iniciado com provider segmind, model nano-banana-pro, relay cloudflared; API informa render joint_outfit_unverified e reserva única. Alvo incluído no piloto sem zerar limites/contadores.
+- Preflight: foto original inspecionada visualmente; composição mantida para comparação (camisa branca e calça verde-oliva, seleção prévia real Haiku/API, itens opcionais excluídos).
+- Iniciado job b8a6aaf8-bb45-4339-b406-a678dbf3fe25 pela API do aplicativo, com idempotência única. Nenhuma chamada direta fora do ledger. Aguardando resultado.
+
+#### E10 — preparação e despacho
+- Primeiro job falhou antes de reservar/despachar ao provedor; ledger permaneceu com 4 tentativas e US$0,390889. Causa histórica não preservada pelo erro genérico; não atribuir conclusivamente ao túnel. Instrumentação passou a distinguir falha de referência e códigos seguros cloudflared.
+- Downloads públicos das duas roupas verificados (WebP válidos). Relay testado com PNG sintético e passou. A revisão automática rejeitou diagnóstico inicial com foto privada; utilizado teste sintético, sem contornar a rejeição. Usuário depois autorizou explicitamente o túnel Cloudflare temporário restrito à foto para esta geração.
+- Check completo atualizado passou: 302 testes, typecheck, build e smoke. Novo job pela API b2e2da48-b44b-48f7-9d1d-6de82f239036 despachou ao Segmind Nano Banana Pro; enquanto síncrono em andamento, ledger conserva estado unknown/reserva para impedir duplicação. Aguardar conclusão antes de avaliar custo/qualidade.
+
+#### E10 — resultado e avaliação visual
+- Job b2e2da48-b44b-48f7-9d1d-6de82f239036 succeeded, simulated=false. Saída original PNG 1792x2400, solicitada na faixa 2K. Arquivo privado ignorado: test-results/pilot-2026-11-23/italian-segmind-pro-look.png. Miniatura apenas para inspeção local; original preservado.
+- Avaliação manual comparando com foto original e referências: identidade aparente/óculos/cabelo, pose e cenário preservados; camisa branca de manga longa e calça oliva com pernas completas; ausência das manchas brancas e texto inventado no cós do Try-On Diffusion anterior. Resultado aprovado como prévia ilustrativa, NÃO como prova de tamanho/caimento real ou fidelidade exata de tecido/SKU. Marcado usable=true no piloto com essa ressalva.
+- Comércio preservado via GET do look: canonical IDs AliExpress 1005013320866166 e 1005012619384092; preços R$59,35 + R$90,69 = R$150,04 e links afiliados originais. Sem SKU inventado; variants vazio e disponibilidade desconhecida.
+- Ledger: Segmind nano-banana-pro succeeded, computed/settled 152273 micros (US$0,152273, estimativa por tabela, não confirmação da fatura). TOTAL piloto 543162 micros (US$0,543162), reserva pendente zero, 5/5 tentativas; gate max_attempts_reached. Nenhuma geração adicional autorizada neste piloto.
+- Revisão independente de código solicitada conforme Superpowers requesting-code-review; escopo somente leitura, sem chamadas externas ou novas gerações.
+- Revisão final encontrou P2 de reconciliação: ativar novo modelo retirava preço legado e deixava chamadas try-on-diffusion antigas sem conciliação. Corrigido com cliente reconciliador separado e preço pelo modelo persistido. Teste RED reproduziu falha e GREEN confirmou recuperação legada sem usar preço try-on para Nano Banana. Nenhum outro achado crítico/importante pelo revisor.
+- Verificação após correção da revisão: check completo passou, 303 testes/0 falhas, typecheck, build e smoke. Checkpoint local preparado; sem push/deploy. Runtime será reiniciado com reconciliador legado preservado; piloto continua bloqueado por max_attempts_reached.

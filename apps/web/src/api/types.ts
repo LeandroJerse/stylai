@@ -432,7 +432,7 @@ export interface Composition {
     eligible: boolean
     blockedReason: string | null
     layers: number
-    render: "sequential_layers_unverified" | "single_garment"
+    render: "sequential_layers_unverified" | "single_garment" | "joint_outfit_unverified"
     /** Null when the provider bills by usage (e.g. Segmind GPU-seconds): only the reservation ceiling is known. */
     estimatedProviderUsd: number | null
     provider: string | null

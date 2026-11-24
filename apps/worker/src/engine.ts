@@ -8,6 +8,8 @@
 import { z } from "zod"
 import {
   defaultSegmindPreset, falCost, findPrice, microsToUsdNumber, pseudonymizeUser, segmindCost, spanIdFor, traceIdForJob, validateOutputImage,
+  SEGMIND_OUTFIT_RESERVE, SEGMIND_OUTFIT_PRICE_VERSION, type SegmindOutfitClient,
+  GEMINI_OUTFIT_RESERVE, GEMINI_OUTFIT_PRICE_VERSION, validateGeminiOutfitInput, type GeminiOutfitClient,
   type FalClient, type FalTryOnModel, type GpuSecondPrice, type PerImagePrice, type SegmindCategory, type SegmindClient, type SegmindPreset, type SpanRecord, type AttributeValue,
 } from "@stylai/ai"
 import { PrivateDatabaseError, type Json, type PrivateDatabase, type PrivateObjectStore } from "@stylai/supabase"
@@ -19,7 +21,7 @@ function toJson(value: unknown): Json { return JSON.parse(JSON.stringify(value))
 export interface EngineConfig {
   environment: "development" | "test" | "staging" | "production"
   /** Server-side active try-on provider. Defaults to "segmind" (preserves existing integration). */
-  provider?: "segmind" | "fal"
+  provider?: "segmind" | "fal" | "gemini"
   /** Langfuse environment label (e.g. "integration-test" for synthetic runs). Defaults to environment. */
   telemetryEnvironment?: string
   /** True when the provider is the local simulator: telemetry is labelled synthetic. */
@@ -55,6 +57,9 @@ export interface EngineDeps {
   store: PrivateObjectStore
   /** Null when paid calls are disabled or the key is absent: jobs fail without spending. */
   segmind: SegmindClient | null
+  segmindReconcilers?: Partial<Record<string, SegmindClient>>
+  segmindOutfit?: SegmindOutfitClient | null
+  gemini?: GeminiOutfitClient | null
   /** Optional fal.ai client when server selects provider="fal" (reuses the same worker, relay & ledger). */
   fal?: FalClient | null
   /** Optional per-model fal clients for cold reconciliation of prior unknown calls across model switches. */
@@ -100,7 +105,7 @@ export function createEngine(deps: EngineDeps) {
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
   const segmindPrice = findPrice("segmind", deps.segmind?.model ?? "try-on-diffusion")
   const falPrice = deps.fal ? findPrice("fal", deps.fal.model) : undefined
-  const activeProvider: "segmind" | "fal" = config.provider ?? (deps.fal && !deps.segmind ? "fal" : "segmind")
+  const activeProvider: "segmind" | "fal" | "gemini" = config.provider ?? (deps.fal && !deps.segmind ? "fal" : "segmind")
 
   async function telemetry(job: LoadedJob, key: string, span: Omit<SpanRecord, "traceId" | "spanId" | "parentSpanId">, root = false) {
     const traceId = traceIdForJob(job.id)
@@ -191,7 +196,7 @@ export function createEngine(deps: EngineDeps) {
       composition_id: job.composition_id ?? null,
       layers: planned.length,
       // Multi-layer renders are sequential single-garment try-ons: fidelity of earlier layers is NOT measured.
-      render_plan: planned.length > 1 ? "sequential_layers_unverified" : "single_garment",
+      render_plan: (activeProvider === "gemini" || (activeProvider === "segmind" && deps.segmindOutfit)) ? "joint_outfit_unverified" : planned.length > 1 ? "sequential_layers_unverified" : "single_garment",
       items: planned.map(pieceSnapshot),
       render_mode: config.simulatedProvider ? "simulated" : "provider",
     }
@@ -215,6 +220,7 @@ export function createEngine(deps: EngineDeps) {
       "langfuse.observation.metadata.product_ids": planned.map((p) => p.v.product_id).join(","),
     } })
 
+    if (activeProvider === "gemini" || (activeProvider === "segmind" && deps.segmindOutfit)) return renderJointOutfit(job, fence, planned.map(p=>({category:p.category,imageUrl:p.clothImageUrl,garmentType:p.v.category_id??"",slot:p.v.slot})))
     // 2. Generation (paid). Disabled provider = honest failure without spend.
     const activeFal = activeProvider === "fal" ? (deps.fal ?? null) : null
     const activeSegmind = activeProvider === "segmind" ? deps.segmind : null
@@ -308,6 +314,79 @@ export function createEngine(deps: EngineDeps) {
     }
   }
 
+  async function renderJointOutfit(job: LoadedJob, fence: string, pieces: {category: SegmindCategory; imageUrl: string; garmentType:string; slot:string|null}[]): Promise<string> {
+    const provider = config.provider === "segmind" ? "segmind" : "gemini"
+    const client = provider === "segmind" ? deps.segmindOutfit : deps.gemini
+    const reserve = provider === "segmind" ? SEGMIND_OUTFIT_RESERVE : GEMINI_OUTFIT_RESERVE
+    const priceVersion = provider === "segmind" ? SEGMIND_OUTFIT_PRICE_VERSION : GEMINI_OUTFIT_PRICE_VERSION
+    if(!client || !config.pilotId) throw new JobFailure("provider_not_enabled")
+    if(job.photo.usable===false) throw new JobFailure("photo_removed")
+    const person: {bytes:Uint8Array;mime:string;url?:string} = {bytes:await store.get("body-photos",job.photo.object_key),mime:job.photo.mime ?? "image/jpeg"}
+    const garments = await Promise.all(pieces.map(async p=>({...await client.garment(p.imageUrl),category:p.category,garmentType:p.garmentType,slot:p.slot}))).catch(()=>{throw new JobFailure("garment_download_failed")})
+    try { validateGeminiOutfitInput({person,garments}) } catch { throw new JobFailure("outfit_input_invalid") }
+    await renew(job.id,fence)
+    let heartbeat = Promise.resolve()
+    let leaseFailed = false
+    const timer = setInterval(()=>{heartbeat=heartbeat.then(()=>renew(job.id,fence)).catch(()=>{leaseFailed=true})},20_000)
+    let relay: PhotoRelayLease | null = null
+    try {
+    if(provider === "segmind") {
+      person.url = await store.signedUrl("body-photos",job.photo.object_key,config.photoUrlTtlSeconds) ?? undefined
+      if(!person.url || !publiclyFetchable(person.url)) {
+        if(!deps.photoRelay) throw new JobFailure("photo_not_reachable_by_provider")
+        const mime=person.mime === "image/png" || person.mime === "image/webp" ? person.mime : "image/jpeg"
+        relay=await deps.photoRelay.expose({jobId:job.id,bytes:person.bytes,mime,maxLifetimeMs:240000}).catch(error=>{throw new JobFailure(error instanceof Error && /^cloudflared_[a-z0-9_]+$/.test(error.message)?error.message:"photo_not_reachable_by_provider")})
+        person.url=relay.publicUrl
+      }
+      if(!publiclyFetchable(person.url)) throw new JobFailure("photo_not_reachable_by_provider")
+    }
+    const fresh = jobSchema.safeParse(await db.call("load_ai_job",job.id,fence))
+    if(!fresh.success || fresh.data.photo.usable===false || fresh.data.photo.object_key!==job.photo.object_key) throw new JobFailure("photo_removed")
+    const check = z.object({ok:z.boolean()}).safeParse(await db.call("check_layer_budget",job.id,fence,provider,1,reserve.toString(),config.pilotId))
+    if(!check.success || !check.data.ok) throw new JobFailure("budget_insufficient_for_layers")
+    const call = await db.call("reserve_provider_call",job.id,fence,provider,client.model,priceVersion,"generation",
+      `gen_${job.id.replace(/-/g,"")}_joint`,reserve.toString(),pseudonymizeUser(job.user_id,config.pseudonymKey),config.environment)
+    const gate = z.object({ok:z.boolean(),reason:z.string().optional()}).parse(await db.call("reserve_pilot_dispatch",config.pilotId,call,fence,"real",
+      {provider,model:client.model,images_per_call:1,pieces:pieces.length,resolution:"2K",render:"joint_outfit"}))
+    if(!gate.ok) throw new JobFailure(`pilot_${gate.reason??"blocked"}`)
+    try { if(!await db.call("begin_provider_call",call,fence)) throw new JobFailure("generation_needs_reconciliation") }
+    catch(error) {
+      if(error instanceof PrivateDatabaseError && error.outcome==="rejected") {
+        await db.call("settle_provider_call",call,"released",null,{}, {},reserve.toString(),"0",null,"rejected_before_run",0,"outfit_gate_rejected")
+        throw new JobFailure(error.sqlState==="SA005"?"photo_removed":error.sqlState==="SA003"?"try_on_rights_revoked":"selection_changed")
+      }
+      throw error
+    }
+    const started=now()
+    // Synchronous native API: a crash/timeout cannot be polled safely. Keep its reservation; never resend.
+    await db.call("settle_provider_call",call,"unknown",null,{}, {},reserve.toString(),null,null,"unknown",0,null)
+    const result=await client.generate({person,garments})
+    const duration=Math.max(0,Math.round(now()-started))
+    if(result.kind==="rejected") {
+      if(result.diagnostic) console.warn(JSON.stringify({event:"joint_outfit_rejected",provider,jobId:job.id,code:result.code,diagnostic:result.diagnostic}))
+      await db.call("settle_provider_call",call,"failed",null,{}, {},reserve.toString(),"0",null,"rejected_before_run",duration,result.code)
+      throw new JobFailure(result.code)
+    }
+    if(result.kind!=="completed") throw new JobFailure("provider_outcome_unknown")
+    await db.call("settle_provider_call",call,"succeeded",result.requestId,toJson(result.usage),{resolution:"2K",images:1},reserve.toString(),
+      result.computedMicros?.toString()??null,null,result.computedMicros===null?"unknown":"computed_from_usage",duration,null)
+    await telemetry(job,"generation:joint",{name:"joint-outfit",startMs:started,endMs:now(),attributes:{
+      "langfuse.observation.type":"generation","langfuse.observation.model.name":client.model,
+      "langfuse.observation.usage_details":JSON.stringify(result.usage),
+      ...(result.computedMicros===null?{}:{"langfuse.observation.cost_details":JSON.stringify({total:microsToUsdNumber(result.computedMicros)})}),
+    }})
+    const info=validateOutputImage(result.bytes)
+    if(leaseFailed) throw new LeaseLost()
+    await renew(job.id,fence)
+    const key=`${job.user_id}/${job.id}/look.${info.mime==="image/png"?"png":info.mime==="image/webp"?"webp":"jpg"}`
+    await store.put("generated-looks",key,result.bytes,info.mime)
+    const asset=await db.call("register_generated_asset",job.id,fence,key,result.bytes.length,info.mime,info.width,info.height)
+    const version=await db.call("complete_look_job",job.id,fence,asset)
+    if(!version) throw new LeaseLost()
+    return version
+    } finally { clearInterval(timer); await heartbeat; if(relay) await relay.close().catch(()=>undefined) }
+  }
+
   async function download(activeFal: FalClient | null, activeSegmind: SegmindClient | null, url: string): Promise<Uint8Array> {
     try {
       return await (activeFal ? activeFal.download(url, 12_582_912) : activeSegmind!.download(url, 12_582_912))
@@ -341,8 +420,8 @@ export function createEngine(deps: EngineDeps) {
     try {
       if (!(await db.call("begin_provider_call", callId, fence))) throw new JobFailure("generation_needs_reconciliation")
     } catch (error) {
-      if (error instanceof PrivateDatabaseError && error.outcome === "rejected" && ["SA003", "SA004"].includes(error.sqlState ?? "")) {
-        const code = error.sqlState === "SA003" ? "try_on_rights_revoked" : "selection_changed"
+      if (error instanceof PrivateDatabaseError && error.outcome === "rejected" && ["SA003", "SA004", "SA005"].includes(error.sqlState ?? "")) {
+        const code = error.sqlState === "SA005" ? "photo_removed" : error.sqlState === "SA003" ? "try_on_rights_revoked" : "selection_changed"
         await db.call("settle_provider_call", callId, "released", null, {}, {}, reserveMicros.toString(), "0", null, "rejected_before_run", 0, code)
         throw new JobFailure(code)
       }
@@ -435,7 +514,7 @@ export function createEngine(deps: EngineDeps) {
   /** Reconciles dispatched/unknown Segmind and fal calls by polling with the stored request id. */
   async function reconcileOnce(limit = 20): Promise<number> {
     const segmind = deps.segmind
-    const hasSegmind = Boolean(segmind && segmindPrice && segmindPrice.kind === "gpu_seconds")
+    const hasSegmind = Boolean(segmind || (deps.segmindReconcilers && Object.keys(deps.segmindReconcilers).length))
     const hasFal = Boolean(deps.fal || (deps.falReconcilers && Object.keys(deps.falReconcilers).length > 0))
     if (!hasSegmind && !hasFal) return 0
     const rows = z.array(z.object({
@@ -449,10 +528,14 @@ export function createEngine(deps: EngineDeps) {
     for (const row of rows.data) {
       if (!row.provider_request_id) continue // needs operator evidence
       if (row.provider === "segmind" && hasSegmind) {
-        const poll = await segmind!.poll(row.provider_request_id)
+        const client = (row.model && deps.segmindReconcilers?.[row.model]) || (segmind && (!row.model || segmind.model === row.model) ? segmind : null)
+        if(!client) continue
+        const price = findPrice("segmind", client.model)
+        if(!price || price.kind !== "gpu_seconds") continue
+        const poll = await client.poll(row.provider_request_id)
         if (poll.kind !== "completed" && poll.kind !== "failed") continue
         const metrics = poll.kind === "completed" ? poll.result.metrics : poll.metrics
-        const cost = segmindCost(segmindPrice as GpuSecondPrice, metrics)
+        const cost = segmindCost(price, metrics)
         if (cost.computed === null) continue
         if (await db.call("reconcile_provider_call", row.id, poll.kind === "completed" ? "succeeded" : "failed", cost.computed.toString(),
           "computed_from_usage", toJson({ credits: metrics.cost ?? null, inference_time: metrics.inferenceTime ?? null }))) settled++

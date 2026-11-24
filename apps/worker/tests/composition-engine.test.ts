@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test, jest } from "bun:test"
 import { FAL_FASHN_MODEL, type FalClient } from "@stylai/ai"
 import { PrivateDatabaseError, type PrivateDatabase, type PrivateObjectStore } from "@stylai/supabase"
 import { createEngine, defaultEngineConfig } from "../src/engine.js"
@@ -14,7 +14,7 @@ const piece = (n: number, slot: "lower" | "upper", category: string) => ({
   slot, position: n,
 })
 
-function harness(opts: { revokeAtDispatch?: number; imageReferences?: boolean; failLayer?: number; revokeSnapshot?: number; changedSnapshot?: number; beginFalse?: boolean; bytesOutput?: boolean; budget?: { ok: boolean; limiting: string[] } | "unavailable" } = {}) {
+function harness(opts: { segmindOutfit?: boolean; nativeGate?: () => Promise<void>; largePhoto?: boolean; gemini?: boolean; revokeAtDispatch?: number; imageReferences?: boolean; failLayer?: number; revokeSnapshot?: number; changedSnapshot?: number; beginFalse?: boolean; bytesOutput?: boolean; budget?: { ok: boolean; limiting: string[] } | "unavailable" } = {}) {
   const budgetChecks: unknown[][] = []
   const stored: string[] = []
   const removed: string[] = []
@@ -53,7 +53,7 @@ function harness(opts: { revokeAtDispatch?: number; imageReferences?: boolean; f
   } } as unknown as PrivateDatabase<"ai_worker">
   const store = {
     signedUrl: async (_bucket: string, key: string) => `https://storage.example.com/signed/${key}`,
-    get: async () => TINY_PNG, put: async (_bucket: string, key: string) => { stored.push(key) }, remove: async (_bucket: string, key: string) => { removed.push(key) },
+    get: async () => opts.largePhoto ? new Uint8Array(14_000_001) : TINY_PNG, put: async (_bucket: string, key: string) => { stored.push(key) }, remove: async (_bucket: string, key: string) => { removed.push(key) },
   } as unknown as PrivateObjectStore
   const submits: { modelImageUrl: string; clothImageUrl: string; category: string; requestKey: string }[] = []
   const fal = {
@@ -69,15 +69,51 @@ function harness(opts: { revokeAtDispatch?: number; imageReferences?: boolean; f
     },
     download: async () => TINY_PNG,
   } as unknown as FalClient
+  const nativeInputs: unknown[] = []
+  const gemini = { model: "gemini-3-pro-image", garment: async () => ({ bytes: TINY_PNG, mime: "image/png" }), generate: async (input: unknown) => { nativeInputs.push(input); await opts.nativeGate?.(); return { kind: "completed", bytes: TINY_PNG, requestId: "native-response", computedMicros: 140000n, usage: { input_tokens: 1000 } } } }
   const engine = createEngine({
-    db, store, segmind: null, fal,
-    config: { ...defaultEngineConfig, provider: "fal", environment: "development", pseudonymKey: "k".repeat(32), simulatedProvider: false, pilotId: "stylai-first-real-tryon-pilot" },
+    db, store, segmind: null, fal, segmindOutfit: opts.segmindOutfit ? {...gemini,model:"nano-banana-pro"} as unknown as import("@stylai/ai").SegmindOutfitClient : null, gemini: opts.gemini ? gemini as unknown as import("@stylai/ai").GeminiOutfitClient : null,
+    config: { ...defaultEngineConfig, provider: opts.segmindOutfit ? "segmind" : opts.gemini ? "gemini" : "fal", environment: "development", pseudonymKey: "k".repeat(32), simulatedProvider: false, pilotId: "stylai-first-real-tryon-pilot" },
     sleep: async () => {},
   })
-  return { engine, ops, settled, submits, snapshots, stored, removed, budgetChecks, selections }
+  return { engine, ops, settled, submits, snapshots, stored, removed, budgetChecks, selections, nativeInputs }
 }
 
 describe("multi-piece composition engine", () => {
+  test("native generation keeps renewing its lease while waiting for the provider", async () => {
+    jest.useFakeTimers()
+    let release!:()=>void
+    const gate=new Promise<void>(resolve=>{release=resolve})
+    const h=harness({gemini:true,nativeGate:()=>gate})
+    try {
+      const pending=h.engine.processJob(JOB)
+      for(let i=0;i<100 && !h.nativeInputs.length;i++) await Promise.resolve()
+      expect(h.nativeInputs).toHaveLength(1)
+      jest.advanceTimersByTime(130000)
+      for(let i=0;i<30;i++) await Promise.resolve()
+      const renewals=h.ops.filter(x=>x==="renew_ai_job_lease").length
+      release()
+      await pending
+      expect(renewals).toBeGreaterThanOrEqual(6)
+    } finally {release();jest.useRealTimers()}
+  })
+  test("oversized native input fails before reserving money or a pilot attempt", async () => {
+    const h=harness({gemini:true,largePhoto:true})
+    expect(await h.engine.processJob(JOB)).toEqual({status:"failed",code:"outfit_input_invalid"})
+    expect(h.ops).not.toContain("reserve_provider_call")
+    expect(h.ops).not.toContain("reserve_pilot_dispatch")
+    expect(h.nativeInputs).toHaveLength(0)
+  })
+  test("Gemini renders two approved pieces in one call with the original private photo", async () => {
+    const h = harness({ gemini: true, imageReferences: true })
+    expect((await h.engine.processJob(JOB)).status).toBe("succeeded")
+    expect(h.nativeInputs).toHaveLength(1)
+    expect(h.nativeInputs[0]).toMatchObject({ person: { bytes: TINY_PNG }, garments: [{category:"Lower body"},{category:"Upper body"}] })
+    expect(h.submits).toHaveLength(0)
+    expect(h.snapshots).toEqual([1,2])
+    expect(h.ops.filter(x=>x==="reserve_provider_call")).toHaveLength(1)
+    expect(h.selections[0]).toMatchObject({ render_plan:"joint_outfit_unverified", layers:2 })
+  })
   test("revocation at second dispatch preserves first spend and releases the undispatched reservation", async () => {
     const h = harness({ revokeAtDispatch: 2 })
     expect(await h.engine.processJob(JOB)).toEqual({ status: "failed", code: "try_on_rights_revoked" })
@@ -157,4 +193,14 @@ describe("multi-piece composition engine", () => {
     expect(await h.engine.processJob(JOB)).toEqual({ status: "failed", code: "generation_needs_reconciliation" })
     expect(h.submits).toHaveLength(0)
   })
+})
+
+test("Segmind Pro reserves one Segmind attempt for both garments with signed original photo",async()=>{
+ const h=harness({segmindOutfit:true,imageReferences:true})
+ expect((await h.engine.processJob(JOB)).status).toBe("succeeded")
+ expect(h.nativeInputs).toHaveLength(1)
+ expect(h.nativeInputs[0]).toMatchObject({person:{url:`https://storage.example.com/signed/${USER}/front.png`}})
+ expect(h.budgetChecks[0]!.slice(2,5)).toEqual(["segmind",1,"200000"])
+ expect(h.ops.filter(x=>x==="reserve_provider_call")).toHaveLength(1)
+ expect(h.selections[0]).toMatchObject({render_plan:"joint_outfit_unverified"})
 })

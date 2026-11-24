@@ -45,13 +45,14 @@ function fakeDb(opts: { quota?: boolean; sourceReferences?: unknown[] } = {}) {
   return { db, compositions, enqueued }
 }
 
-async function build(opts: { composer?: Composer | null; mode?: "test_catalog" | "aliexpress_affiliate"; aliexpress?: AliExpressCatalogService | null; quota?: boolean; sourceReferences?: unknown[] } = {}) {
+async function build(opts: { renderProvider?: "gemini" | "segmind"; jointOutfit?:boolean; composer?: Composer | null; mode?: "test_catalog" | "aliexpress_affiliate"; aliexpress?: AliExpressCatalogService | null; quota?: boolean; sourceReferences?: unknown[] } = {}) {
   const f = fakeDb({ quota: opts.quota, sourceReferences: opts.sourceReferences })
   const keys = readSessionKeys({ STYLAI_SESSION_KEY: randomBytes(32).toString("base64") })!
   const resolveActor = async (request: { headers: Record<string, unknown> }) => request.headers["x-test-user"] === "b" ? B : request.headers["x-test-user"] === "a" ? A : null
   const app = await buildApp({
     appOrigin: "http://localhost:5200",
-    compositions: { db: f.db, resolveActor, catalogMode: opts.mode ?? "test_catalog", composer: opts.composer ?? null, aliexpressCatalog: opts.aliexpress ?? null, renderPricePerLayerMicros: 75_000n },
+    compositions: { db: f.db, resolveActor, catalogMode: opts.mode ?? "test_catalog", composer: opts.composer ?? null, aliexpressCatalog: opts.aliexpress ?? null, renderPricePerLayerMicros: 75_000n,
+      ...(opts.renderProvider ? { renderProvider:opts.renderProvider, jointOutfit:opts.jointOutfit, reservePerLayerMicros:opts.jointOutfit ? 200_000n : 350_000n } : {}) },
     studio: { db: f.db, keys, resolveActor, photoPolicyVersion: "dev-v1", publicBaseUrl: "http://x/v1", generationEnabled: true },
   })
   return { app, ...f }
@@ -60,6 +61,13 @@ const post = (app: Awaited<ReturnType<typeof build>>["app"], url: string, payloa
   app.inject({ method: "POST", url, payload: payload as object, headers: { "x-test-user": user, ...headers } })
 
 describe("outfit compositions", () => {
+  test("joint Gemini composition reserves one call regardless of two garments", async () => {
+    const t=await build({renderProvider:"gemini"})
+    try {
+      const result=(await post(t.app,"/v1/studio/compositions",{prompt:"calça e blusa"})).json()
+      expect(result.generation).toMatchObject({layers:2,render:"joint_outfit_unverified",provider:"gemini",maxReservedUsd:0.35})
+    } finally {await t.app.close()}
+  })
   test("rules fallback composes top + bottom within the TOTAL budget, durable and isolated per user", async () => {
     const t = await build()
     try {
@@ -357,4 +365,12 @@ describe("empty answers are observable (P14)", () => {
       expect(body.slots[0].candidates).toHaveLength(1)
     } finally { await t.app.close() }
   })
+})
+
+test("Segmind joint composition quotes one reservation instead of charging per garment",async()=>{
+ const t=await build({renderProvider:"segmind",jointOutfit:true})
+ try{
+  const result=(await post(t.app,"/v1/studio/compositions",{prompt:"cal\u00e7a e blusa"})).json()
+  expect(result.generation).toMatchObject({layers:2,render:"joint_outfit_unverified",provider:"segmind",maxReservedUsd:0.2})
+ }finally{await t.app.close()}
 })
