@@ -462,3 +462,12 @@ Criado prompt de implementação baseado em Superpowers e nos módulos existente
 - E2E de conjuntos: simulado 52/52 e AliExpress real 60/60, com verificação de que conjuntos e geração aparecem na tela e de que nenhuma peça passa do preço filtrado. Nenhuma chamada paga.
 - A leitura das capturas reais achou defeitos que os testes não viam: conjunto tático em pedido elegante, título "Jaqueta +", foto de conjunto cortada. Corrigidos com teste.
 - No worktree do front, o E2E oficial deu 103/104: faltava `apps/worker/.env.local` (só existe no `stylai-motor`).
+
+### E29 — 2026-11-24 — Peças encontradas, buscar outra, Match e Closet
+- Leandro: aprovou o push (feito, 7 commits) e as peças avulsas só como troca; perguntou por que vinham tão poucas peças e onde estava o Match; pediu que todo match guarde a imagem e as roupas; pediu o conhecimento no Neo4j (feito, sem segredos nem dados pessoais).
+- Poucas peças: a busca de inverno tinha 36 peças guardadas (12 por parte) e a tela só mostrava as dos conjuntos. Agora há a aba Peças com tudo, até 24 por parte, alvo de 20 antes de parar de buscar.
+- Match: no servidor real ele nunca existiu (`match=false` desde 2026-11-21). Foi escondido por engano na E28 e agora funciona, sobre as imagens já geradas. Guardar tira a expiração de 7 dias da imagem e leva as peças ao Closet. Desfazer volta atrás.
+- Em lojas reais há um caminho só de busca; "Buscar outra" fica dentro da troca da peça.
+- Migrações 20261124200000 e 20261124210000 aplicadas no banco local (backup `backups-locais/pre-20261124210000.dump`); contagens iguais antes e depois.
+- O teste de banco pegou um erro antes da aplicação: devolver 7 dias a um look removido violava a regra de retenção; agora vale a data de criação.
+- Testes: unidade 474; E2E simulado 60/60 e AliExpress real 68/68; teste visual 164 verificações nos 4 tamanhos, depois 40/40 de novo no celular. Nenhuma chamada paga nos testes.

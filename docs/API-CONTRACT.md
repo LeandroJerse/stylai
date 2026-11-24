@@ -269,3 +269,12 @@ Só quando `capabilities.outfits` for `true` em `GET /v1/studio/config`. Tudo ex
 - Cada peça traz `storeRating` (percentual de avaliações positivas da loja, ou nulo) e `storeSales` (vendas recentes, ou nulo).
 - Um conjunto vendido em um só anúncio conta como duas peças no preço por peça.
 - `capabilities.outfitFilters`: filtros que o servidor aplica. Nota e vendas só com busca em loja.
+
+### Peças, Match e Closet no motor (2026-11-24)
+
+- `GET /v1/studio/outfit-searches/:id/pieces`: `{ groups: [{ slot, label, pieces }] }`, tudo o que a busca achou e pode usar. `report.found` traz o total.
+- `POST /v1/studio/outfit-sets/:id/options` `{ slot, query }`: novas opções de troca para uma parte; devolve o conjunto e `found: { returned, added, outside }`. Não muda o conjunto. 503 `source_unavailable` se a loja não responder.
+- `GET /v1/studio/match/deck?lookId=` (`lookId` opcional): looks gerados ainda não decididos. `POST /v1/studio/match/decisions` `{ lookId, decision }` e `DELETE .../:id` (desfazer). Não gera imagem nem gasta moedas.
+- `GET /v1/closet`, `PUT|DELETE /v1/closet/looks/:id`, `PUT|DELETE /v1/closet/pieces/:id`. Guardar um look mantém a imagem (sem isso ela vale 7 dias) e as peças congeladas dele. Remover um look com mais de 7 dias apaga a imagem.
+- O retrato da peça favorita é feito pelo servidor; o cliente só envia o id.
+- `capabilities.closet` e `capabilities.match` são verdadeiros quando essas rotas existem.

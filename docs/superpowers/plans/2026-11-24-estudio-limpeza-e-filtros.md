@@ -100,3 +100,8 @@ Em aberto, decisão de Leandro:
 - Peças avulsas continuam "só para ver e comprar" no modo real (sem preparo automático de imagem). Recomendação mantida: um caminho só, pelos conjuntos.
 - Qualidade da seleção depende da loja: num pedido elegante ainda veio um conjunto tático (corrigido por regra) e moletons numa busca de frio.
 - Avaliar a primeira imagem real e usar as 3 gerações restantes.
+
+### Segunda leva (2026-11-24, noite)
+
+- Peças avulsas: decidido por Leandro, viram troca dentro do conjunto em lojas reais.
+- Aba Peças, "Buscar outra", Match e Closet prontos. Match só mostra looks que já têm imagem: conjunto sem imagem não entra, porque gerar custa.

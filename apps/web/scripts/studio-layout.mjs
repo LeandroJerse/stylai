@@ -164,6 +164,8 @@ try {
     t.check((await visibleShare(page, '[data-testid="found-piece"]')).visible >= 100, `${name}: found pieces in sight`)
     await page.getByTestId("found-part-lower").click()
     t.check(await page.getByTestId("found-piece").count() === 24, `${name}: pieces filtered by part`)
+    await page.waitForTimeout(500)
+    t.check(await page.getByTestId("found-part-lower").evaluate((el) => getComputedStyle(el.querySelector(".sa-num")).color === getComputedStyle(el).color), `${name}: the count of a pressed chip has the colour of its label`)
     await shot(page, `${name}-10-found`)
     await page.getByTestId("found-piece").nth(3).click()
     await page.getByTestId("found-sheet").waitFor()
