@@ -105,3 +105,14 @@ Rotas: `POST /v1/studio/outfit-renders/quote`, `POST/GET /v1/studio/outfit-rende
 ## Self-review
 
 Cobertura conferida contra as seções da especificação. Revisão visual por modelo fica fora (opcional na spec; custo não autorizado).
+
+## Checkpoint — pausa em 2026-11-24
+
+- Concluídas: Tasks 1, 2 e 3 (código, testes e commits locais; sem push).
+- Retomar em: **Task 4** (`apps/api/src/modules/outfits/references.ts`, teste primeiro).
+- Antes de subir a aplicação: aplicar `20261124100000_outfit_sets.sql` no Supabase local (fazer backup antes; o ledger do piloto vive nesse banco) e rodar `bun run check` e `test:db:private`, ainda não executados após a Task 3.
+- `conjunto completo` = slot `set` (`outfit_sets`): falta ensinar o worker (`categoryMap`, schema de `items`) e `buildOutfitPrompt` (Task 7).
+- `worker`: `jobSchema` ainda não lê `render_id`, `panel` e `reference`; `renderJointOutfit` exige piloto mesmo em simulação (Task 7).
+- Termo de foto: trocar `dev-v1` por `2026-11-24-inline` na API, na tela de Perfil, na demo e nos testes (Task 8).
+- Simulador: `createSegmindOutfitClient` tem URL fixa; aceitar base loopback com custo 0 (Task 7).
+- Editar arquivos com as ferramentas de edição: o shell desta máquina consome barras invertidas em heredocs.

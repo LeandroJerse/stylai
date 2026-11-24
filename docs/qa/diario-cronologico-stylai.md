@@ -401,3 +401,14 @@ Validação E19: bun run check concluído com sucesso (lint, tipos, testes, buil
 
 ### E21 — 2026-11-24 — handoff para Claude, fluxo autônomo
 Criado prompt de implementação baseado em Superpowers e nos módulos existentes: docs/superpowers/plans/2026-11-24-prompt-claude-fluxo-autonomo.md. Inclui busca, múltiplos conjuntos persistidos, preparação automática de referências, geração individual/comparativa, limites e critérios E2E. Painéis com gerações independentes são proposta técnica a validar; código não implementado nesta etapa. Nenhuma chamada paga nem envio automático ao Claude.
+
+### E22 — 2026-11-24 — fluxo autônomo: tarefas 1 a 3 concluídas, pausa pedida por Leandro
+- Plano executável: docs/superpowers/plans/2026-11-24-fluxo-autonomo.md (9 tarefas). Base a672a3a com `bun run check` verde antes de editar.
+- T1 (contratos): `packages/contracts/src/outfits.ts` com compatibilidade de estilo, ranking, validação, diversidade e seleção por regras. Regressão da calça de pelúcia/lazer em casual elegante coberta por teste. Clima (frio/calor) no intérprete por regras; AliExpress reconhece conjuntos/ternos e peças de inverno.
+- T2 (agentes): papéis `plan` e `outfits` versionados em `packages/ai/src/outfit-agents.ts`, contexto mínimo, apelidos no lugar de ids, respostas revalidadas. Só cliente falso: nenhuma chamada Haiku real.
+- T3 (banco): migração 20261124100000_outfit_sets.sql (política de imagens revogável, cache de referência, buscas, conjuntos/revisões, renders/painéis, retenção do orçamento do lote inteiro, nova tentativa por painel, montagem). Operações TypeScript da fronteira adicionadas.
+- Verificado: `bun run test:db` (Postgres 17 descartável) passou, incluindo corrida de duas contas pelo mesmo orçamento, duplo clique e painéis serializados. Testes de packages e API passaram após T2. Após T3 ainda NÃO foram executados: `bun run check` completo, `test:db:private` e E2E.
+- A migração 20261124100000 NÃO foi aplicada ao Supabase local em uso: a fronteira TypeScript já exige essa versão, então API e worker não ficam prontos até aplicá-la. A aplicação não deve ser iniciada neste ponto.
+- Nenhuma chamada paga (Segmind ou Haiku), nenhuma chamada AliExpress, nenhuma mudança de cota, piloto, licença, credencial ou .env. Docker Desktop foi ligado para os testes.
+- Decisões: até 2 anúncios de conjunto completo entre os 4 na seleção por regras; referências automáticas continuam bloqueadas no piloto até o operador ligar `allow_policy_references`; resultado desconhecido nunca é reenviado e segunda cobrança exige aceite.
+- Próximo: T4 (preparo automático de referência), depois T5 a T9. Interface ainda não foi tocada: o fluxo NÃO está pronto para uso.
