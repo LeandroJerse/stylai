@@ -440,3 +440,7 @@ Criado prompt de implementação baseado em Superpowers e nos módulos existente
 - Leitura depois: cotação de 4 chamadas ok, nenhum limite bloqueando, saldo do piloto US$ 1,264272.
 - Aplicação reiniciada em modo REAL (FLUX 3 Klein/Segmind, AliExpress real, seleção por regras). Haiku não ligado: o custo dele estava fora da cota apresentada.
 - Nenhuma imagem gerada ainda: depende de Leandro entrar, aceitar o termo 2026-11-24-inline (a conta só tem dev-v1) e confirmar na tela. O agente não aceita termo nem entra na conta por outra pessoa.
+
+### E26 — 2026-11-24 — Haiku ligado na validação real, autorizado por Leandro
+- Aplicação reiniciada em modo real com claude-haiku-5-5. Combinado: até 10 chamadas novas. O contador do dia já tinha 15 (anteriores ao fluxo), então o teto passado ao launcher foi 25. O contador zera às 00:00 UTC; depois disso o teto volta a valer 25 no dia.
+- Nenhuma chamada Haiku ou Segmind feita pelo agente; dependem do uso na tela.
