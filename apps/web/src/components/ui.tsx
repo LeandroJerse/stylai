@@ -8,6 +8,19 @@ import { useCatalogSource } from "../api/queries"
 
 /* ------------------------------------------------------------------ hooks */
 
+/** Phones and tablets: the Estúdio stacks the request above its results. */
+export function useNarrow(): boolean {
+  const query = "(max-width: 1023.98px)"
+  const [narrow, setNarrow] = useState(() => window.matchMedia(query).matches)
+  useEffect(() => {
+    const q = window.matchMedia(query)
+    const update = (): void => setNarrow(q.matches)
+    q.addEventListener("change", update)
+    return () => q.removeEventListener("change", update)
+  }, [])
+  return narrow
+}
+
 export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false)
   useEffect(() => {

@@ -14,6 +14,7 @@ import { ORIGIN_LABEL } from "../lib/looks"
 import { sumLookWith, withOffer } from "../lib/offers"
 import { PieceCard, PieceCardSkeletons, priceText, ROLE_LABEL } from "../components/pieces"
 import { EmptyState, ErrorState, Notice, Photo, Segmented, Sheet, Skeleton } from "../components/ui"
+import { lookTitle } from "../lib/titles"
 
 type View = "pecas" | "looks"
 
@@ -129,12 +130,12 @@ export function ClosetScreen() {
           <ul className="sa-grid">
             {looks.map((l) => (
               <li key={l.id} className="min-w-0">
-                <button type="button" className="sa-cardbtn block w-full text-left" onClick={() => open({ kind: "closetLook", lookId: l.id })} aria-label={`${l.title}, ${plural(l.pieces.length, "peça", "peças")}. Ver look`}>
+                <button type="button" className="sa-cardbtn block w-full text-left" onClick={() => open({ kind: "closetLook", lookId: l.id })} aria-label={`${lookTitle(l)}, ${plural(l.pieces.length, "peça", "peças")}. Ver look`}>
                   <div className="sa-photo sa-card-photo" style={{ aspectRatio: "4 / 5" }}>
                     <Photo image={l.image} alt="" className="h-full w-full" sizes="(min-width: 1024px) 25vw, 50vw" />
                   </div>
                   <p className="sa-subheading mt-3" style={{ fontSize: 20 }}>
-                    {l.title}
+                    {lookTitle(l)}
                   </p>
                   <p className="sa-caption sa-muted mt-1">
                     {plural(l.pieces.length, "peça", "peças")} · {ORIGIN_LABEL[l.origin]}
@@ -188,7 +189,7 @@ export function ClosetLookSheet({ lookId }: { lookId: string }) {
       {
         onSuccess: () => {
           close()
-          notify(`${look.title} saiu do Closet. As peças favoritas continuam.`, {
+          notify(`${lookTitle(look)} saiu do Closet. As peças favoritas continuam.`, {
             label: "Desfazer",
             run: () => toggle.mutate({ lookId: look.id, save: true }, { onError: (e) => notify(messageOf(e)) }),
           })
@@ -200,7 +201,7 @@ export function ClosetLookSheet({ lookId }: { lookId: string }) {
 
   return (
     <Sheet
-      title={look.title}
+      title={lookTitle(look)}
       onClose={close}
       footer={
         <button type="button" className="sa-btn sa-btn-danger sa-btn-block" onClick={remove} aria-disabled={toggle.isPending || undefined}>
@@ -209,7 +210,7 @@ export function ClosetLookSheet({ lookId }: { lookId: string }) {
       }
     >
       <div className="grid gap-5">
-        <button type="button" className="sa-photo sa-photo-lg block w-full" style={{ aspectRatio: "4 / 5", maxHeight: 420 }} onClick={() => open({ kind: "viewer", image: look.image, alt: look.title, back: self })} aria-label={`Ampliar ${look.title}`}>
+        <button type="button" className="sa-photo sa-photo-lg block w-full" style={{ aspectRatio: "4 / 5", maxHeight: 420 }} onClick={() => open({ kind: "viewer", image: look.image, alt: look.title, back: self })} aria-label={`Ampliar ${lookTitle(look)}`}>
           <Photo image={look.image} alt="" className="h-full w-full" eager />
         </button>
         <p className="sa-caption sa-muted">

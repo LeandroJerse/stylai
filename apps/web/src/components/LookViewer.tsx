@@ -13,6 +13,7 @@ import { sumLookWith, withOffer } from "../lib/offers"
 import { priceText, ROLE_LABEL } from "./pieces"
 import { CardSwap, useCardDrag, useLookDeck, type SwapDir } from "./LookDeck"
 import { ErrorState, LoadingState, Photo, useModal, useReducedMotion } from "./ui"
+import { lookTitle } from "../lib/titles"
 
 export function LookViewer({ lookId }: { lookId: string }) {
   const { close, open, offerChoice } = useStore()
@@ -91,7 +92,7 @@ export function LookViewer({ lookId }: { lookId: string }) {
                   under={neighbour ? <Photo image={neighbour.image} alt="" fit="contain" className="h-full w-full" /> : null}
                   className="absolute inset-0"
                 >
-                  <Photo image={look.image} alt={look.title} fit="contain" className="h-full w-full" eager />
+                  <Photo image={look.image} alt={lookTitle(look)} fit="contain" className="h-full w-full" eager />
                 </CardSwap>
                 {list.length > 1 ? (
                   <>
@@ -107,7 +108,7 @@ export function LookViewer({ lookId }: { lookId: string }) {
 
               <article key={look.id} className="sa-lookviewer-text sa-appear">
                 <h2 id={titleId} className="sa-lookviewer-title">
-                  {look.title}
+                  {lookTitle(look)}
                 </h2>
                 <p className="sa-caption sa-muted mt-2">
                   {isSuggestion ? "Sugestão da busca, a mesma que aparece no Match" : `${ORIGIN_LABEL[look.origin]} · v${look.version}`}

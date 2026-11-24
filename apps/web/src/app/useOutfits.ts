@@ -69,7 +69,8 @@ export function useOutfits() {
         const s = await outfitsApi.startSearch(prompt.trim(), keyFor(fingerprint))
         forgetKey(fingerprint)
         qc.setQueryData(outfitKeys.search(s.id), s)
-        setDraft({ outfitSearchId: s.id })
+        // The request leaves the composer and its outfits take the work area.
+        setDraft((d) => ({ outfitSearchId: s.id, lookId: null, stageView: "sets", stageNonce: d.stageNonce + 1, composerOpen: false }))
         void qc.invalidateQueries({ queryKey: outfitKeys.searches })
         return { ok: true }
       } catch (e) {

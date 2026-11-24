@@ -15,6 +15,7 @@ import { priceText } from "./pieces"
 import { withOffer } from "../lib/offers"
 import { PreferenceEditorSheet } from "./PreferenceEditor"
 import { ErrorState, Hint, LoadingState, Notice, Photo, Segmented, Sheet } from "./ui"
+import { lookTitle } from "../lib/titles"
 
 /** Sum of known prices (same currency only); null when nothing has a price. */
 function sumPrices(products: Product[]): string | null {
@@ -78,7 +79,7 @@ export function EditSheet() {
             <Photo image={look.image} alt="" className="h-full w-full" />
           </div>
           <p className="sa-body-sm">
-            <strong>{look.title}</strong>
+            <strong>{lookTitle(look)}</strong>
             <span className="sa-muted block">Versão atual: v{look.version}</span>
           </p>
         </div>

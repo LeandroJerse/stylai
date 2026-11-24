@@ -8,6 +8,7 @@ import { keys, useMatchDeck } from "../api/queries"
 import { useStore } from "../app/store"
 import { priceText } from "./pieces"
 import { ErrorState, Hint, LoadingState, Photo, useModal } from "./ui"
+import { lookTitle } from "../lib/titles"
 
 /** Horizontal distance (px) that confirms a decision on release. */
 const THRESHOLD = 96
@@ -93,7 +94,7 @@ export function MatchDialog() {
     drag.current = null
     setLeaving(action)
     const card = cardRef.current
-    const title = look.title
+    const title = lookTitle(look)
     const lookId = look.id
     const commit = (): void => {
       if (!mounted.current) return
@@ -267,9 +268,9 @@ export function MatchDialog() {
                         onLostPointerCapture={top ? (e) => finish(e, true) : undefined}
                         role={top ? "group" : undefined}
                         aria-roledescription={top ? "cartão" : undefined}
-                        aria-label={top ? `${l.title}. Arraste para a direita para guardar ou para a esquerda para passar, ou use os botões.` : undefined}
+                        aria-label={top ? `${lookTitle(l)}. Arraste para a direita para guardar ou para a esquerda para passar, ou use os botões.` : undefined}
                       >
-                        <Photo image={l.image} alt={top ? `Look ${l.title}` : ""} className="h-full w-full" eager={top} />
+                        <Photo image={l.image} alt={top ? `Look ${lookTitle(l)}` : ""} className="h-full w-full" eager={top} />
                         {top ? (
                           <>
                             <span className="sa-stamp sa-stamp-save" aria-hidden="true">
@@ -282,7 +283,7 @@ export function MatchDialog() {
                         ) : null}
                         <div className="absolute inset-x-0 bottom-0 p-3">
                           <div className="sa-matchinfo">
-                            <p className="sa-subheading">{l.title}</p>
+                            <p className="sa-subheading">{lookTitle(l)}</p>
                             <ul className="mt-2 grid gap-1">
                               {l.pieces.map((p) => (
                                 <li key={p.product.id} className="flex min-w-0 justify-between gap-3 sa-caption">

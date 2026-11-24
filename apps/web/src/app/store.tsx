@@ -44,6 +44,8 @@ export const DEFAULT_EXPLORE: ExploreQuery = { text: "", category: null, partner
  * result. "vestir": no search; the chosen pieces and uploaded references are worn exactly as picked.
  */
 export type StudioMode = "procurar" | "vestir"
+/** What the Estúdio work area shows: outfits, generated images, or the loose pieces of the last search. */
+export type StageView = "sets" | "images" | "pieces"
 
 export interface StudioDraft {
   mode: StudioMode
@@ -72,6 +74,10 @@ export interface StudioDraft {
   searchResult: SearchResult | null
   /** Outfit search open on the board (null = the last one; the search itself lives on the server). */
   outfitSearchId: string | null
+  /** View chosen for the work area (null = the screen decides). */
+  stageView: StageView | null
+  /** Grows when the person asks for something: the work area comes into sight. */
+  stageNonce: number
   /** Outfit proposed by the composer (durable on the server; reopened by id). */
   composition: Composition | null
 }
@@ -83,7 +89,7 @@ export function showLookPatch(d: StudioDraft, look: { id: string; origin?: strin
   return { lookId: look.id, acervoLookId: look.id, acervoSelection: [] }
 }
 
-export const EMPTY_DRAFT: StudioDraft = { mode: "procurar", prompt: "", chosen: [], references: [], preferenceId: null, sessionRules: null, composerOpen: true, lookId: null, jobId: null, outfitSearchId: null, acervoLookId: null, acervoSelection: [], variantChoice: {}, searchResult: null, composition: null }
+export const EMPTY_DRAFT: StudioDraft = { mode: "procurar", prompt: "", chosen: [], references: [], preferenceId: null, sessionRules: null, composerOpen: true, lookId: null, jobId: null, outfitSearchId: null, stageView: null, stageNonce: 0, acervoLookId: null, acervoSelection: [], variantChoice: {}, searchResult: null, composition: null }
 
 interface Store {
   route: Route

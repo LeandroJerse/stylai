@@ -4,12 +4,12 @@
  * versions and history all come from the server (useStudio, api/queries.ts).
  */
 import { CompositionPanel } from "../components/CompositionPanel"
-import { OutfitBoard } from "../components/outfits/OutfitBoard"
+import { OutfitStage } from "../components/outfits/OutfitStage"
 import { useOutfits } from "../app/useOutfits"
 import { useEffect, useId, useRef, useState } from "react"
 import type { ChangeEvent, ReactNode } from "react"
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { Archive, ArrowsClockwise, CaretDown, CaretLeft, CaretRight, Check, CircleNotch, CoatHanger, Coins, Compass, CornersOut, Info, MagnifyingGlass, PencilSimpleLine, Plus, SquaresFour, TShirt, Trash, X } from "@phosphor-icons/react"
+import { Archive, ArrowLeft, ArrowsClockwise, CaretDown, CaretLeft, CaretRight, Check, CircleNotch, CoatHanger, Coins, Compass, CornersOut, Info, MagnifyingGlass, PencilSimpleLine, Plus, SquaresFour, TShirt, Trash, X } from "@phosphor-icons/react"
 import { api } from "../api/client"
 import { messageOf } from "../api/errors"
 import { useCancelJob, useCandidates, useLooks, useToggleSavedLook } from "../api/queries"
@@ -22,8 +22,9 @@ import { checkImageFile } from "../lib/images"
 import { relaxRule } from "../lib/rules"
 import { FavButton, PieceCard, priceText, ROLE_LABEL } from "../components/pieces"
 import { CriterionQuick } from "../components/CriterionQuick"
-import { CatalogNotice, EmptyState, ErrorState, Notice, Photo, Skeleton, useReducedMotion } from "../components/ui"
+import { CatalogNotice, EmptyState, ErrorState, Notice, Photo, Skeleton, useNarrow, useReducedMotion } from "../components/ui"
 import { ORIGIN_LABEL } from "../lib/looks"
+import { lookTitle, shortPieceName } from "../lib/titles"
 import { sumLookWith, withOffer } from "../lib/offers"
 import { OfferPrice, StoreTags } from "../components/offers"
 
@@ -348,41 +349,49 @@ function PreferenceRow() {
 const ACTION_LABEL: Record<StudioMode, string> = { procurar: "Procurar e vestir", vestir: "Vestir peças" }
 
 /** Procurar with outfits: coordinated sets first; loose pieces stay one tap away. Neither generates. */
-function OutfitSearchRow({ onSearch }: { onSearch: () => void }) {
+function OutfitSearchRow({ onSearch, onError }: { onSearch: () => void; onError: (message: string | null) => void }) {
   const outfits = useOutfits()
-  const { draft, notify } = useStore()
-  const reduced = useReducedMotion()
+  const { draft } = useStore()
   const { studio } = outfits
   const running = outfits.search.data?.status === "running"
   const busy = outfits.starting || studio.searching || running
   const start = async (): Promise<void> => {
+    onError(null)
     const r = await outfits.start(draft.prompt)
-    if (!r.ok) notify(r.message)
-    else document.getElementById("conjuntos")?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" })
+    if (!r.ok) onError(r.message)
   }
   return (
     <div className="sa-cta-dock">
       <button type="button" className="sa-btn sa-btn-primary sa-btn-block" aria-disabled={busy || undefined} onClick={() => !busy && void start()} data-testid="outfit-search-button">
-        {outfits.starting || running ? <><CircleNotch size={18} className="sa-spin" aria-hidden="true" /> Montando conjuntos…</> : <><MagnifyingGlass size={18} aria-hidden="true" /> Montar conjuntos</>}
+        {outfits.starting || running ? (
+          <>
+            <CircleNotch size={18} className="sa-spin" aria-hidden="true" /> Montando conjuntos…
+          </>
+        ) : (
+          <>
+            <MagnifyingGlass size={18} aria-hidden="true" /> Montar conjuntos
+          </>
+        )}
       </button>
-      <button type="button" className="sa-btn sa-btn-secondary sa-btn-block mt-2" aria-disabled={busy || undefined} onClick={() => !busy && onSearch()} data-testid="search-button">
-        {studio.searching ? <><CircleNotch size={18} className="sa-spin" aria-hidden="true" /> Buscando…</> : <>Buscar peças avulsas</>}
-      </button>
-      <p className="sa-caption sa-muted mt-2">
-        {studio.caps?.searchScope === "curated_catalog" ? "Busca no catálogo selecionado pelo StylAI (não é uma busca ao vivo nas lojas). " : "Busca real na loja. "}
-        {studio.caps?.composer.mode === "agent" ? `Seleção pelo agente (${studio.caps.composer.model ?? "IA"}). ` : "Seleção por regras. "}
-        Buscar não gera imagem e não gasta moedas. Você confirma os conjuntos e o custo antes de gerar.
-      </p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3">
+        <p className="sa-caption sa-muted">
+          {studio.caps?.searchScope === "curated_catalog" ? "Busca no catálogo selecionado pelo StylAI. " : ""}
+          Buscar não gera imagem e não gasta moedas.
+        </p>
+        <button type="button" className="sa-btn-quiet sa-body-sm -ml-2" aria-disabled={busy || undefined} onClick={() => !busy && onSearch()} data-testid="search-button">
+          {studio.searching ? "Buscando…" : "Buscar peças avulsas"}
+        </button>
+      </div>
     </div>
   )
 }
 
 /** Procurar: single-piece search, or a full outfit composed by the agent. Neither generates. */
-function SearchRow({ onSearch }: { onSearch: () => void }) {
+function SearchRow({ onSearch, onError }: { onSearch: () => void; onError: (message: string | null) => void }) {
   const studio = useStudio()
   const { draft, notify } = useStore()
   const busy = studio.searching || studio.composing
-  if (studio.caps?.outfits) return <OutfitSearchRow onSearch={onSearch} />
+  if (studio.caps?.outfits) return <OutfitSearchRow onSearch={onSearch} onError={onError} />
   return (
     <div className="sa-cta-dock">
       <button type="button" className="sa-btn sa-btn-primary sa-btn-block" aria-disabled={busy || undefined} onClick={() => !busy && onSearch()} data-testid="search-button">
@@ -596,18 +605,18 @@ function ModeSwitch() {
           </button>
         ))}
       </div>
-      <p className="sa-caption sa-muted sa-pretty">
+      {studio.caps?.outfits ? null : <p className="sa-caption sa-muted sa-pretty">
         {draft.mode === "procurar"
           ? studio.singlePiece
             ? "Diga o que procura: buscamos peças no catálogo, você escolhe e depois vê a peça vestida na sua foto."
             : "Diga o que procura: buscamos no catálogo e mostramos você vestindo o resultado."
           : "Escolha peças nossas ou fotos do seu celular e veja você vestindo exatamente isso, sem busca."}
-      </p>
+      </p>}
     </div>
   )
 }
 
-function Composer() {
+function Composer({ canCollapse = false }: { canCollapse?: boolean }) {
   const { draft, setDraft } = useStore()
   const studio = useStudio()
   const fieldId = useId()
@@ -635,6 +644,9 @@ function Composer() {
   }
   const adjustmentsOff = dressing && studio.caps?.adjustments === false
   const searchStep = !dressing && studio.singlePiece
+  const outfits = studio.caps?.outfits === true
+  // Vestir without a piece has nothing to price or confirm yet.
+  const nothingToWear = dressing && studio.singlePiece && draft.chosen.length === 0
 
   const prompt = (
     <div>
@@ -642,7 +654,7 @@ function Composer() {
         <label htmlFor={fieldId} className="sa-title-sm">
           {dressing ? "Algum ajuste? (opcional)" : "O que você quer vestir?"}
         </label>
-        {hasResult ? (
+        {hasResult || canCollapse ? (
           <button type="button" className="sa-btn-quiet sa-body-sm" onClick={() => setDraft({ composerOpen: false })}>
             Recolher
           </button>
@@ -659,15 +671,15 @@ function Composer() {
         value={adjustmentsOff ? "" : draft.prompt}
         aria-invalid={error && !dressing ? true : undefined}
         aria-describedby={counterId}
-        placeholder={dressing ? "Camisa por dentro da calça, mangas dobradas" : "Me vista com roupas de verão"}
+        placeholder={dressing ? "Camisa por dentro da calça, mangas dobradas…" : outfits ? "Jantar elegante, camisa e calça escuras, até R$ 300…" : "Me vista com roupas de verão"}
         onChange={(e) => {
           setDraft({ prompt: e.target.value.slice(0, max) })
           if (error) setError(null)
         }}
       />
       {adjustmentsOff ? <Unavailable>Ajustes por texto ainda não estão disponíveis.</Unavailable> : null}
-      <div id={counterId} className="mt-1 flex justify-between gap-3 sa-caption sa-muted" hidden={adjustmentsOff}>
-        <span>{dressing ? "Ex.: “barra da calça dobrada”" : studio.singlePiece ? "Ex.: “blusa até R$ 300”" : "Ex.: “moda italiana para o inverno”"}</span>
+      <div id={counterId} className="mt-1 flex justify-between gap-3 sa-caption sa-muted" hidden={adjustmentsOff || (outfits && draft.prompt.length < max * 0.8)}>
+        <span>{outfits ? "Perto do limite de texto" : dressing ? "Ex.: “barra da calça dobrada”" : studio.singlePiece ? "Ex.: “blusa até R$ 300”" : "Ex.: “moda italiana para o inverno”"}</span>
         <span className="sa-num flex-none">
           {draft.prompt.length}/{max}
         </span>
@@ -680,15 +692,25 @@ function Composer() {
       {dressing ? (
         <>
           <ChosenPieces />
-          <ReferencePicker />
-          {prompt}
+          {outfits && adjustmentsOff && studio.caps?.references === false ? (
+            <Unavailable>Fotos do celular e ajustes por texto ainda não estão disponíveis.</Unavailable>
+          ) : (
+            <>
+              <ReferencePicker />
+              {prompt}
+            </>
+          )}
         </>
       ) : (
         <>
           {prompt}
-          <ChosenPieces />
-          <div className="sa-rule" />
-          <PreferenceRow />
+          {outfits ? null : (
+            <>
+              <ChosenPieces />
+              <div className="sa-rule" />
+              <PreferenceRow />
+            </>
+          )}
         </>
       )}
       {error ? (
@@ -696,13 +718,13 @@ function Composer() {
           {error}
         </p>
       ) : null}
-      <div className="sa-rule" />
-      {searchStep ? <SearchRow onSearch={() => void submit()} /> : <CostRow onGenerate={() => void submit()} />}
+      {outfits ? null : <div className="sa-rule" />}
+      {nothingToWear && outfits ? null : searchStep ? <SearchRow onSearch={() => void submit()} onError={setError} /> : <CostRow onGenerate={() => void submit()} />}
     </section>
   )
 }
 
-function ComposerSummary() {
+function ComposerSummary({ onEdit }: { onEdit?: () => void }) {
   const { draft, setDraft } = useStore()
   const dressing = draft.mode === "vestir"
   // A fresh request: the result, the mode and the Acervo stay; what was asked is cleared.
@@ -721,6 +743,11 @@ function ComposerSummary() {
           {!dressing && draft.sessionRules ? " · preferências ajustadas" : ""}
         </p>
       </div>
+      {onEdit ? (
+        <button type="button" className="sa-iconbtn flex-none" aria-label="Editar pedido" title="Editar pedido" onClick={onEdit}>
+          <PencilSimpleLine size={20} aria-hidden="true" />
+        </button>
+      ) : null}
       <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm flex-none" onClick={startNew}>
         <Plus size={18} aria-hidden="true" /> Novo pedido
       </button>
@@ -978,9 +1005,9 @@ function ResultHero({ look }: { look: Look }) {
         <Photo image={shown.image} alt="" className="h-full w-full" eager sizes="(min-width: 1024px) 45vw, 100vw" />
       </CardSwap>
       {canMatch ? (
-        <button type="button" className="sa-photo-tap absolute inset-0 block h-full w-full" aria-pressed={matchHidden} aria-label={`${shown.title}: ocultar título e Match`} onClick={() => !drag.dragged() && setMatchHidden((h) => !h)} />
+        <button type="button" className="sa-photo-tap absolute inset-0 block h-full w-full" aria-pressed={matchHidden} aria-label={`${lookTitle(shown)}: ocultar título e Match`} onClick={() => !drag.dragged() && setMatchHidden((h) => !h)} />
       ) : (
-        <button type="button" className="absolute inset-0 block h-full w-full" aria-label={`Abrir look: ${shown.title}`} onClick={() => !drag.dragged() && viewerOpen()} />
+        <button type="button" className="absolute inset-0 block h-full w-full" aria-label={`Abrir look: ${lookTitle(shown)}`} onClick={() => !drag.dragged() && viewerOpen()} />
       )}
       {/* Labels stack in their own flow (QA-009): never over each other nor under the expand button. */}
       <div className="sa-stagebadges">
@@ -1015,7 +1042,7 @@ function ResultHero({ look }: { look: Look }) {
       <div className="sa-phototitle" data-hidden={matchHidden || viewing ? "" : undefined}>
         <h2 id="result-title" tabIndex={-1} className="sa-phototitle-text sa-clamp2" aria-live="polite">
           <span key={shown.id} className="sa-appear inline-block">
-            {shown.title}
+            {lookTitle(shown)}
           </span>
         </h2>
       </div>
@@ -1202,7 +1229,7 @@ function ResultPiecesStrip({ look }: { look: Look }) {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="sa-caption block font-semibold" style={{ color: "var(--text1)" }}>
-                      {p.name}
+                      {shortPieceName(p.name)}
                     </span>
                     {look.origin !== "tryon" ? <span className="sa-caption sa-accent-text block">{ROLE_LABEL[role]}</span> : null}
                     {warnings[0] ? <span className="sa-caption sa-warning-text block">{warnings[0]}</span> : null}
@@ -1249,6 +1276,7 @@ function SearchCatalogPanel({ look, search }: { look?: Look; search?: SearchResu
   for (const c of [...(candidates.data ?? [])].sort((a, b) => Number(b.usedInLook) - Number(a.usedInLook))) {
     if (!items.some((x) => x.product.id === c.product.id)) items.push(c)
   }
+  const wearable = items.filter((x) => x.product.tryOnReady).length
   const pages = Math.max(1, Math.ceil(items.length / CATALOG_PAGE_SIZE))
   const current = Math.min(page, pages - 1)
   const visible = items.slice(current * CATALOG_PAGE_SIZE, current * CATALOG_PAGE_SIZE + CATALOG_PAGE_SIZE)
@@ -1283,11 +1311,20 @@ function SearchCatalogPanel({ look, search }: { look?: Look; search?: SearchResu
 
   return (
     <section className="sa-searchcat" aria-labelledby={titleId}>
+      {search ? (
+        <div className="grid gap-1 px-4 pt-4">
+          <h2 id={titleId} className="sa-title-sm">Peças encontradas</h2>
+          <p className="sa-caption sa-muted sa-num">
+            {plural(total, "produto", "produtos")}
+            {studio.singlePiece && items.length ? ` · ${wearable === 0 ? "nenhum com imagem liberada para a prova" : wearable === items.length ? "todos podem ser provados" : `${wearable} com imagem liberada para a prova`}` : ""}
+          </p>
+        </div>
+      ) : (
       <h2 id={titleId} className="m-0">
         <button type="button" className="sa-searchcat-toggle" aria-expanded={expanded} aria-controls={bodyId} onClick={() => setExpanded((v) => !v)}>
           <SquaresFour size={20} aria-hidden="true" className="flex-none" />
           <span className="min-w-0 flex-1 text-left">
-            <span className="sa-title-sm block">{search ? "Peças encontradas" : "Catálogo da busca"}</span>
+            <span className="sa-title-sm block">Catálogo da busca</span>
             <span className="sa-caption sa-muted sa-num block">
               {plural(total, "produto", "produtos")}
               {max > 1 ? ` · ${selection.length} de ${max} na base` : ""}
@@ -1296,6 +1333,7 @@ function SearchCatalogPanel({ look, search }: { look?: Look; search?: SearchResu
           <CaretDown size={20} aria-hidden="true" className="sa-caret flex-none" />
         </button>
       </h2>
+      )}
       <div id={bodyId} hidden={!expanded} className="sa-searchcat-body">
         {candidates.isError ? (
           <ErrorState error={candidates.error} onRetry={() => void candidates.refetch()} />
@@ -1312,11 +1350,12 @@ function SearchCatalogPanel({ look, search }: { look?: Look; search?: SearchResu
           <p className="sa-body-sm sa-muted" data-testid="search-empty">{search ? "Nenhuma peça do catálogo corresponde a este pedido. Tente outra peça, cor ou orçamento." : "A busca não trouxe outras peças para este look."}</p>
         ) : (
           <>
-            <ul className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 lg:grid-cols-2">
+            <ul className={`grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 ${search && studio.caps?.outfits ? "xl:grid-cols-4" : "lg:grid-cols-2"}`}>
               {visible.map(({ product: p, usedInLook, failed }) => {
                 const selected = selection.some((x) => x.id === p.id)
                 // With a single slot a new pick replaces the current one, so nothing is blocked.
-                const blocked = !selected && full && max !== 1
+                const unfit = studio.singlePiece && !p.tryOnReady
+                const blocked = (!selected && full && max !== 1) || unfit
                 return (
                   <li key={p.id} className="relative min-w-0">
                     <button
@@ -1324,16 +1363,18 @@ function SearchCatalogPanel({ look, search }: { look?: Look; search?: SearchResu
                       role="checkbox"
                       aria-checked={selected}
                       aria-disabled={blocked || undefined}
-                      aria-label={`Usar ${p.name} como base${blocked ? `: limite de ${max} peças atingido` : ""}`}
+                      aria-label={`Usar ${p.name} como base${unfit ? ": sem imagem liberada para prova" : blocked ? `: limite de ${max} peças atingido` : ""}`}
                       data-testid="search-item"
                       className="sa-cardbtn sa-pick block w-full text-left"
                       onClick={() => toggle(p)}
                     >
                       <span className="sa-photo relative block" style={{ aspectRatio: "3 / 4" }}>
                         <Photo image={p.images[0] ?? null} alt="" className="absolute inset-0 h-full w-full" sizes="(min-width: 1024px) 15vw, 45vw" />
-                        <span className="sa-pick-mark absolute" aria-hidden="true">
-                          {selected ? <Check size={16} weight="bold" /> : null}
-                        </span>
+                        {unfit ? null : (
+                          <span className="sa-pick-mark absolute" aria-hidden="true">
+                            {selected ? <Check size={16} weight="bold" /> : null}
+                          </span>
+                        )}
                       </span>
                       <span className="sa-title-sm sa-clamp2 block pt-2">{p.name}</span>
                     </button>
@@ -1372,7 +1413,9 @@ function SearchCatalogPanel({ look, search }: { look?: Look; search?: SearchResu
           </>
         )}
 
-        <div className="sa-searchcat-foot">
+        {search && studio.singlePiece && selection.length === 0 ? (
+          error ? <p className="sa-caption sa-error-text mt-2" role="alert">{error}</p> : null
+        ) : <div className="sa-searchcat-foot">
           <div className="flex items-center justify-between gap-3 sa-body-sm">
             <span aria-live="polite" className="sa-num">
               {max === 1 ? (selection.length ? "1 peça escolhida · outra escolha substitui esta" : "Escolha uma peça") : `${selection.length} de ${max} na base${full ? " · limite atingido" : ""}`}
@@ -1418,7 +1461,7 @@ function SearchCatalogPanel({ look, search }: { look?: Look; search?: SearchResu
               {error}
             </p>
           ) : null}
-        </div>
+        </div>}
       </div>
     </section>
   )
@@ -1439,7 +1482,7 @@ function RecentLooks({ variant }: { variant: "strip" | "grid" }) {
         <ul className="mt-2 flex flex-wrap gap-2">
           {items.slice(0, 8).map((l) => (
             <li key={l.id}>
-              <button type="button" className="sa-historybtn" aria-pressed={l.id === draft.lookId} aria-label={`Retomar ${l.title}, versão ${l.version}`} onClick={() => setDraft({ lookId: l.id })}>
+              <button type="button" className="sa-historybtn" aria-pressed={l.id === draft.lookId} aria-label={`Retomar ${lookTitle(l)}, versão ${l.version}`} onClick={() => setDraft({ lookId: l.id })}>
                 <Photo image={l.image} alt="" className="h-full w-full" />
               </button>
             </li>
@@ -1450,19 +1493,20 @@ function RecentLooks({ variant }: { variant: "strip" | "grid" }) {
   }
   if (looks.isPending || items.length === 0) return null
   return (
-    <section aria-labelledby="recent-title">
+    <section aria-labelledby="recent-title" className="min-w-0">
       <h2 id="recent-title" className="sa-subheading">
-        Seus looks recentes
+        Looks recentes
       </h2>
-      <ul className="mt-4 grid grid-cols-2 gap-x-3 gap-y-5 md:grid-cols-4">
+      <ul className="sa-recents">
         {items.slice(0, 8).map((l) => (
-          <li key={l.id} className="min-w-0">
+          <li key={l.id}>
             <button type="button" className="sa-cardbtn block w-full text-left" onClick={() => setDraft({ lookId: l.id, composerOpen: false })}>
               <span className="sa-photo sa-card-photo relative block" style={{ aspectRatio: "4 / 5" }}>
                 <Photo image={l.image} alt="" className="h-full w-full" />
               </span>
-              <span className="sa-title-sm mt-2 block">{l.title}</span>
-              <span className="sa-caption sa-muted mt-1 block">{ORIGIN_LABEL[l.origin]}</span>
+              <span className="sa-caption sa-clamp2 mt-2 font-semibold" data-testid="recent-look-title">
+                {lookTitle(l)}
+              </span>
             </button>
           </li>
         ))}
@@ -1492,8 +1536,15 @@ export function StudioScreen() {
   const { draft, setDraft } = useStore()
   const studio = useStudio()
   const reduced = useReducedMotion()
+  const outfits = useOutfits()
+  const narrow = useNarrow()
   const look = studio.look.data ?? null
+  // Outfits: the request on one side, the work area (outfits, images) beside it or right below it on phones.
+  const workbench = studio.caps?.outfits === true && !draft.lookId
+  const asked = outfits.searchId !== null || draft.searchResult !== null
+  const collapsed = workbench && narrow && asked && !draft.composerOpen
   const showComposer = draft.composerOpen || !draft.lookId
+  const loose = draft.searchResult && draft.mode === "procurar" ? <SearchCatalogPanel key={draft.searchResult.items.map((i) => i.product.id).join(",")} search={draft.searchResult} /> : null
   const stageRef = useRef<HTMLDivElement | null>(null)
   const lastShown = useRef<string | null>(null)
 
@@ -1526,12 +1577,28 @@ export function StudioScreen() {
         <CatalogNotice />
       </header>
 
+      {workbench ? (
+        <div className="sa-studio sa-studio-work">
+          <div className="sa-studio-controls grid content-start gap-4">
+            <ModeSwitch />
+            {collapsed ? <ComposerSummary onEdit={() => setDraft({ composerOpen: true })} /> : <Composer canCollapse={narrow && asked} />}
+          </div>
+          <div className="sa-studio-stage">
+            <OutfitStage job={<JobPanel />} loose={loose} recents={<RecentLooks variant="grid" />} />
+          </div>
+        </div>
+      ) : (
       <div className={`sa-studio ${draft.lookId ? "sa-studio-result" : "sa-studio-empty"}`}>
         <div ref={stageRef} className="sa-studio-stage">
           {draft.lookId ? (
             look ? (
               <div className="sa-stage">
                 <div className="sa-stage-main">
+                  {studio.caps?.outfits ? (
+                    <button type="button" className="sa-btn-quiet sa-body-sm -ml-2 mb-2 flex items-center gap-2 font-semibold" onClick={() => setDraft({ lookId: null })} data-testid="back-to-outfits">
+                      <ArrowLeft size={18} aria-hidden="true" /> Voltar aos conjuntos
+                    </button>
+                  ) : null}
                   <ResultHero look={look} />
                   <RecentLooks variant="strip" />
                 </div>
@@ -1551,7 +1618,7 @@ export function StudioScreen() {
         <div className="sa-studio-controls grid content-start gap-6">
           <ModeSwitch />
           {showComposer ? <Composer /> : <ComposerSummary />}
-          {draft.searchResult && draft.mode === "procurar" ? <SearchCatalogPanel key={draft.searchResult.items.map((i) => i.product.id).join(",")} search={draft.searchResult} /> : null}
+          {loose}
           <JobPanel />
           {look ? (
             <>
@@ -1568,7 +1635,7 @@ export function StudioScreen() {
           ) : null}
         </div>
       </div>
-      <OutfitBoard />
+      )}
     </div>
   )
 }

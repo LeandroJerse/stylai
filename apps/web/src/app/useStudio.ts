@@ -130,7 +130,7 @@ export function useStudio() {
       setSearching(true)
       try {
         const result = await api.studio.search({ prompt: draft.prompt.trim(), rules: draft.sessionRules })
-        setDraft({ searchResult: result })
+        setDraft((d) => ({ searchResult: result, stageView: "pieces", stageNonce: d.stageNonce + 1 }))
         return { ok: true }
       } catch (e) {
         return { ok: false, message: messageOf(e) }
