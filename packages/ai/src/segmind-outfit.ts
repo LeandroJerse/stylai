@@ -1,6 +1,7 @@
 import {buildOutfitPrompt,createGeminiOutfitClient,validateGeminiOutfitInput,type OutfitInput,type OutfitResult} from './gemini-outfit.js'
 import {createSegmindClient,parseResult,type FetchLike} from './segmind.js'
 import {validateOutputImage} from './image.js'
+import {neverSent,transportCode} from './transport.js'
 export const SEGMIND_OUTFIT_MODEL='nano-banana-pro'
 export const SEGMIND_OUTFIT_RESERVE=200_000n
 export const SEGMIND_OUTFIT_PRICE_VERSION='segmind-nano-banana-pro-2k-2026-11-23'
@@ -25,18 +26,26 @@ export function createSegmindOutfitClient(config:{apiKey:string;model?:string;fe
  const output=createSegmindClient({apiKey:config.apiKey,fetch:http})
  return {
   model:profile.model,
+  /** Free check with no key and no image: any HTTP answer means the provider can be reached. */
+  async reachable():Promise<boolean>{
+   try{await http(`${origin}/`,{method:'HEAD',redirect:'manual',signal:AbortSignal.timeout(8000)});return true}catch{return false}
+  },
   async garment(url:string){return {...await downloader.garment(url),url}},
   async generate(input:OutfitInput):Promise<OutfitResult>{
    validateGeminiOutfitInput(input)
    const images=[input.person,...input.garments]
    if(!profile.inlineInputs && images.some(i=>{try{const u=new URL(i.url??'');return u.protocol!=='https:'||Boolean(u.username||u.password)||['localhost','127.0.0.1','::1'].includes(u.hostname)}catch{return true}}))throw new Error('invalid_outfit_urls')
+   let response:Response
+   // Only a request whose connection never existed is a definite failure; the rest waits for reconciliation.
    try{
-    const response=await http(`${origin}/v1/${profile.model}`,{
+    response=await http(`${origin}/v1/${profile.model}`,{
      method:'POST',headers:{'x-api-key':config.apiKey,'Content-Type':'application/json'},redirect:'error',signal:AbortSignal.timeout(100000),
      body:JSON.stringify(profile.inlineInputs
       ? {prompt:buildOutfitPrompt(input),images:images.map(i=>Buffer.from(i.bytes).toString('base64')),aspect_ratio:'3:4',resolution:profile.resolution,steps:16,safety_tolerance:2,output_format:'png'}
       : {prompt:buildOutfitPrompt(input),image_urls:images.map(i=>i.url),aspect_ratio:'3:4',output_resolution:profile.resolution,...(profile.thinking?{thinking_level:profile.thinking}:{}),output_format:'png',response_modalities:'IMAGE',web_search:false})
     })
+   }catch(error){return neverSent(error)?{kind:'rejected',code:'provider_unreachable'}:{kind:'unknown',code:`segmind_transport_${transportCode(error)}`}}
+   try{
     if(!response.ok)return {kind:[400,401,403,404,406,429].includes(response.status)?'rejected':'unknown',code:`segmind_http_${response.status}`}
     let bytes:Uint8Array
     if(response.headers.get('content-type')?.startsWith('image/')){
@@ -50,7 +59,7 @@ export function createSegmindOutfitClient(config:{apiKey:string;model?:string;fe
     }
     validateOutputImage(bytes)
     return {kind:'completed',bytes,requestId:response.headers.get('x-request-id'),computedMicros:simulator?0n:profile.priceMicros,usage:{images:1}}
-   }catch{return {kind:'unknown',code:'segmind_transport_or_response_unknown'}}
+   }catch{return {kind:'unknown',code:'segmind_response_unreadable'}}
   },
  }
 }

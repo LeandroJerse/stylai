@@ -14,12 +14,13 @@ const piece = (n: number, slot: "lower" | "upper", category: string) => ({
   slot, position: n,
 })
 
-function harness(opts: { simulated?: boolean; reference?: boolean; garmentError?: string; set?: boolean; segmindOutfit?: boolean; segmindModel?: string; nativeGate?: () => Promise<void>; largePhoto?: boolean; gemini?: boolean; revokeAtDispatch?: number; imageReferences?: boolean; failLayer?: number; revokeSnapshot?: number; changedSnapshot?: number; beginFalse?: boolean; bytesOutput?: boolean; budget?: { ok: boolean; limiting: string[] } | "unavailable" } = {}) {
+function harness(opts: { result?: unknown; reachable?: () => Promise<boolean>; simulated?: boolean; reference?: boolean; garmentError?: string; set?: boolean; segmindOutfit?: boolean; segmindModel?: string; nativeGate?: () => Promise<void>; largePhoto?: boolean; gemini?: boolean; revokeAtDispatch?: number; imageReferences?: boolean; failLayer?: number; revokeSnapshot?: number; changedSnapshot?: number; beginFalse?: boolean; bytesOutput?: boolean; budget?: { ok: boolean; limiting: string[] } | "unavailable" } = {}) {
   const budgetChecks: unknown[][] = []
   const stored: string[] = []
   const removed: string[] = []
   const ops: string[] = []
   const settled: { key: string; status: string }[] = []
+  const settledArgs: unknown[][] = []
   const keys = new Map<string, string>()
   const snapshots: number[] = []
   const selections: unknown[] = []
@@ -47,7 +48,7 @@ function harness(opts: { simulated?: boolean; reference?: boolean; garmentError?
       case "reserve_provider_call": { const id = `call-${String(args[6])}`; keys.set(id, String(args[6])); return id }
       case "reserve_pilot_dispatch": return { ok: true, attempt_no: 1 }
       case "begin_provider_call": if (opts.revokeAtDispatch && String(args[0]).endsWith(`_${opts.revokeAtDispatch}`)) throw new PrivateDatabaseError("rejected", "SA003"); return !opts.beginFalse
-      case "settle_provider_call": settled.push({ key: keys.get(String(args[0]))!, status: String(args[1]) }); return true
+      case "settle_provider_call": settledArgs.push(args); settled.push({ key: keys.get(String(args[0]))!, status: String(args[1]) }); return true
       case "register_generated_asset": return "60000000-0000-4000-8000-000000000088"
       case "complete_look_job": return "70000000-0000-4000-8000-000000000088"
       default: return true
@@ -73,14 +74,14 @@ function harness(opts: { simulated?: boolean; reference?: boolean; garmentError?
   } as unknown as FalClient
   const nativeInputs: unknown[] = []
   const loaded: unknown[][] = []
-  const gemini = { model: "gemini-3-pro-image", garment: async () => ({ bytes: TINY_PNG, mime: "image/png" }), generate: async (input: unknown) => { nativeInputs.push(input); await opts.nativeGate?.(); return { kind: "completed", bytes: TINY_PNG, requestId: "native-response", computedMicros: 140000n, usage: { input_tokens: 1000 } } } }
+  const gemini = { model: "gemini-3-pro-image", garment: async () => ({ bytes: TINY_PNG, mime: "image/png" }), generate: async (input: unknown) => { nativeInputs.push(input); await opts.nativeGate?.(); if (opts.result) return opts.result; return { kind: "completed", bytes: TINY_PNG, requestId: "native-response", computedMicros: 140000n, usage: { input_tokens: 1000 } } } }
   const engine = createEngine({
-    db, store, segmind: null, fal, segmindOutfit: opts.segmindOutfit ? {...gemini,model:opts.segmindModel??"nano-banana-pro"} as unknown as import("@stylai/ai").SegmindOutfitClient : null, gemini: opts.gemini ? gemini as unknown as import("@stylai/ai").GeminiOutfitClient : null,
+    db, store, segmind: null, fal, segmindOutfit: opts.segmindOutfit ? {...gemini,model:opts.segmindModel??"nano-banana-pro",...(opts.reachable?{reachable:opts.reachable}:{})} as unknown as import("@stylai/ai").SegmindOutfitClient : null, gemini: opts.gemini ? gemini as unknown as import("@stylai/ai").GeminiOutfitClient : null,
     config: { ...defaultEngineConfig, provider: opts.segmindOutfit ? "segmind" : opts.gemini ? "gemini" : "fal", environment: "development", pseudonymKey: "k".repeat(32), simulatedProvider: opts.simulated ?? false, pilotId: opts.simulated ? null : "stylai-first-real-tryon-pilot" },
     ...(opts.reference || opts.garmentError ? { garments: async (url: string, reference: unknown) => { loaded.push([url, reference]); if (opts.garmentError) throw new Error(opts.garmentError); return { bytes: TINY_PNG, mime: "image/png" } } } : {}),
     sleep: async () => {},
   })
-  return { engine, ops, settled, submits, snapshots, stored, removed, budgetChecks, selections, nativeInputs, loaded }
+  return { engine, ops, settledArgs, settled, submits, snapshots, stored, removed, budgetChecks, selections, nativeInputs, loaded }
 }
 
 describe("multi-piece composition engine", () => {
@@ -217,6 +218,38 @@ test('Flux joint rendering reserves 2 cents and never exposes the original throu
  expect((h.nativeInputs[0] as {person:{url?:string}}).person.url).toBeUndefined()
  expect(h.budgetChecks[0]!.slice(2,5)).toEqual(['segmind',1,'20000'])
  expect(h.ops.filter(x=>x==='reserve_pilot_dispatch')).toHaveLength(1)
+})
+
+describe("a paid call that failed on the network", () => {
+  const flux = { segmindOutfit: true, segmindModel: "flux-3-klein-image-edit", imageReferences: true } as const
+  test("provider out of reach: nothing is reserved, no pilot attempt is used, nothing is sent", async () => {
+    const h = harness({ ...flux, reachable: async () => false })
+    expect(await h.engine.processJob(JOB)).toEqual({ status: "failed", code: "provider_unreachable" })
+    expect(h.ops).not.toContain("reserve_provider_call")
+    expect(h.ops).not.toContain("reserve_pilot_dispatch")
+    expect(h.nativeInputs).toHaveLength(0)
+  })
+  test("reachable: the probe changes nothing else", async () => {
+    const h = harness({ ...flux, reachable: async () => true })
+    expect((await h.engine.processJob(JOB)).status).toBe("succeeded")
+    expect(h.nativeInputs).toHaveLength(1)
+  })
+  test("connection lost between the probe and the call: definite failure, cost zero, sent once", async () => {
+    const h = harness({ ...flux, reachable: async () => true, result: { kind: "rejected", code: "provider_unreachable" } })
+    expect(await h.engine.processJob(JOB)).toEqual({ status: "failed", code: "provider_unreachable" })
+    const last = h.settledArgs.at(-1)!
+    expect([last[1], last[6], last[8], last[10]]).toEqual(["failed", "0", "rejected_before_run", "provider_unreachable"])
+    expect(h.nativeInputs).toHaveLength(1)
+  })
+  test("maybe sent: stays unknown with the reason and the real duration, is never sent again", async () => {
+    const h = harness({ ...flux, reachable: async () => true, result: { kind: "unknown", code: "segmind_transport_econnreset" } })
+    expect(await h.engine.processJob(JOB)).toEqual({ status: "failed", code: "provider_outcome_unknown" })
+    expect(h.settled.map((s) => s.status)).toEqual(["unknown", "unknown"])
+    const last = h.settledArgs.at(-1)!
+    expect([last[7], last[8], last[10]]).toEqual([null, "unknown", "segmind_transport_econnreset"])
+    expect(typeof last[9]).toBe("number")
+    expect(h.nativeInputs).toHaveLength(1)
+  })
 })
 
 describe("batch panels", () => {

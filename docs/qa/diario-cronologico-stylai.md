@@ -471,3 +471,10 @@ Criado prompt de implementação baseado em Superpowers e nos módulos existente
 - Migrações 20261124200000 e 20261124210000 aplicadas no banco local (backup `backups-locais/pre-20261124210000.dump`); contagens iguais antes e depois.
 - O teste de banco pegou um erro antes da aplicação: devolver 7 dias a um look removido violava a regra de retenção; agora vale a data de criação.
 - Testes: unidade 474; E2E simulado 60/60 e AliExpress real 68/68; teste visual 164 verificações nos 4 tamanhos, depois 40/40 de novo no celular. Nenhuma chamada paga nos testes.
+
+### E30 — 2026-11-24 — Falha de rede deixa de virar "em conferência" quando nada foi enviado
+- Um pedido real (render `82a09c17`, 18:07:33) ficou em conferência e trava o piloto. O motivo não foi guardado pelo programa.
+- CORREÇÃO: eu disse a Leandro que a chamada durou 10 ms. Errado: o worker grava "desconhecido" antes de chamar o provador, e os 10 ms são dessa gravação. O trabalho durou 10,1 s, cerca de 9,6 s na chamada. Pode ter chegado ao Segmind.
+- Agora: (1) antes de reservar, uma verificação gratuita, sem chave e sem imagem, confere se o provador responde; sem conexão, nada é reservado e nenhuma tentativa do piloto é gasta; (2) erro comprovadamente anterior à conexão vira falha com custo zero e pode ser refeito; (3) o resto continua desconhecido e sem reenvio, agora com motivo e duração no registro.
+- A regra foi medida no Node 22.23 com sockets locais: sem DNS, recusada, tempo de conexão e queda depois do envio. Na dúvida, "talvez enviado".
+- O pedido antigo NÃO foi alterado: depende da evidência no painel do Segmind.

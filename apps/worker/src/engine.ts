@@ -359,6 +359,9 @@ export function createEngine(deps: EngineDeps) {
     if(!fresh.success || fresh.data.photo.usable===false || fresh.data.photo.object_key!==job.photo.object_key) throw new JobFailure("photo_removed")
     const check = z.object({ok:z.boolean()}).safeParse(await db.call("check_layer_budget",job.id,fence,provider,1,reserve.toString(),config.pilotId ?? null))
     if(!check.success || !check.data.ok) throw new JobFailure("budget_insufficient_for_layers")
+    // Offline is found out before any reservation: no budget held, no pilot attempt used, nothing to reconcile.
+    const reachable = provider === "segmind" ? deps.segmindOutfit?.reachable : undefined
+    if(reachable && !await reachable()) throw new JobFailure("provider_unreachable")
     const call = await db.call("reserve_provider_call",job.id,fence,provider,client.model,priceVersion,"generation",
       `gen_${job.id.replace(/-/g,"")}_joint`,reserve.toString(),pseudonymizeUser(job.user_id,config.pseudonymKey),config.environment)
     if(config.pilotId) {
@@ -384,7 +387,11 @@ export function createEngine(deps: EngineDeps) {
       await db.call("settle_provider_call",call,"failed",null,{}, {},reserve.toString(),"0",null,"rejected_before_run",duration,result.code)
       throw new JobFailure(result.code)
     }
-    if(result.kind!=="completed") throw new JobFailure("provider_outcome_unknown")
+    if(result.kind!=="completed") {
+      // Still unknown and still reserved; the reason and the real duration are kept for whoever reconciles it.
+      await db.call("settle_provider_call",call,"unknown",null,{}, {},reserve.toString(),null,null,"unknown",duration,result.code)
+      throw new JobFailure("provider_outcome_unknown")
+    }
     await db.call("settle_provider_call",call,"succeeded",result.requestId,toJson(result.usage),{resolution,images:1},reserve.toString(),
       result.computedMicros?.toString()??null,null,result.computedMicros===null?"unknown":"computed_from_usage",duration,null)
     await telemetry(job,"generation:joint",{name:"joint-outfit",startMs:started,endMs:now(),attributes:{

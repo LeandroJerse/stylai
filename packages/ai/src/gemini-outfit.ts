@@ -1,3 +1,4 @@
+import { neverSent, transportCode } from "./transport.js"
 import { z } from "zod"
 import type { FetchLike } from "./segmind.js"
 import { validateOutputImage } from "./image.js"
@@ -82,11 +83,14 @@ export function createGeminiOutfitClient(config: { apiKey: string; vertexProject
       validateGeminiOutfitInput(input)
       const instructions = buildOutfitPrompt(input)
       const parts = [{text:instructions}, ...[input.person,...input.garments].map(i=>({inlineData:{mimeType:i.mime,data:Buffer.from(i.bytes).toString("base64")}}))]
+      let response: Response
       try {
-        const response=await http(endpoint,{
+        response=await http(endpoint,{
           method:"POST",headers:{"x-goog-api-key":config.apiKey,"Content-Type":"application/json"}, redirect:"error", signal:AbortSignal.timeout(100000),
           body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{responseModalities:["IMAGE"],candidateCount:1,maxOutputTokens:8192,...(vertex?{thinkingConfig:{thinkingLevel:"MINIMAL"}}:{}),imageConfig:{imageSize:vertex?"1K":"2K",aspectRatio:"3:4"}}}),
         })
+      } catch(error) { return neverSent(error) ? {kind:"rejected",code:"provider_unreachable"} : {kind:"unknown",code:`gemini_transport_${transportCode(error)}`} }
+      try {
         if(!response.ok) return [400,401,403,404,429].includes(response.status) ? {kind:"rejected",code:`gemini_http_${response.status}`,diagnostic:await quotaDiagnostic(response)} : {kind:"unknown",code:`gemini_http_${response.status}`}
         const parsed=responseSchema.safeParse(await response.json())
         if(!parsed.success) return {kind:"unknown",code:"gemini_bad_response"}
@@ -101,7 +105,7 @@ export function createGeminiOutfitClient(config: { apiKey: string; vertexProject
             ? 33600n+(BigInt(usage.data.promptTokenCount)*3n+BigInt(usage.data.candidatesTokenCount-1120+(usage.data.thoughtsTokenCount??0))*15n+1n)/2n
             : 134400n+BigInt(usage.data.promptTokenCount)*2n+BigInt(usage.data.candidatesTokenCount-1120+(usage.data.thoughtsTokenCount??0))*12n : null
         return {kind:"completed",bytes:Buffer.from(inline.data,"base64"),requestId:parsed.data.responseId??null,computedMicros:computed,usage:units}
-      } catch { return {kind:"unknown",code:"gemini_transport_or_response_unknown"} }
+      } catch { return {kind:"unknown",code:"gemini_response_unreadable"} }
     },
   }
 }

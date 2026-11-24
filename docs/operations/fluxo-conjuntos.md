@@ -56,3 +56,5 @@ Subir em modo real: `node scripts/start-pilot.mjs --real --pilot=stylai-first-re
 
 `bun run check`, `bun run test:db`, `bun run test:db:private`, `bun run test:motor`, `bun run test:e2e:official`, `node --import tsx scripts/e2e-outfits.mjs [--source=aliexpress]`.
 Contagem de verificações não mede qualidade da seleção: ler os nomes impressos e as capturas em `test-results/e2e-outfits-*`.
+
+Desde 2026-11-24, sem conexão com o provador o pedido falha antes da reserva (`provider_unreachable`, custo zero, nenhuma tentativa do piloto). Um resultado desconhecido traz o motivo em `provider_calls.error_code` (ex.: `segmind_transport_econnreset`) e a duração real em `latency_ms`; nos registros anteriores, `latency_ms=0` não mede nada.

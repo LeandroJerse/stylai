@@ -87,6 +87,7 @@ export const versionRow = z.object({
 
 /** Portuguese, user-facing, never leaking provider/internal detail. */
 const failureMessages: Record<string, string> = {
+  provider_unreachable: "Não conseguimos conectar ao provador (sua internet ou o serviço pode estar fora). Nada foi enviado; tente de novo.",
   provider_not_enabled: "A geração de imagens ainda não está habilitada neste ambiente.",
   provider_budget_unavailable: "Limite de gastos com IA atingido. Tente novamente mais tarde.",
   catalog_variant_unavailable: "Esta peça não está mais disponível.",
