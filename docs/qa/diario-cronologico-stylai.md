@@ -478,3 +478,8 @@ Criado prompt de implementação baseado em Superpowers e nos módulos existente
 - Agora: (1) antes de reservar, uma verificação gratuita, sem chave e sem imagem, confere se o provador responde; sem conexão, nada é reservado e nenhuma tentativa do piloto é gasta; (2) erro comprovadamente anterior à conexão vira falha com custo zero e pode ser refeito; (3) o resto continua desconhecido e sem reenvio, agora com motivo e duração no registro.
 - A regra foi medida no Node 22.23 com sockets locais: sem DNS, recusada, tempo de conexão e queda depois do envio. Na dúvida, "talvez enviado".
 - O pedido antigo NÃO foi alterado: depende da evidência no painel do Segmind.
+
+### E31 — 2026-11-24 — Pedido em conferência resolvido com evidência do provedor
+- Leandro mostrou o painel do Segmind: a chamada das 18:07 terminou em HTTP 502 (serviço indisponível), 5,9 s, sem custo. Cinco chamadas FLUX no painel e cinco no registro, correspondência única.
+- Conciliada como `failed`, custo 0, `provider_confirmed`. O painel da imagem volta a poder ser refeito.
+- CORREÇÃO à E30: a causa deste caso foi um 502 do Segmind, não a rede local. A correção da E30 não o teria evitado: 502 continua desconhecido até conferência (agora com `segmind_http_502` no registro), porque um 502 sozinho não prova que não houve cobrança.
