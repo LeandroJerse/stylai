@@ -453,3 +453,12 @@ Criado prompt de implementação baseado em Superpowers e nos módulos existente
 - Nenhuma imagem real gerada: piloto 11 de 15. Aplicação deixada no ar em modo real.
 - Segunda captura de Leandro (E27): busca avulsa devolveu 1 camisa de time, bloqueada para prova, com custo e aviso repetidos. Conferido no código: a busca avulsa não usa o preparo automático de referência. Detalhes e decisão pendente no mesmo plano.
 - CORREÇÃO ao E27: uma imagem individual real foi gerada por Leandro às 18:10:52 UTC (FLUX, sucesso, US$ 0,01287). O piloto está em 12 de 15 e restam 3 gerações; "nenhuma imagem real" e "11 de 15" acima estavam errados. Leandro confirmou que conjuntos e geração aparecem só no fim da página e que há muitos pontos do front a ajustar. Registrado no plano.
+
+### E28 — 2026-11-24 — Estúdio reorganizado, filtros reais e teste do que está na tela
+- Pedido de Leandro: retomar o front com as skills de front e de testes. Skills: impeccable (polish/operate), playwright-cli, web-design-guidelines, TDD.
+- Primeiro o teste que falha: front oficial com API simulada, 8 looks de título longo, 4 tamanhos de tela: 28 de 40 (imagem gerada fora da tela em todos). Depois da mudança, 112 de 112.
+- Filtros de público, preço, total, nota e vendas; nota é o percentual da loja, sem virar estrela. Anúncio sem nota não passa no filtro de nota e é contado.
+- 8 consultas gratuitas ao AliExpress pelo contador do banco: nota cobre de 8% a 83% dos anúncios conforme a busca; "short" não traz bermudas.
+- E2E de conjuntos: simulado 52/52 e AliExpress real 60/60, com verificação de que conjuntos e geração aparecem na tela e de que nenhuma peça passa do preço filtrado. Nenhuma chamada paga.
+- A leitura das capturas reais achou defeitos que os testes não viam: conjunto tático em pedido elegante, título "Jaqueta +", foto de conjunto cortada. Corrigidos com teste.
+- No worktree do front, o E2E oficial deu 103/104: faltava `apps/worker/.env.local` (só existe no `stylai-motor`).

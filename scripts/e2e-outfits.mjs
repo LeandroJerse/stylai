@@ -106,6 +106,10 @@ try {
   const pageErrors = []
   page.on("pageerror", (e) => pageErrors.push(String(e)))
   const shot = (name, fullPage = true) => page.screenshot({ path: join(OUT, `${name}.png`), fullPage })
+  /** Conjuntos / Imagens / Peças of the work area. */
+  const view = async (id) => { const tab = page.getByTestId(`stage-tab-${id}`); await tab.waitFor({ timeout: 20000 }); await tab.click() }
+  const openPiece = async (root, slot) => { const tile = root.getByTestId(`outfit-swap-${slot}`); if (await tile.getAttribute("aria-expanded") !== "true") await tile.click() }
+  const inSight = (selector) => page.$eval(selector, (el) => { const r = el.getBoundingClientRect(); return r.bottom > 80 && r.top < innerHeight - 80 }).catch(() => false)
   const card = (i) => page.getByTestId("outfit-card").nth(i)
   const until = async (read, ok, timeout = 60000) => { const end = Date.now() + timeout; let v = await read(); while (!ok(v) && Date.now() < end) { await delay(400); v = await read() } return v }
 
@@ -128,6 +132,7 @@ try {
   const field = page.getByLabel("O que você quer vestir?")
   await field.fill(prompt)
   t.check(/não gera imagem e não gasta moedas/.test(await page.locator(".sa-cta-dock").innerText()), "a busca avisa que não gera nem gasta")
+  if (aliexpress) { await page.getByTestId("filter-audience-masculino").click(); await page.getByLabel("Peça até R$").fill("400") }
   await page.getByTestId("outfit-search-button").dblclick()
   if (aliexpress) {
     await page.getByTestId("outfit-progress").waitFor({ timeout: 15000 })
@@ -135,6 +140,11 @@ try {
     await page.reload()
   }
   await page.getByTestId("outfit-card").first().waitFor({ timeout: 120000 })
+  t.check(await inSight('[data-testid="outfit-card"]'), "os conjuntos aparecem na tela, sem rolar")
+  if (aliexpress) {
+    t.check(/Masculino/.test(await page.getByTestId("outfit-filters").innerText()), "filtros usados aparecem junto do resultado")
+    t.check(psql(`select coalesce(bool_and((x->>'priceMinor')::int <= case when x->>'slot'='set' then 80000 else 40000 end),false) from private.outfit_set_revisions r, jsonb_array_elements(r.pieces) x where r.user_id=${lit(userA)}`) === "t", "nenhuma peça acima do preço filtrado")
+  }
   t.check(psql(`select count(*) from private.outfit_searches where user_id=${lit(userA)}`) === "1", "clique duplo e recarregar no meio: uma única busca")
   const count = await page.getByTestId("outfit-card").count()
   t.check(count >= 2 && count <= 4, "de 2 a 4 conjuntos coordenados", String(count))
@@ -148,7 +158,9 @@ try {
     t.check(!/peruca|broche|abotoadura|fantasia|halloween|: gravata|: caixa/i.test(stored), "nenhum acessório ou fantasia no lugar de roupa")
     t.check(!stored.split("\n").some((l) => /feminin/i.test(l) && !/masculin/i.test(l)), "pedido masculino não recebe peça só feminina")
     t.check(psql(`select count(*) from private.source_reference_cache where verified_at>now()-interval '10 minutes'`) !== "0", "referências reais baixadas, validadas e guardadas automaticamente")
-    t.check(await page.locator('[data-testid="outfit-card"] a[data-link-kind]').count() > 0, "links da loja por peça")
+    await card(0).locator('[data-testid^="outfit-swap-"]').first().click()
+    t.check(await card(0).locator("a[data-link-kind]").count() > 0, "links da loja por peça")
+    await card(0).locator('[data-testid^="outfit-swap-"]').first().click()
     t.check(psql(`select bool_and(x->>'reference' is not null) from private.outfit_set_revisions r, jsonb_array_elements(r.pieces) x where r.user_id=${lit(userA)}`) === "t", "toda peça sugerida já tem referência autorizada pela política")
   }
   await shot("02-conjuntos")
@@ -185,11 +197,13 @@ try {
   await target.getByTestId("outfit-use-alternative").first().click()
   const swapped = await until(ids, (x) => x.upper === alternative, 40000)
   t.check(swapped.upper === alternative && swapped.lower === before.lower, "troca de uma peça preserva a outra")
+  await openPiece(target, "lower")
   const bottomLock = target.getByTestId("outfit-lock-lower")
   await bottomLock.click()
   await until(() => bottomLock.getAttribute("aria-pressed"), (v) => v === "true", 10000)
   await page.reload()
   await target.waitFor({ timeout: 20000 })
+  await openPiece(target, "lower")
   t.check((await ids()).upper === alternative && await target.getByTestId("outfit-lock-lower").getAttribute("aria-pressed") === "true", "troca e trava sobrevivem ao recarregar")
   await target.getByTestId("outfit-suggest").click()
   const suggested = await until(ids, (x) => x.upper !== alternative, 60000)
@@ -215,12 +229,14 @@ try {
   await page.getByTestId("outfit-confirm").click({ clickCount: 3 })
   const single = page.locator('[data-testid="render-card"][data-mode="individual"]').first()
   await single.waitFor({ timeout: 20000 })
+  t.check(await inSight('[data-testid="render-card"][data-mode="individual"]'), "a geração aparece na tela, sem rolar")
   t.check(await until(() => single.getAttribute("data-status"), (v) => v === "succeeded" || v === "failed", 60000) === "succeeded", "imagem individual pronta", await single.innerText())
   t.check(psql(`select count(*) from private.outfit_renders where user_id=${lit(userA)}`) === "1" && (await stats()).outfits === 1, "clique triplo: um pedido e uma chamada ao provador")
 
   // ------------------------------------------------------------------ comparison: partial failure -> only the failed panel again
   const pick = async (n) => { for (let i = 0; i < n; i++) await card(i).getByTestId("outfit-select").check() }
   const askComparison = async (n) => {
+    await view("sets")
     await pick(n)
     await page.getByTestId("outfit-compare").click()
     await page.getByTestId("outfit-quote").waitFor({ timeout: 60000 })
@@ -233,6 +249,7 @@ try {
   const compare = page.locator('[data-testid="render-card"][data-mode="comparison"]').first()
   await compare.waitFor({ timeout: 20000 })
   await page.reload()
+  await view("images")
   await compare.waitFor({ timeout: 20000 })
   t.check(await until(() => compare.getAttribute("data-status"), (v) => v === "partial", 90000) === "partial", "falha de um painel: comparativo parcial, sobrevive ao recarregar", await compare.innerText())
   t.check(await compare.locator('[data-state="ready"]').count() === n - 1 && await compare.locator('[data-state="failed"]').count() === 1, "os painéis prontos foram mantidos")
@@ -265,6 +282,7 @@ try {
   t.check(/^[0-9a-f-]{36}$/.test(call), "chamada desconhecida registrada no ledger")
   psql(`select private.reconcile_provider_call(${lit(call)},'failed',0,'provider_confirmed','{"simulated":true}'::jsonb)`)
   await page.reload()
+  await view("images")
   await doubtful.getByTestId("render-retry").waitFor({ timeout: 20000 })
   t.check(true, "depois da conferência o painel volta a poder ser gerado")
   if (n > 2) {
@@ -285,6 +303,7 @@ try {
   await page.getByTestId("outfit-progress").waitFor({ state: "detached", timeout: 120000 }).catch(() => undefined)
   await shot("06-segunda-busca")
   if (aliexpress) console.log(psql(`select string_agg(x->>'slot'||': '||left(x->>'name',110),chr(10)) from private.outfit_set_revisions r join private.outfit_sets s on s.id=r.set_id and r.revision=1, jsonb_array_elements(r.pieces) x where r.user_id=${lit(userA)} and s.search_id=(select id from private.outfit_searches where user_id=${lit(userA)} order by created_at desc limit 1)`))
+  t.check(await page.getByTestId("outfit-board").getAttribute("data-view") === "sets", "buscar de novo volta para os conjuntos")
   t.check(await page.getByTestId("outfit-card").count() > 0 || await page.getByTestId("outfit-message").count() > 0, "segunda busca: conjuntos ou explicação honesta", (await page.getByTestId("outfit-message").innerText().catch(() => "")).slice(0, 160))
   const options = await page.getByTestId("outfit-history-select").locator("option").count()
   t.check(options === 2, "histórico lista as duas buscas", String(options))
@@ -306,7 +325,10 @@ try {
   const statuses = await Promise.all([asB(`/studio/outfit-searches/${searchA}`), asB(`/studio/outfit-sets/${setId}`), asB(`/studio/outfit-renders/${doubtfulId}`), asB(`/studio/outfit-renders/${doubtfulId}/retry`, json({ panel: 1 })),
     asB(`/studio/outfit-sets/${setId}/locks`, json({ locked: [], base: 1 })), asB("/studio/outfit-renders/quote", json({ mode: "individual", sets: [{ setId, revision: 1 }] }))])
   t.check(statuses.every((r) => r.status === 404), "outra conta não vê nem muda nada (404)", statuses.map((r) => r.status).join(","))
-  const image = await montage.getAttribute("src").catch(() => null) ?? await page.locator(".sa-render-comparison img").first().getAttribute("src")
+  await view("images")
+  const finished = page.locator('[data-testid="render-card"][data-mode="comparison"][data-status="succeeded"]').last()
+  if (!(await finished.getAttribute("data-open"))) await finished.getByTestId("render-open").click()
+  const image = await finished.locator(".sa-render-comparison img").getAttribute("src")
   const forged = new URL(image); forged.searchParams.set("u", sessionB.user.id)
   t.check((await fetch(image)).status === 200 && (await fetch(forged)).status === 404, "imagem do comparativo só pelo link assinado do dono")
   await page.setViewportSize({ width: 390, height: 844 })
@@ -322,6 +344,7 @@ try {
   const gone = await until(() => psql(`select count(*) from private.assets where user_id=${lit(userA)} and kind='body_photo' and state='ready'`), (v) => v === "0", 10000)
   t.check(stored === "1" && gone === "0", "foto apagada no Perfil")
   await gotoTab(page, ORIGIN, "estudio")
+  await view("sets")
   await card(0).waitFor({ timeout: 20000 })
   await card(0).getByTestId("outfit-generate").click()
   await page.getByTestId("outfit-quote").waitFor({ timeout: 60000 })

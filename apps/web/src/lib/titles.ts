@@ -32,6 +32,7 @@ export function shortPieceName(name: string): string {
     const next = rest[i + 1]
     if (/^\d+$/.test(w) && next && /^pe[çc]as$/iu.test(next)) return sentence(`${found[0]} ${w} ${next}`)
     if (/^(de|com)$/iu.test(w)) { if (next && !NOISE.test(next)) return sentence(`${found[0]} ${w} ${next}`); break }
+    if (!/[\p{L}\p{N}]/u.test(w)) { const also = w === "+" && next ? GARMENT_RE.exec(next) : null; return sentence(also ? `${found[0]} e ${also[0]}` : found[0]) }
     if (NOISE.test(w)) { if (/^(feminin|masculin|mulher|home|unissex)/iu.test(w)) continue; break }
     return sentence(`${found[0]} ${w}`)
   }

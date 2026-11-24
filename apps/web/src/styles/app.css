@@ -873,7 +873,7 @@ button.sa-storetag:active { transform: scale(0.97); }
 .sa-piecetiles[data-count="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .sa-piecetile { display: block; width: 100%; text-align: left; border-radius: var(--r-thumb); }
 .sa-piecetile-photo { position: relative; display: block; aspect-ratio: 3 / 4; overflow: hidden; border-radius: var(--r-thumb); background: var(--surface2); transition: box-shadow var(--dur-fast) var(--ease); }
-.sa-piecetiles[data-count="1"] .sa-piecetile-photo { aspect-ratio: 4 / 3; }
+.sa-piecetiles[data-count="1"] .sa-piecetile-photo { aspect-ratio: 1; }
 .sa-piecetile:hover .sa-piecetile-photo { box-shadow: 0 0 0 2px var(--border-visible); }
 .sa-piecetile[aria-expanded="true"] .sa-piecetile-photo { box-shadow: 0 0 0 2px var(--text1); }
 .sa-piecetile-mark { position: absolute; right: 6px; bottom: 6px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-pill); background: var(--photo-control); color: var(--text1); box-shadow: var(--shadow-photo-control); }
@@ -926,7 +926,10 @@ button.sa-storetag:active { transform: scale(0.97); }
 @media (min-width: 1024px) {
   .sa-outfit-bar { bottom: var(--s-md); }
   .sa-studio-work { grid-template-columns: minmax(320px, 360px) minmax(0, 1fr); column-gap: 32px; }
-  .sa-studio-work .sa-studio-controls { position: sticky; top: calc(var(--header-h) + var(--s-lg)); }
   .sa-studio-work .sa-studio-stage { position: static; }
   .sa-studio-work .sa-cta-dock { position: static; margin: 0; padding: 0; background: none; box-shadow: none; }
+}
+/* A column taller than the screen would hide its own button while sticky. */
+@media (min-width: 1024px) and (min-height: 860px) {
+  .sa-studio-work .sa-studio-controls { position: sticky; top: calc(var(--header-h) + var(--s-lg)); }
 }

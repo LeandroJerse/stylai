@@ -260,3 +260,12 @@ Só quando `capabilities.outfits` for `true` em `GET /v1/studio/config`. Tudo ex
 | `GET /v1/media/comparisons/:id?u&e&s` | Imagem do comparativo por link assinado e curto. |
 
 `base` é a versão que a pessoa viu: se outra aba mudou o conjunto, a resposta é `409 stale_revision`. Termo de foto: `2026-11-24-inline`.
+
+### Filtros de compra (2026-11-24)
+
+- `POST /v1/studio/outfit-searches` aceita `filters` opcional: `audience` ("feminino" | "masculino"), `minPieceBrl`, `maxPieceBrl`, `maxTotalBrl`, `minRatingPercent` (0 a 100), `minSales`. Campo desconhecido ou valor inválido: 422. Entram na impressão digital da chave de idempotência.
+- `POST /v1/studio/searches` (peças avulsas, AliExpress) aceita os mesmos `filters` e devolve `filtered` com a contagem por motivo.
+- A busca devolve `filters` (nulo enquanto roda) e `report.filtered` com `filter_price`, `filter_rating`, `filter_rating_missing`, `filter_sales` e `filter_audience`.
+- Cada peça traz `storeRating` (percentual de avaliações positivas da loja, ou nulo) e `storeSales` (vendas recentes, ou nulo).
+- Um conjunto vendido em um só anúncio conta como duas peças no preço por peça.
+- `capabilities.outfitFilters`: filtros que o servidor aplica. Nota e vendas só com busca em loja.

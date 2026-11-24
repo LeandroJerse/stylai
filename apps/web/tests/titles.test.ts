@@ -11,6 +11,9 @@ describe("shortPieceName", () => {
     ["VESTIDO LONGO FEMININO FLORAL DE VERÃO PRAIA MANGA CURTA ELEGANTE", "Vestido longo"],
     ["Camisetas masculinas de algodão oversized streetwear verão 2026", "Camisetas de algodão"],
     ["Blusa com botões e gola alta para mulheres, moda coreana 2026 outono", "Blusa com botões"],
+    ["Tático masculino jaqueta + calça camuflada à prova de vento e chuva", "Jaqueta e calça"],
+    ["Moletom com Capuz Masculino + Conjunto de Calças Esportivas de Duas Peças", "Moletom com capuz"],
+    ["Camisa + preço especial masculina de linho com botões e gola padre", "Camisa"],
     ["Novo Y2K Harajuku Streetwear Calças Cargo Homens Hip Hop Baggy Pants", "Calças cargo"],
   ]
   for (const [name, short] of cases) test(short, () => expect(shortPieceName(name)).toBe(short))

@@ -1,6 +1,6 @@
 # Estúdio: limpeza da tela, filtros e defeitos do teste real (a retomar)
 
-Registrado em 2026-11-24, a pedido de Leandro ("anote tudo isso, pois mais tarde continuaremos com tudo"). Nada abaixo foi implementado ainda.
+Registrado em 2026-11-24, a pedido de Leandro ("anote tudo isso, pois mais tarde continuaremos com tudo"). **Implementado em parte na mesma data: ver "Execução" no fim.**
 
 ## O que Leandro relatou (palavras dele)
 
@@ -80,3 +80,23 @@ Decidir ao retomar: unir os dois caminhos (avulsas como alternativa dentro dos c
 - Ao retomar, reorganizar a tela inteira do Estúdio (não só remendar): uma etapa por vez, pedido -> conjuntos -> conferência -> imagem, com o histórico recolhido.
 - A primeira imagem real deste fluxo já existe (render `15f1e044-2c86-49cc-a1e3-9cbe0fc5f663`). Falta avaliar com Leandro rosto, corpo e peças; o custo já foi conferido no registro (US$ 0,01287).
 - Ele disse que há muitos pontos: levantar a lista completa com ele, tela a tela, antes de implementar.
+
+## Execução (2026-11-24, tarde)
+
+Feito (branch `feat/studio-ui-cleanup`, depois em `feat/motor-first-slice`):
+- Área de trabalho ao lado do pedido (celular: logo abaixo, com o pedido recolhido): Conjuntos, Imagens e Peças, uma por vez. Buscar leva aos conjuntos; confirmar leva à imagem. Reproduzido antes em teste: página de 5.902 px, imagem gerada fora da tela nos 4 tamanhos (28 de 40 verificações).
+- Títulos curtos (`apps/web/src/lib/titles.ts`): "Calça, suéter e jaqueta". Nome completo no detalhe da peça.
+- Cartões com foto primeiro; tocar na peça abre detalhe, trava e troca. Composer com um botão principal.
+- Filtros reais: público, preço por peça (mín/máx), total do look, nota e vendas. Valem para conjuntos, trocas, variações e busca avulsa; a tela diz quantos anúncios cada filtro tirou.
+- Busca de verão: manga longa e Natal fora; "short" vira "bermuda".
+- Custo e provador só aparecem com peça escolhida. Match, Editar e Guardar somem quando o servidor não os oferece (antes eram botões sem efeito).
+- Testes: `apps/web/scripts/studio-layout.mjs` (front oficial com API simulada; mede o que está de fato na tela).
+
+Medido na loja real em 8 consultas gratuitas, contadas no limite diário (`scripts/diagnose-aliexpress-quality.mjs`):
+- Nota (`evaluate_rate`, percentual) existe em parte dos anúncios: 4 de 49 em "short", 26 de 49 em "camiseta", 38 de 46 em "bermuda masculina". Vendas (`lastest_volume`) em todos, quase sempre baixas (mediana de 0 a 14).
+- "short": 0 partes de baixo em 49 (a loja lê como adjetivo em inglês). "bermuda": 45 de 49.
+
+Em aberto, decisão de Leandro:
+- Peças avulsas continuam "só para ver e comprar" no modo real (sem preparo automático de imagem). Recomendação mantida: um caminho só, pelos conjuntos.
+- Qualidade da seleção depende da loja: num pedido elegante ainda veio um conjunto tático (corrigido por regra) e moletons numa busca de frio.
+- Avaliar a primeira imagem real e usar as 3 gerações restantes.

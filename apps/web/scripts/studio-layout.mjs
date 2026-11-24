@@ -45,6 +45,7 @@ try {
     const titles = await page.$$eval('[data-testid="recent-look-title"]', (els) => els.map((e) => e.textContent.trim()))
     t.check(titles.length > 0 && titles.every((x) => x.length <= 60), `${name}: recent looks use short titles`, JSON.stringify(titles.slice(0, 2)))
 
+    t.check((await visibleShare(page, '[data-testid="outfit-search-button"]')).visible >= 40 || w < 1024, `${name}: the main button is in sight on arrival`)
     await page.locator(".sa-composer textarea").fill("me vista com roupas de verão")
     state.stuck = true
     await page.getByTestId("outfit-search-button").click()
@@ -188,6 +189,17 @@ try {
     await dark.page.getByTestId("outfit-piece-detail").waitFor()
     t.check(await dark.page.getByTestId("outfit-swap-upper").first().getAttribute("aria-expanded") === "true", "keyboard opens the piece")
     await dark.page.close()
+    for (const [name, w, h] of [["mobile", 390, 844], ["desktop", 1360, 900]]) {
+      const other = await open(w, h, createState(front.base))
+      for (const tab of ["explorar", "perfil", "closet"]) {
+        await other.page.goto(`${front.base}/#/${tab}`)
+        await other.page.waitForTimeout(1500)
+        t.check(await noSideScroll(other.page), `${name}: ${tab} without horizontal scroll`)
+        await shot(other.page, `${name}-tab-${tab}`)
+        await shot(other.page, `${name}-tab-${tab}-full`, true)
+      }
+      await other.page.close()
+    }
   }
 } finally {
   await browser.close()

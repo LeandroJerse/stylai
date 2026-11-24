@@ -37,6 +37,7 @@ describe("style compatibility", () => {
     expect(styleConflict(intent({ style: ["casual elegante"] }), PLUSH_PANTS)).toBe("leisure_for_elegant")
     expect(styleConflict(intent({ style: ["estilo italiano"], occasion: "jantar" }), PLUSH_PANTS)).toBe("leisure_for_elegant")
     expect(styleConflict(intent({ occasion: "trabalho" }), PLUSH_PANTS)).toBe("leisure_for_elegant")
+    expect(styleConflict(intent({ style: ["elegante"] }), "6xl tad tático masculino caça caminhadas pesca explorar roupas terno camuflagem")).toBe("leisure_for_elegant")
     expect(styleConflict(intent({ style: ["confortável"] }), PLUSH_PANTS)).toBeNull()
     expect(styleConflict(intent(), PLUSH_PANTS)).toBeNull()
   })

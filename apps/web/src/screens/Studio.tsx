@@ -689,7 +689,7 @@ function Composer({ canCollapse = false }: { canCollapse?: boolean }) {
   )
 
   return (
-    <section aria-label={dressing ? "Vestir" : "Procurar"} className="sa-panel sa-composer sa-enter grid gap-5 p-4 md:p-5">
+    <section aria-label={dressing ? "Vestir" : "Procurar"} className={`sa-panel sa-composer sa-enter grid ${outfits ? "gap-3" : "gap-5"} p-4 md:p-5`}>
       {dressing ? (
         <>
           <ChosenPieces />
@@ -1076,7 +1076,8 @@ function VersionSwap({ look }: { look: Look }) {
   const { draft, go } = useStore()
   const studio = useStudio()
   const [error, setError] = useState<string | null>(null)
-  if (!studio.singlePiece) return null
+  // A look of several pieces changes in its outfit (Conjuntos), not one loose piece at a time.
+  if (!studio.singlePiece || (studio.caps?.outfits && look.pieces.length > 1)) return null
   const current = look.pieces[0]?.product ?? null
   const next = draft.chosen[0] ?? null
   const differs = !!next && next.id !== current?.id

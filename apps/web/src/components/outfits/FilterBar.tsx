@@ -55,7 +55,9 @@ export function FilterBar() {
   const offered = studio.caps?.outfitFilters ?? []
   if (offered.length === 0) return null
   const f = draft.filters
-  const open = toggled ?? !narrow
+  // Short screens start with the request and its button in sight; the filters are one tap away.
+  const [tall] = useState(() => window.innerHeight >= 800)
+  const open = toggled ?? (!narrow && tall)
   const labels = filterLabels(filtersToSend(f, offered))
   const set = (patch: Partial<SearchFilters>): void => {
     const next = { ...f, ...patch }

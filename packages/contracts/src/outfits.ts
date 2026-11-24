@@ -48,7 +48,7 @@ export type LockedPieces = Partial<Record<OutfitSlot, string>>
 /* ------------------------------------------------------------------ compatibility */
 
 const NOT_OUTFIT = /\b(infantil|infantis|menin[oa]s?|bebes?|criancas?|kids|bonecas?|pijamas?|pajamas?|lingerie|calcinhas?|cuecas?|sutia|sutias|modelador(a|as|es)?|shapewear|fantasias?|cosplay|cachorros?|pet)\b/
-const LEISURE = /\b(moletom|moletons|jogger|joggers|pelucia|lazer|uso domestico|ao ar livre|academia|fitness|treino|corrida|caminhada|esportiv[oa]s?|agasalhos?|tactel|rasgad[oa]s?|sweatpants|tracksuit|trekking|pescaria)\b/
+const LEISURE = /\b(moletom|moletons|jogger|joggers|pelucia|lazer|uso domestico|ao ar livre|academia|fitness|treino|corrida|caminhadas?|tatic[oa]s?|camuflad[oa]s?|camuflagem|caca|pesca|esportiv[oa]s?|agasalhos?|tactel|rasgad[oa]s?|sweatpants|tracksuit|trekking|pescaria)\b/
 const FORMAL_PIECE = /\b(social|sociais|alfaiataria|terno|smoking|blazer)\b/
 const FEMININE_GARMENT = /\b(saias?|vestidos?|cropped|boca de sino|acentua\w* a cintura)\b/
 const ELEGANT = /(italian|elegant|social|classic|sofisticad|chique|alfaiataria|formal|executiv)/
