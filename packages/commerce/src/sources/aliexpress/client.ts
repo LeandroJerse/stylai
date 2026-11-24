@@ -55,6 +55,10 @@ export interface AliExpressProductRaw {
   shopId: string | null
   firstLevelCategoryName: string | null
   secondLevelCategoryName: string | null
+  /** Positive feedback as the store publishes it, e.g. "92.1%" (never converted to stars). */
+  evaluateRate?: string | null
+  /** Recent units sold (the provider spells it `lastest_volume`). */
+  latestVolume?: string | null
 }
 
 export type AliExpressErrorKind = "configuration" | "rate_limited" | "network" | "http" | "provider_error" | "business_error" | "invalid_response"
@@ -128,6 +132,8 @@ function toProduct(value: unknown): AliExpressProductRaw | null {
     shopId: text(value.shop_id),
     firstLevelCategoryName: text(value.first_level_category_name),
     secondLevelCategoryName: text(value.second_level_category_name),
+    evaluateRate: text(value.evaluate_rate),
+    latestVolume: text(value.lastest_volume) ?? text(value.latest_volume),
   }
 }
 

@@ -15,6 +15,8 @@ export const pieceSchema = z.object({
   externalId: z.string().nullable(), fixture: z.boolean(),
   variants: z.array(z.object({ id: uuid, label: z.string() })).max(40), variantId: uuid.nullable(),
   reference: referenceSchema.nullable(), blocked: z.string().nullable(),
+  // Absent in sets stored before 2026-11-24.
+  ratingPercent: z.number().nullable().optional(), recentSales: z.number().int().nullable().optional(),
 })
 export type StoredPiece = z.infer<typeof pieceSchema>
 export const poolsSchema = z.partialRecord(slotSchema, z.array(pieceSchema))
@@ -27,6 +29,7 @@ export function pieceFromAliExpress(item: NormalizedAliExpressCatalogItem, slot:
     slot, id: item.canonicalKey, name: short(item.name, 160), reason: "", categoryId: item.category, priceMinor: item.priceMinor, priceObservedAt: item.priceObservedAt,
     image: item.image, productUrl: item.productUrl, affiliateUrl: item.affiliateUrl, source: item.source, partnerId: item.seller, partner: short(item.sellerName, 120),
     externalId: item.externalProductId, fixture: false, variants: [], variantId: null, reference: null, blocked: null,
+    ratingPercent: item.ratingPercent, recentSales: item.recentSales,
   }
 }
 export const referenceItemOf = (p: StoredPiece): ReferenceItem => ({
@@ -44,7 +47,8 @@ export function pieceFromCatalog(row: CatalogRow, slot: OutfitSlot): StoredPiece
     reference: image && sizes.length ? { productId: row.id, variantId: only, imageUrl: null } : null, blocked: image && sizes.length ? null : "rights_unavailable",
   }
 }
-export const candidateOf = (p: StoredPiece): OutfitCandidate => ({ id: p.id, slot: p.slot, categoryId: p.categoryId, name: p.name, priceMinor: p.priceMinor, colorTags: colorTagsOf(p.name) })
+export const candidateOf = (p: StoredPiece): OutfitCandidate => ({ id: p.id, slot: p.slot, categoryId: p.categoryId, name: p.name, priceMinor: p.priceMinor, colorTags: colorTagsOf(p.name),
+  ratingPercent: p.ratingPercent ?? null, recentSales: p.recentSales ?? null })
 export const totalOf = (pieces: readonly StoredPiece[]): number | null =>
   pieces.length && pieces.every((p) => p.priceMinor !== null) ? pieces.reduce((a, p) => a + (p.priceMinor ?? 0), 0) : null
 export const orderPieces = (pieces: readonly StoredPiece[]): StoredPiece[] => OUTFIT_SLOTS.flatMap((s) => pieces.filter((p) => p.slot === s))
@@ -68,6 +72,8 @@ export function presentPieceCard(p: StoredPiece, base: string) {
   const code = blockedCode(p)
   return {
     slot: p.slot, label: OUTFIT_SLOT_LABEL[p.slot], reason: p.reason, variantId: p.variantId,
+    // As the store publishes them (percentage of positive feedback, recent units); never converted to stars.
+    storeRating: p.ratingPercent ?? null, storeSales: p.recentSales ?? null,
     tryOn: { ready: code === null, code, message: code === null ? null : code === "not_prepared" ? null : blockedMessage(code) },
     product: {
       id: p.id, name: p.name, category: { id: p.categoryId, label: OUTFIT_SLOT_LABEL[p.slot] }, partner: { id: p.partnerId, name: p.partner }, source: p.source,

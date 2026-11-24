@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto"
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify"
 import { z } from "zod"
-import { apiError, OUTFIT_SLOT_LABEL, OUTFIT_SLOTS, SLOT_LABEL, type SlotId } from "@stylai/contracts"
+import { countFilters, MAX_FILTER_BRL, normalizeFilters, apiError, OUTFIT_SLOT_LABEL, OUTFIT_SLOTS, SLOT_LABEL, type SlotId } from "@stylai/contracts"
 import { PrivateDatabaseError, type Json, type PrivateDatabase } from "@stylai/supabase"
 import { blockedMessage, orderPieces, overBudget, pieceSchema, presentPieceCard, slotSchema, totalOf, type StoredPiece } from "./pieces.js"
 import { planSchema, type OutfitSearch, type OutfitSourceKind, type StoredPlan } from "./search.js"
@@ -27,7 +27,12 @@ export interface OutfitRouteDeps {
 
 const uuid = z.string().uuid()
 export const idempotencyKey = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/)
-const searchBody = z.object({ prompt: z.string().trim().min(1).max(500) }).strict()
+const brl = z.number().positive().max(MAX_FILTER_BRL).nullable().optional()
+export const filtersBody = z.object({
+  audience: z.enum(["feminino", "masculino"]).nullable().optional(), minPieceBrl: brl, maxPieceBrl: brl, maxTotalBrl: brl,
+  minRatingPercent: z.number().positive().max(100).nullable().optional(), minSales: z.number().int().positive().max(1_000_000).nullable().optional(),
+}).strict()
+const searchBody = z.object({ prompt: z.string().trim().min(1).max(500), filters: filtersBody.optional() }).strict()
 const base = z.number().int().min(1)
 const pieceBody = z.object({ slot: slotSchema, productId: z.string().min(1).max(200), variantId: uuid.nullable().optional(), base }).strict()
 const locksBody = z.object({ locked: z.array(slotSchema).max(3), base }).strict()
@@ -55,13 +60,15 @@ const STAGE_LABEL: Record<string, string> = {
   preparing: "Preparando as imagens das peças", done: "Concluído",
 }
 const ORIGIN_LABEL: Record<string, string> = { suggested: "Sugestão original", swap: "Peça trocada por você", resuggest: "Nova combinação", refresh: "Dados atualizados" }
+const removedByFilters = (plan: StoredPlan | null): number => Object.entries(plan?.rejected ?? {}).reduce((a, [k, n]) => a + (k.startsWith("filter_") ? n : 0), 0)
 function outcomeMessage(row: z.infer<typeof searchRow>, plan: StoredPlan | null): string | null {
   const missing = (plan?.missingSlots ?? []).filter((s) => s !== "outer").map((s) => SLOT_LABEL[s as SlotId] ?? s)
   switch (row.status) {
     case "interrupted": return "A busca foi interrompida antes de terminar. Busque de novo: nada foi gerado nem cobrado."
     case "cancelled": return "Busca cancelada."
     case "failed": return row.error_code === "source_unavailable" ? "A loja não respondeu agora. Nenhum conjunto foi montado; tente de novo em instantes." : "A busca falhou por um erro interno. Tente de novo."
-    case "empty": return row.error_code === "missing_pieces" && missing.length ? `A loja não devolveu opções compatíveis para: ${missing.join(", ")}. Tente descrever de outro jeito.`
+    case "empty": if (removedByFilters(plan) > 0) return `Com estes filtros, ${removedByFilters(plan) === 1 ? "1 anúncio ficou de fora" : `${removedByFilters(plan)} anúncios ficaram de fora`} e não sobrou um conjunto completo. Afrouxe um filtro e busque de novo.`
+      return row.error_code === "missing_pieces" && missing.length ? `A loja não devolveu opções compatíveis para: ${missing.join(", ")}. Tente descrever de outro jeito.`
       : row.error_code === "agent_abstained" ? "Nenhuma combinação do que a loja devolveu combina de verdade com o pedido. Tente detalhar estilo, cor ou ocasião."
       : "Não encontramos conjuntos compatíveis com este pedido. Tente descrever de outro jeito."
     default: return null
@@ -109,7 +116,7 @@ export async function registerOutfitRoutes(app: FastifyInstance, deps: OutfitRou
       id: row.id, prompt: row.prompt, source: row.source, status: row.status, createdAt: row.created_at, finishedAt: row.finished_at,
       stage: { id: row.stage, label: STAGE_LABEL[row.stage] ?? row.stage, detail: row.stage_detail },
       selection: row.selection_method ? { method: row.selection_method, model: row.selection_method === "agent" ? row.model : null } : null,
-      message: outcomeMessage(row, plan), errorCode: row.error_code,
+      message: outcomeMessage(row, plan), errorCode: row.error_code, filters: plan?.filters ?? null,
       sets: row.sets.map((s) => presentSet(s, plan, deps.publicBaseUrl)),
       // Why these results: queries sent, what came back and what the filters removed.
       report: plan ? {
@@ -146,11 +153,12 @@ export async function registerOutfitRoutes(app: FastifyInstance, deps: OutfitRou
     const key = idempotencyKey.safeParse(request.headers["idempotency-key"])
     if (!key.success) return reply.code(400).send(apiError("validation", "Cabeçalho Idempotency-Key ausente ou inválido."))
     const body = searchBody.safeParse(request.body)
-    if (!body.success) return reply.code(422).send(apiError("validation", "Descreva o look que você quer (até 500 caracteres)."))
+    if (!body.success) return reply.code(422).send(apiError("validation", body.error.issues.some((i) => i.path[0] === "filters") ? "Confira os filtros: os valores precisam ser números válidos." : "Descreva o look que você quer (até 500 caracteres)."))
     try {
-      const hash = createHash("sha256").update(JSON.stringify({ v: 1, prompt: body.data.prompt, source: deps.source })).digest("hex")
+      const filters = normalizeFilters(body.data.filters)
+      const hash = createHash("sha256").update(JSON.stringify({ v: 1, prompt: body.data.prompt, source: deps.source, ...(countFilters(filters) ? { filters } : {}) })).digest("hex")
       const created = z.object({ id: uuid, created: z.boolean() }).parse(await deps.db.call("create_outfit_search", user, key.data, hash, body.data.prompt, deps.source, deps.model))
-      if (created.created) track(deps.search.run(user, created.id, body.data.prompt))
+      if (created.created) track(deps.search.run(user, created.id, body.data.prompt, filters))
       return reply.code(created.created ? 202 : 200).send(await readSearch(user, created.id))
     } catch (error) {
       if (error instanceof PrivateDatabaseError && error.sqlState === "23505") return reply.code(409).send(apiError("search_in_progress", "Já existe uma busca em andamento. Aguarde ou cancele."))

@@ -7,7 +7,7 @@
  */
 import type { FastifyInstance, FastifyRequest } from "fastify"
 import { z } from "zod"
-import { apiError, buildSlotQuery, interpretCompositionRules, PILOT_SELLER_NAME, searchCatalog, type CatalogSourceMode, type CompositionIntent } from "@stylai/contracts"
+import { filterConflict, NO_FILTERS, normalizeFilters, outfitSlotOfCategory, apiError, buildSlotQuery, interpretCompositionRules, PILOT_SELLER_NAME, searchCatalog, type CatalogSourceMode, type CompositionIntent } from "@stylai/contracts"
 import type { ComposerUsage, InterpretationCache, OutfitAgent } from "@stylai/ai"
 import type { AliExpressCatalogService, TikTokCatalogCache } from "@stylai/commerce"
 import type { PrivateDatabase } from "@stylai/supabase"
@@ -20,6 +20,7 @@ const body = z.object({
   rules: z.object({ budget: z.object({ value: z.number().nonnegative(), mode: z.enum(["require", "prefer", "off"]) }).partial().passthrough().optional() }).passthrough().nullable().optional(),
   cursor: z.string().max(512).nullable().optional(),
   mode: z.string().optional(),
+  filters: z.unknown().transform(normalizeFilters).optional(),
 }).passthrough()
 
 const PAGE_SCAN_SIZE = 48
@@ -129,6 +130,13 @@ export async function registerSearchRoutes(app: FastifyInstance, deps: SearchDep
           requestId: ae.requestId, backoffUntil: ae.backoffUntil, fromCache: ae.fromCache }, "aliexpress search unavailable")
         return reply.code(503).header("Retry-After", String(retryAfterSeconds(ae.backoffUntil))).send(providerUnavailable(ae))
       }
+      const filters = input.data.filters ?? NO_FILTERS
+      const outside: Record<string, number> = {}
+      const inside = ae.items.filter((item) => {
+        const reason = filterConflict(filters, { slot: outfitSlotOfCategory(item.category), name: item.name, priceMinor: item.priceMinor, ratingPercent: item.ratingPercent, recentSales: item.recentSales })
+        if (reason) outside[reason] = (outside[reason] ?? 0) + 1
+        return reason === null
+      })
       return {
         source: "aliexpress_affiliate",
         catalog: "aliexpress_affiliate",
@@ -145,12 +153,14 @@ export async function registerSearchRoutes(app: FastifyInstance, deps: SearchDep
         // Affiliate link state, kept apart from product display: "generated" | "missing_tracking_id" | "failed".
         links: ae.links,
         interpretation: { category: null, color: null, budget: null, terms: keywords.split(" ") },
-        items: ae.items.map((item) => ({
+        // What the purchase filters left out, by reason.
+        filtered: outside,
+        items: inside.map((item) => ({
           product: presentAliExpressProduct(item),
           usedInLook: false,
           failed: ["Sem imagem liberada para prova", "Sem variante/tamanho confirmado"],
         })),
-        total: ae.items.length,
+        total: inside.length,
         scanned: ae.items.length + ae.rejectedCount,
         truncated: false,
       }

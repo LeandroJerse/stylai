@@ -878,6 +878,10 @@ button.sa-storetag:active { transform: scale(0.97); }
 .sa-piecetile[aria-expanded="true"] .sa-piecetile-photo { box-shadow: 0 0 0 2px var(--text1); }
 .sa-piecetile-mark { position: absolute; right: 6px; bottom: 6px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-pill); background: var(--photo-control); color: var(--text1); box-shadow: var(--shadow-photo-control); }
 .sa-piecetile-flag { position: absolute; left: 6px; top: 6px; }
+.sa-filters { display: grid; gap: var(--s-xs); min-width: 0; }
+.sa-filters-body { display: grid; gap: var(--s-sm); min-width: 0; }
+.sa-filters-body[hidden] { display: none; }
+.sa-filters-body .sa-segmented button { min-width: 0; padding: 0 6px; }
 .sa-piecedetail { display: grid; gap: var(--s-sm); padding: var(--s-sm); border-radius: var(--r-thumb); background: var(--surface2); min-width: 0; }
 .sa-altstrip { display: flex; gap: var(--s-xs); overflow-x: auto; padding: 2px 2px 6px; margin: 0 -2px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
 .sa-altstrip > li { flex: 0 0 72px; scroll-snap-align: start; }
@@ -900,7 +904,7 @@ button.sa-storetag:active { transform: scale(0.97); }
 .sa-render-thumb { flex: none; width: 44px; height: 56px; overflow: hidden; border-radius: 10px; background: var(--surface2); }
 .sa-render-body { display: grid; gap: var(--s-md); padding: 0 16px 16px; }
 .sa-render-comparison, .sa-render-media { position: relative; border-radius: var(--r-card); overflow: hidden; background: var(--surface2); }
-.sa-render-comparison img { width: 100%; height: auto !important; max-height: 76vh; display: block; }
+.sa-render-comparison img { width: 100%; height: auto !important; max-height: max(320px, 100dvh - 300px); display: block; }
 .sa-render-media { aspect-ratio: 3 / 4; display: grid; place-items: center; }
 .sa-render-panels[data-count="1"] .sa-render-media[data-empty] { aspect-ratio: 1; }
 .sa-render-media img { display: block; }

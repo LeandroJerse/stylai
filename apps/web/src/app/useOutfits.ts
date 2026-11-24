@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { isApiError, messageOf } from "../api/errors"
 import { outfitsApi, type OutfitQuote, type OutfitRender, type OutfitSearch, type OutfitSet, type OutfitSetDetail } from "../api/outfits"
 import { keys } from "../api/queries"
+import { filtersToSend, type SearchFilters } from "../lib/filters"
 import { forgetKey, keyFor } from "../lib/requestKeys"
 import { useStore } from "./store"
 import { useStudio, type StartResult } from "./useStudio"
@@ -60,13 +61,13 @@ export function useOutfits() {
     enabled, studio, searches, searchId, search, renders, starting,
     open: (id: string) => setDraft({ outfitSearchId: id }),
     /** Starts a search from the composer text. Never generates and never spends coins. */
-    start: async (prompt: string): Promise<StartResult> => {
+    start: async (prompt: string, filters: Partial<SearchFilters> | null = filtersToSend(draft.filters, studio.caps?.outfitFilters ?? [])): Promise<StartResult> => {
       if (!studio.signedIn) return { ok: false, message: "Entre na sua conta para usar o Estúdio." }
       if (!prompt.trim()) return { ok: false, message: "Descreva o look: estilo, ocasião, cores ou orçamento total." }
-      const fingerprint = `outfit-search|${prompt.trim()}`
+      const fingerprint = `outfit-search|${prompt.trim()}|${JSON.stringify(filters)}`
       setStarting(true)
       try {
-        const s = await outfitsApi.startSearch(prompt.trim(), keyFor(fingerprint))
+        const s = await outfitsApi.startSearch(prompt.trim(), filters, keyFor(fingerprint))
         forgetKey(fingerprint)
         qc.setQueryData(outfitKeys.search(s.id), s)
         // The request leaves the composer and its outfits take the work area.

@@ -75,6 +75,43 @@ describe("outfit search", () => {
       expect(search.report.filtered.leisure_for_elegant).toBe(1)
     } finally { await t.app.close() }
   })
+  test("purchase filters reach the search, are stored with it and explain what they removed", async () => {
+    const priced = (k: string) => all(k).map((x) => ({ ...x, ratingPercent: x.externalProductId === "11" ? null : 96, recentSales: 4 }))
+    const t = await make({ store: priced })
+    try {
+      const body = { prompt: PROMPT, filters: { maxPieceBrl: 145, minRatingPercent: 90, audience: "masculino" } }
+      const res = await t.call("POST", "/v1/studio/outfit-searches", body, "a", "search-key-f")
+      await Promise.all(t.work)
+      const search = (await t.call("GET", `/v1/studio/outfit-searches/${res.json().id}`)).json()
+      expect(search.status).toBe("succeeded")
+      expect(search.filters).toMatchObject({ maxPieceBrl: 145, minRatingPercent: 90, audience: "masculino", maxTotalBrl: null })
+      const pieces = search.sets.flatMap((s: { pieces: { slot: string; storeRating: number | null; storeSales: number | null; product: { id: string; price: { amount: number } } }[] }) => s.pieces)
+      expect(pieces.every((p: { slot: string; product: { price: { amount: number } } }) => p.product.price.amount <= (p.slot === "set" ? 290 : 145))).toBe(true)
+      expect(pieces.map((p: { product: { id: string } }) => p.product.id)).not.toContain("aliexpress:11")
+      expect(pieces[0]).toMatchObject({ storeRating: 96, storeSales: 4 })
+      expect(search.report.filtered).toMatchObject({ filter_rating_missing: 1 })
+      expect(search.report.filtered.filter_price).toBeGreaterThanOrEqual(2)
+      // The swap options were filtered too.
+      const detail = (await t.call("GET", `/v1/studio/outfit-sets/${search.sets.find((s: { kind: string }) => s.kind === "assembled").id}`)).json()
+      expect(JSON.stringify(detail.alternatives)).not.toContain("aliexpress:11\"")
+    } finally { await t.app.close() }
+  })
+  test("filters too tight: the empty answer says the filters did it; malformed filters are refused", async () => {
+    const t = await make()
+    try {
+      const res = await t.call("POST", "/v1/studio/outfit-searches", { prompt: PROMPT, filters: { maxPieceBrl: 1 } }, "a", "search-key-g")
+      await Promise.all(t.work)
+      const search = (await t.call("GET", `/v1/studio/outfit-searches/${res.json().id}`)).json()
+      expect(search.status).toBe("empty")
+      expect(search.message).toMatch(/Com estes filtros, \d+ anúncios ficaram de fora/)
+      for (const filters of [{ maxPieceBrl: -1 }, { minRatingPercent: 101 }, { audience: "x" }, { other: 1 }]) {
+        const bad = await t.call("POST", "/v1/studio/outfit-searches", { prompt: PROMPT, filters }, "a", "search-key-h")
+        expect([bad.statusCode, bad.json().error.message]).toEqual([422, "Confira os filtros: os valores precisam ser números válidos."])
+      }
+      // Same key, other filters: a different request.
+      expect((await t.call("POST", "/v1/studio/outfit-searches", { prompt: PROMPT, filters: { maxPieceBrl: 2 } }, "a", "search-key-g")).statusCode).toBe(409)
+    } finally { await t.app.close() }
+  })
   test("idempotent start, one search at a time, isolation between accounts", async () => {
     let release: () => void = () => undefined
     const t = await make({ gate: new Promise((r) => { release = r }) })

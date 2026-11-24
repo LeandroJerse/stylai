@@ -456,6 +456,8 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
       bodyPhotoRequired: true, closet: false, generation: deps.generationEnabled, edits: false, match: false, references: false, preferences: false,
       // Not offered by this engine: the front sends no request for them (QA-010).
       measurements: false, plans: false, candidates: false, outfits: deps.outfits === true,
+      // Rating and sales only exist where the store publishes them.
+      outfitFilters: deps.outfits !== true ? [] : ["audience", "price", "total", ...(deps.searchScope === "stores" ? ["rating", "sales"] : [])],
       composer: deps.composer ?? { mode: "rules", model: null },
     },
     photoPolicyVersion: deps.photoPolicyVersion,

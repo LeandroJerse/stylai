@@ -6,6 +6,7 @@
 import { z } from "zod"
 import {
   interpretCompositionRules, MAX_OUTFITS, outfitSlotOfCategory, OUTFIT_WINDOW_PER_SLOT, rankCandidates, searchPlan, selectOutfitsRules,
+  applyFiltersToIntent, NO_FILTERS, normalizeFilters, type OutfitFilters,
   type CompositionIntent, type LockedPieces, type OutfitCandidate, type OutfitPools, type OutfitSlot, type SlotId, type ValidOutfit,
 } from "@stylai/contracts"
 import type { AliExpressCatalogService } from "@stylai/commerce"
@@ -40,6 +41,8 @@ export const planSchema = z.object({
   queries: z.array(queryLog), pools: poolsSchema, rejected: z.record(z.string(), z.number()), missingSlots: z.array(z.string()),
   agent: z.object({ calls: z.number(), inputTokens: z.number(), outputTokens: z.number(), costMicros: z.string().nullable(), promptVersions: z.array(z.string()) }),
   notes: z.array(z.string()),
+  // Purchase filters of this search (absent in older searches).
+  filters: z.unknown().transform(normalizeFilters).optional(),
 })
 export type StoredPlan = z.infer<typeof planSchema>
 
@@ -107,12 +110,12 @@ export function createOutfitSearch(deps: OutfitSearchDeps) {
     }
   }
 
-  async function retrieve(user: string, intent: CompositionIntent, queries: { slot: OutfitSlot; query: string }[], progress: (done: number, found: number) => Promise<void>) {
+  async function retrieve(user: string, intent: CompositionIntent, filters: OutfitFilters, queries: { slot: OutfitSlot; query: string }[], progress: (done: number, found: number) => Promise<void>) {
     const raw = new Map<OutfitSlot, StoredPiece[]>()
     const logs: z.infer<typeof queryLog>[] = []
     const rejected: Record<string, number> = {}
     const wanted = new Set<OutfitSlot>([...intent.slots.map((s) => s.slot), "set"])
-    const ranked = (slot: OutfitSlot) => rankCandidates(intent, (raw.get(slot) ?? []).map(candidateOf))
+    const ranked = (slot: OutfitSlot) => rankCandidates(intent, (raw.get(slot) ?? []).map(candidateOf), filters)
     let unavailable = 0
     if (deps.source === "curated") {
       for (const r of await deps.listCatalog()) {
@@ -146,7 +149,7 @@ export function createOutfitSearch(deps: OutfitSearchDeps) {
     }
     const pools: StoredPools = {}
     for (const [slot, list] of raw) {
-      const { kept, rejected: out } = rankCandidates(intent, list.map(candidateOf))
+      const { kept, rejected: out } = rankCandidates(intent, list.map(candidateOf), filters)
       for (const r of out) rejected[r.reason] = (rejected[r.reason] ?? 0) + 1
       if (kept.length) pools[slot] = kept.map((c) => list.find((p) => p.id === c.id)!)
     }
@@ -201,7 +204,7 @@ export function createOutfitSearch(deps: OutfitSearchDeps) {
 
   class Cancelled extends Error {}
 
-  async function run(user: string, id: string, prompt: string): Promise<void> {
+  async function run(user: string, id: string, prompt: string, filters: OutfitFilters = NO_FILTERS): Promise<void> {
     const m = meter()
     const notes: string[] = []
     const stage = async (name: string, detail: Record<string, Json> = {}) => { if (!(await deps.db.call("update_outfit_search", user, id, name, detail))) throw new Cancelled() }
@@ -210,16 +213,18 @@ export function createOutfitSearch(deps: OutfitSearchDeps) {
     let plan: StoredPlan | null = null
     try {
       await stage("interpreting")
-      const { intent, by } = await interpret(prompt, m)
+      const interpreted = await interpret(prompt, m)
+      const by = interpreted.by
+      const intent = applyFiltersToIntent(interpreted.intent, filters)
       await stage("planning", { slots: intent.slots.map((s) => s.slot) })
       const planned = deps.agents && deps.source !== "curated" ? await agentCall("plan", m, async () => {
         const p = await deps.agents!.plan(intent); m.add(p.usage, p.promptVersion); return p
       }) : null
       const queries = deps.source === "curated" ? [] : searchPlan(intent, planned ? { bundles: planned.bundles, slots: planned.slots } : {})
       await stage("searching", { done: 0, total: queries.length, found: 0 })
-      const { pools, logs, rejected, unavailable } = await retrieve(user, intent, queries, (done, found) => stage("searching", { done, total: queries.length, found }))
+      const { pools, logs, rejected, unavailable } = await retrieve(user, intent, filters, queries, (done, found) => stage("searching", { done, total: queries.length, found }))
       const missing: SlotId[] = intent.slots.map((s) => s.slot).filter((s) => !pools[s]?.length)
-      plan = { intent, interpretedBy: by, plannedBy: planned ? "agent" : "rules_fallback", queries: logs, pools, rejected, missingSlots: missing, agent: m.report(), notes }
+      plan = { intent, interpretedBy: by, plannedBy: planned ? "agent" : "rules_fallback", queries: logs, pools, rejected, missingSlots: missing, agent: m.report(), notes, filters }
       const found = Object.values(pools).reduce((a, l) => a + (l?.length ?? 0), 0)
       if (!found) { await finish(unavailable ? "failed" : "empty", unavailable ? "source_unavailable" : "no_results", null, plan, []); return }
       await stage("selecting", { found })

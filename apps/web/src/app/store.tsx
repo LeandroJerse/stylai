@@ -6,6 +6,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ImageAsset, PreferenceRules, Product, UploadedImage, SearchResult, Composition } from "../api/types"
 import type { CatalogSort } from "../api/client"
 import type { ToastState } from "../components/ui"
+import { NO_FILTERS, type SearchFilters } from "../lib/filters"
+import { readFilters } from "./filterStorage"
 import { DEFAULT_ROUTE, formatRoute, parseRoute, type MainTab, type Route } from "./routes"
 
 export type ThemePref = "light" | "dark" | "system"
@@ -74,6 +76,8 @@ export interface StudioDraft {
   searchResult: SearchResult | null
   /** Outfit search open on the board (null = the last one; the search itself lives on the server). */
   outfitSearchId: string | null
+  /** Purchase filters of the next search. */
+  filters: SearchFilters
   /** View chosen for the work area (null = the screen decides). */
   stageView: StageView | null
   /** Grows when the person asks for something: the work area comes into sight. */
@@ -89,7 +93,7 @@ export function showLookPatch(d: StudioDraft, look: { id: string; origin?: strin
   return { lookId: look.id, acervoLookId: look.id, acervoSelection: [] }
 }
 
-export const EMPTY_DRAFT: StudioDraft = { mode: "procurar", prompt: "", chosen: [], references: [], preferenceId: null, sessionRules: null, composerOpen: true, lookId: null, jobId: null, outfitSearchId: null, stageView: null, stageNonce: 0, acervoLookId: null, acervoSelection: [], variantChoice: {}, searchResult: null, composition: null }
+export const EMPTY_DRAFT: StudioDraft = { mode: "procurar", prompt: "", chosen: [], references: [], preferenceId: null, sessionRules: null, composerOpen: true, lookId: null, jobId: null, outfitSearchId: null, filters: NO_FILTERS, stageView: null, stageNonce: 0, acervoLookId: null, acervoSelection: [], variantChoice: {}, searchResult: null, composition: null }
 
 interface Store {
   route: Route
@@ -146,7 +150,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [overlay, setOverlay] = useState<Overlay | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const [explore, setExploreState] = useState<ExploreQuery>(DEFAULT_EXPLORE)
-  const [draft, setDraftState] = useState<StudioDraft>(EMPTY_DRAFT)
+  const [draft, setDraftState] = useState<StudioDraft>(() => ({ ...EMPTY_DRAFT, filters: readFilters() }))
   const [offerChoice, setOfferChoice] = useState<Record<string, string>>({})
   const chooseOffer = useCallback((productId: string, partnerId: string) => setOfferChoice((c) => (c[productId] === partnerId ? c : { ...c, [productId]: partnerId })), [])
 

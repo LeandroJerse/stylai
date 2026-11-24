@@ -3,6 +3,7 @@
  * null/empty instead of crashing a screen; a malformed required field throws `ApiError("bad_response")`.
  * Image and link URLs must be absolute http(s); anything else (javascript:, data:, relative) is dropped.
  */
+import { FILTER_IDS } from "../lib/filters"
 import { ApiError, defaultMessage } from "./errors"
 import type { CatalogSource,
   Availability,
@@ -425,7 +426,7 @@ export function parseSearchResult(raw: unknown): SearchResult {
 
 /** Missing capabilities = the historical full contract (everything on). */
 function capabilities(raw: unknown): StudioCapabilities {
-  if (!isObj(raw)) return { mode: "full", dress: true, adjustments: true, bodyPhotoRequired: false, closet: true, searchScope: "stores", generation: true, edits: true, match: true, references: true, preferences: true, search: true, measurements: true, plans: true, candidates: true, outfits: false, composer: { mode: "rules", model: null } }
+  if (!isObj(raw)) return { mode: "full", dress: true, adjustments: true, bodyPhotoRequired: false, closet: true, searchScope: "stores", generation: true, edits: true, match: true, references: true, preferences: true, search: true, measurements: true, plans: true, candidates: true, outfits: false, outfitFilters: [], composer: { mode: "rules", model: null } }
   const flag = (v: unknown) => v === true
   return {
     mode: raw.mode === "single_piece_try_on" ? "single_piece_try_on" : "full",
@@ -436,6 +437,7 @@ function capabilities(raw: unknown): StudioCapabilities {
     references: flag(raw.references), preferences: flag(raw.preferences), search: flag(raw.search),
     // Declared capabilities fail closed: a flag the server does not send is off.
     measurements: flag(raw.measurements), plans: flag(raw.plans), candidates: flag(raw.candidates), outfits: flag(raw.outfits),
+    outfitFilters: FILTER_IDS.filter((id) => strs(raw.outfitFilters).includes(id)),
     composer: isObj(raw.composer) && raw.composer.mode === "agent" ? { mode: "agent", model: str(raw.composer.model) } : { mode: "rules", model: null },
   }
 }

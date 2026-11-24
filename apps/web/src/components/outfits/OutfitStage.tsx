@@ -9,6 +9,7 @@ import { CircleNotch } from "@phosphor-icons/react"
 import type { OutfitQuote, OutfitSearch, OutfitSet } from "../../api/outfits"
 import { useStore, type StageView } from "../../app/store"
 import { outfitKeys, useOutfits, type Outfits } from "../../app/useOutfits"
+import { filterLabels, filterReportText, filtersToSend, FILTER_IDS } from "../../lib/filters"
 import { plural } from "../../lib/format"
 import { EmptyState, ErrorState, LoadingState, Notice, useReducedMotion } from "../ui"
 import { ConfirmSheet, usd } from "./ConfirmSheet"
@@ -88,6 +89,8 @@ function SetsView({ outfits, recents, onDone }: { outfits: Outfits; recents: Rea
   const search = outfits.search.data ?? null
   const sets = search?.sets ?? []
   const chosen = sets.filter((s) => picked.includes(s.id))
+  const labels = filterLabels(search?.filters ?? null)
+  const filtered = search?.report ? filterReportText(search.report.filters) : null
   const askQuote = async (list: OutfitSet[]): Promise<void> => {
     if (quoting) return
     setQuoting(true)
@@ -106,7 +109,7 @@ function SetsView({ outfits, recents, onDone }: { outfits: Outfits; recents: Rea
       {search?.message ? (
         <Notice tone={search.status === "failed" ? "error" : "warning"}>
           <p data-testid="outfit-message" data-status={search.status}>{search.message}</p>
-          <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm mt-3" disabled={outfits.starting} onClick={() => void outfits.start(search.prompt).then((r) => { if (!r.ok) notify(r.message) })} data-testid="outfit-search-again">
+          <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm mt-3" disabled={outfits.starting} onClick={() => void outfits.start(search.prompt, search.filters ? filtersToSend(search.filters, FILTER_IDS) : undefined).then((r) => { if (!r.ok) notify(r.message) })} data-testid="outfit-search-again">
             Buscar de novo
           </button>
         </Notice>
@@ -118,6 +121,7 @@ function SetsView({ outfits, recents, onDone }: { outfits: Outfits; recents: Rea
             <p className="sa-caption sa-muted">
               <span className="sa-truncate inline-block max-w-full align-bottom">“{search?.prompt}”</span>
               <br />
+              {labels.length ? <span data-testid="outfit-filters">{labels.join(" · ")}<br /></span> : null}
               <span data-testid="outfit-method">{search?.selection?.method === "agent" ? `Escolhidos pelo agente (${search.selection.model ?? "IA"}) e conferidos pelo servidor` : "Seleção por regras (sem agente)"}</span>
             </p>
           </div>
@@ -127,6 +131,7 @@ function SetsView({ outfits, recents, onDone }: { outfits: Outfits; recents: Rea
                 onSelect={(on) => setPicked((p) => (on ? [...p, s.id] : p.filter((x) => x !== s.id)))} onGenerate={() => void askQuote([s])} />
             ))}
           </div>
+          {filtered ? <p className="sa-caption sa-muted" data-testid="outfit-filter-report">{filtered}</p> : null}
           {chosen.length ? (
             <div className="sa-outfit-bar">
               <p className="sa-body-sm min-w-0" role="status">{chosen.length === 1 ? "Marque mais um para comparar" : `${chosen.length} conjuntos marcados`}</p>

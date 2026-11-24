@@ -33,7 +33,7 @@ const svg = (n) => `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="
 
 const SLOT = { upper: "Parte de cima", lower: "Parte de baixo", outer: "Terceira peça", dress: "Vestido", set: "Conjunto" }
 export const piece = (base, slot, name, price, over = {}) => ({
-  slot, label: SLOT[slot], reason: over.reason ?? "", variantId: null,
+  storeRating: over.rating ?? 92.1, storeSales: 12, slot, label: SLOT[slot], reason: over.reason ?? "", variantId: null,
   tryOn: over.blocked ? { ready: false, code: "image_unsuitable", message: "A imagem desta peça não serve para a prova." } : { ready: true, code: null, message: null },
   product: {
     id: over.id ?? `p-${slot}-${name.length}-${price}`, name, category: { id: "tops", label: "Roupas" }, partner: { id: "aliexpress", name: over.store ?? "Shop1105895109 Store" }, price: { amount: price, currency: "BRL" },
@@ -83,7 +83,7 @@ export function createState(base, opts = {}) {
         id: "search-1", prompt: this.lastSearch?.prompt ?? "me vista com roupas de verão", filters: this.lastSearch?.filters ?? null, source: "aliexpress", status: this.searchStatus ?? "succeeded", createdAt: "2026-11-24T18:08:22Z",
         stage: { id: running ? "search" : "done", label: running ? "Buscando peças na loja" : "Pronto", detail: { done: this.polls, total: 4 } }, selection: running || empty ? null : { method: "agent", model: "claude-haiku" },
         message: empty ? "Nenhuma combinação da loja atende a este pedido. Tente outras cores ou um orçamento maior." : null, sets: running || empty ? [] : this.sets,
-        report: running ? null : { interpretedBy: "agent", plannedBy: "agent", queries: [{ slot: "Parte de cima", query: "camiseta leve", outcome: "ok", returned: 50, kept: 12 }, { slot: "Parte de baixo", query: "short", outcome: "filtered_out", returned: 49, kept: 0 }], filtered: { style: 9 }, missingSlots: ["Parte de baixo"], agent: { calls: 3, estimatedUsd: 0.0012 } },
+        report: running ? null : { interpretedBy: "agent", plannedBy: "agent", queries: [{ slot: "Parte de cima", query: "camiseta leve", outcome: "ok", returned: 50, kept: 12 }, { slot: "Parte de baixo", query: "short", outcome: "filtered_out", returned: 49, kept: 0 }], filtered: { style: 9, ...(this.lastSearch?.filters ? { filter_price: 8, filter_rating_missing: 4 } : {}) }, missingSlots: ["Parte de baixo"], agent: { calls: 3, estimatedUsd: 0.0012 } },
       }
     },
   }
@@ -111,7 +111,7 @@ export async function mockApi(page, state) {
         costs: { generate: 10, edit: null, tryOn: 10 }, unit: { singular: "moeda", plural: "moedas" }, quotaStatus: "provisional", plans: [], costGaps: [], generationMode: "real",
         realProvider: { provider: "Segmind", model: "flux-3-klein-image-edit", callsPerGeneration: 1, estimatedUsdPerCall: 0.01287, maxUsdPerCall: 0.02 }, maxReferences: 0, maxChosenPieces: 1, maxPromptLength: 500,
         budget: { min: 0, max: 0, step: 1, currency: "BRL" }, acceptedImageTypes: ["image/jpeg"], maxImageBytes: 1, minImageHeight: 1, sizes: {}, photoPolicyVersion: "2026-11-24-inline",
-        capabilities: { mode: "single_piece_try_on", search: true, searchScope: "stores", dress: true, adjustments: false, bodyPhotoRequired: true, closet: false, generation: true, edits: false, match: false, references: false, preferences: false, measurements: false, plans: false, candidates: false, outfits: true, composer: { mode: "agent", model: "claude-haiku" }, ...state.config },
+        capabilities: { mode: "single_piece_try_on", search: true, searchScope: "stores", dress: true, adjustments: false, bodyPhotoRequired: true, closet: false, generation: true, edits: false, match: false, references: false, preferences: false, measurements: false, plans: false, candidates: false, outfits: true, outfitFilters: ["audience", "price", "total", "rating", "sales"], composer: { mode: "agent", model: "claude-haiku" }, ...state.config },
       })
     }
     if (path === "/studio/looks") return json({ items: state.looks })

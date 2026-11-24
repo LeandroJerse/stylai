@@ -9,6 +9,7 @@ import { api } from "../api/client"
 import { isApiError, messageOf } from "../api/errors"
 import { isJobDone, keys, useBalance, useJob, useLook, usePreferences, useStartJob, useStudioConfig } from "../api/queries"
 import type { Job, JobKind, Preference, PreferenceRules, Product, CompositionSlotId } from "../api/types"
+import { filtersToSend } from "../lib/filters"
 import { bindKey, forgetJob, forgetKey, keyFor } from "../lib/requestKeys"
 import { useAuth } from "../auth/AuthProvider"
 import { useStore, type StudioMode } from "./store"
@@ -128,9 +129,10 @@ export function useStudio() {
     search: async (): Promise<StartResult> => {
       if (!signedIn) return { ok: false, message: "Entre na sua conta para usar o Estúdio." }
       setSearching(true)
+      const filters = filtersToSend(draft.filters, caps?.outfitFilters ?? [])
       try {
-        const result = await api.studio.search({ prompt: draft.prompt.trim(), rules: draft.sessionRules })
-        setDraft((d) => ({ searchResult: result, stageView: "pieces", stageNonce: d.stageNonce + 1 }))
+        const result = await api.studio.search({ prompt: draft.prompt.trim(), rules: draft.sessionRules, ...(filters ? { filters } : {}) })
+        setDraft((d) => ({ searchResult: result, stageView: "pieces", stageNonce: d.stageNonce + 1, ...(caps?.outfits && !d.lookId ? { composerOpen: false } : {}) }))
         return { ok: true }
       } catch (e) {
         return { ok: false, message: messageOf(e) }

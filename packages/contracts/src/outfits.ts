@@ -4,6 +4,7 @@
  * Product titles are untrusted data and only the seller's statement: a title never proves fabric, origin or fit.
  */
 import { normalizeText } from "./search-rules.js"
+import { filterConflict, type OutfitFilters } from "./outfit-filters.js"
 import { buildSlotQueries, SLOT_LABEL, slotOfCategory, type CompositionIntent, type SlotId } from "./composition.js"
 
 /** "set" = one listing sold as a complete outfit (top and bottom together). */
@@ -29,6 +30,9 @@ export interface OutfitCandidate {
   name: string
   priceMinor: number | null
   colorTags: string[]
+  /** As the store publishes them; unknown stays null. */
+  ratingPercent?: number | null
+  recentSales?: number | null
 }
 export type OutfitPools = Partial<Record<OutfitSlot, OutfitCandidate[]>>
 export interface OutfitChoice { slot: OutfitSlot; productId: string; reason: string }
@@ -52,6 +56,8 @@ const RELAXED = /(esportiv|streetwear|confortavel|relaxad|academia|lazer)/
 const SPORT = /(esportiv|academia|fitness)/
 const FORMAL_OCCASION = /(jantar|trabalho|escritorio|casamento|formatura|reuniao|entrevista)/
 const SUMMER_PIECE = /\b(verao|praia|regatas?|bermudas?|shorts?|manga curta|sandalias?)\b/
+const LONG_SLEEVE = /\bmangas? (longas?|compridas?)\b/
+const CHRISTMAS = /\b(natal|natalin[oa]s?|christmas|papai noel)\b/
 const WINTER_PIECE = /\b(inverno|neve|forrad[oa]s?|pelucia|termic[oa]s?|fleece|acolchoad[oa]s?|sherpa)\b/
 
 const stylesOf = (intent: CompositionIntent): string => normalizeText((intent.style ?? []).join(" "))
@@ -77,6 +83,10 @@ export function styleConflict(intent: CompositionIntent, name: string): string |
   if (SPORT.test(stylesOf(intent)) && FORMAL_PIECE.test(n)) return "formal_for_sport"
   if (intent.climate === "frio" && SUMMER_PIECE.test(n)) return "season"
   if (intent.climate === "calor" && WINTER_PIECE.test(n)) return "season"
+  // What the person wrote about the pieces themselves overrides these two.
+  const asked = normalizeText([intent.occasion ?? "", ...intent.terms, ...(intent.style ?? []), ...intent.slots.map((s) => s.query ?? "")].join(" "))
+  if (intent.climate === "calor" && LONG_SLEEVE.test(n) && !wantsElegant(intent) && !LONG_SLEEVE.test(asked)) return "season"
+  if (CHRISTMAS.test(n) && !CHRISTMAS.test(asked)) return "season"
   return null
 }
 
@@ -99,14 +109,14 @@ function score(intent: CompositionIntent, c: OutfitCandidate): number {
 }
 
 /** Conflicts and repeated listings out (with the reason), best first. Pure function of its input. */
-export function rankCandidates(intent: CompositionIntent, pool: readonly OutfitCandidate[]): { kept: OutfitCandidate[]; rejected: { id: string; reason: string }[] } {
+export function rankCandidates(intent: CompositionIntent, pool: readonly OutfitCandidate[], filters: OutfitFilters | null = null): { kept: OutfitCandidate[]; rejected: { id: string; reason: string }[] } {
   const rejected: { id: string; reason: string }[] = []
   const titles = new Set<string>(), ids = new Set<string>()
   const kept: OutfitCandidate[] = []
   for (const c of pool) {
     if (ids.has(c.id)) continue
     ids.add(c.id)
-    const conflict = styleConflict(intent, c.name)
+    const conflict = styleConflict(intent, c.name) ?? (filters ? filterConflict(filters, c) : null)
     if (conflict) { rejected.push({ id: c.id, reason: conflict }); continue }
     const title = normalizeText(c.name).replace(/[^a-z0-9]+/g, " ").trim().slice(0, 80)
     if (titles.has(title)) { rejected.push({ id: c.id, reason: "duplicate_title" }); continue }
@@ -246,13 +256,35 @@ export function buildBundleQueries(intent: CompositionIntent): string[] {
 }
 
 /** Ordered store queries of one search, bounded: complete outfits first, then each slot's progressive queries. */
+/**
+ * Store queries, as observed on the real source (free read-only calls, 2026-11-24): "short" returns 0 garments of 49 (read
+ * as an English adjective) and "bermuda" 45 of 49; season words ("camiseta leve verão") come back empty.
+ */
+function storeQuery(raw: string): string {
+  const words = raw.split(/\s+/).filter((w) => w && !/^(verao|calor|inverno|frio|outono|primavera|leves?|fresc[oa]s?|para|de|do|da|o|a)$/.test(normalizeText(w)))
+  const out = words.map((w) => (/^shorts?$/.test(normalizeText(w)) ? "bermuda" : w))
+  if (out.includes("bermuda")) for (let i = 0; i < out.length; i++) out[i] = normalizeText(out[i]!) === "femininos" ? "feminina" : normalizeText(out[i]!) === "masculinos" ? "masculina" : out[i]!
+  return out.slice(0, 4).join(" ") || raw
+}
+/** Hot weather, nothing specific asked for that part: what the store really answers with summer clothes. */
+function summerQueries(intent: CompositionIntent, slot: SlotId): string[] {
+  const request = intent.slots.find((s) => s.slot === slot)
+  if (intent.climate !== "calor" || wantsElegant(intent) || request?.query) return []
+  const who = (f: string, m: string) => (intent.audience === "feminino" ? ` ${f}` : intent.audience === "masculino" ? ` ${m}` : "")
+  const color = request?.color ? ` ${request.color}` : ""
+  if (slot === "upper") return [`camiseta manga curta${who("feminina", "masculina")}${color}`, `regata${who("feminina", "masculina")}${color}`]
+  if (slot === "lower") return [`bermuda${who("feminina", "masculina")}${color}`, ...(intent.audience === "masculino" ? [] : [`saia${who("feminina", "")}${color}`])]
+  return []
+}
+
 export function searchPlan(intent: CompositionIntent, extra: { bundles?: readonly string[]; slots?: Partial<Record<SlotId, readonly string[]>> } = {}): { slot: OutfitSlot; query: string }[] {
   const bundles = [...new Set([...(extra.bundles ?? []), ...buildBundleQueries(intent)])].slice(0, 2).map((query) => ({ slot: "set" as const, query }))
   const perSlot = intent.slots.map(({ slot }) => {
     const own = buildSlotQueries(intent, slot)
     // "calça masculina" alone is answered mostly with complete sets (2026-11-24): a second, specific query follows it.
     const specific = slot === "lower" && own.length < 2 && own[0]?.startsWith("calça") ? [`${own[0]} jeans`] : []
-    return [...new Set([...(extra.slots?.[slot] ?? []), ...own, ...specific])].slice(0, 3).map((query) => ({ slot: slot as OutfitSlot, query }))
+    const audience = (q: string) => (slot === "lower" && q === "bermuda" && intent.audience ? `bermuda ${intent.audience === "feminino" ? "feminina" : "masculina"}` : q)
+    return [...new Set([...(extra.slots?.[slot] ?? []).map(storeQuery).map(audience), ...summerQueries(intent, slot), ...own, ...specific])].slice(0, 3).map((query) => ({ slot: slot as OutfitSlot, query }))
   })
   const out: { slot: OutfitSlot; query: string }[] = [...bundles]
   // Round robin: every requested slot gets its best query before any slot gets a second one.

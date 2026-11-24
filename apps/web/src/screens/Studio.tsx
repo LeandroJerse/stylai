@@ -4,6 +4,7 @@
  * versions and history all come from the server (useStudio, api/queries.ts).
  */
 import { CompositionPanel } from "../components/CompositionPanel"
+import { FilterBar } from "../components/outfits/FilterBar"
 import { OutfitStage } from "../components/outfits/OutfitStage"
 import { useOutfits } from "../app/useOutfits"
 import { useEffect, useId, useRef, useState } from "react"
@@ -704,7 +705,7 @@ function Composer({ canCollapse = false }: { canCollapse?: boolean }) {
       ) : (
         <>
           {prompt}
-          {outfits ? null : (
+          {outfits ? <FilterBar /> : (
             <>
               <ChosenPieces />
               <div className="sa-rule" />
@@ -985,7 +986,7 @@ function ResultHero({ look }: { look: Look }) {
   const shown = deck.card?.look ?? look
   const isSuggestion = deck.card?.kind === "suggestion"
   // Try-on images have no prepared looks to compare, so Match is not offered for them.
-  const canMatch = look.origin !== "tryon"
+  const canMatch = look.origin !== "tryon" && !(studio.caps?.outfits && studio.caps.match === false)
   const viewing = overlay?.kind === "viewer" || overlay?.kind === "lookViewer"
   // Tapping the photo hides the title and Match so the whole look can be seen; tapping again brings them back.
   const [matchHidden, setMatchHidden] = useState(false)
@@ -1085,7 +1086,7 @@ function VersionSwap({ look }: { look: Look }) {
       {current ? (
         <p className="sa-body-sm" data-testid="version-piece">
           <span className="sa-muted">Peça desta versão (v{look.version}): </span>
-          <strong>{current.name}</strong>
+          <strong>{shortPieceName(current.name)}</strong>
           {current.variants[0] ? ` · ${current.variants[0].label}` : ""}
         </p>
       ) : null}
@@ -1093,7 +1094,7 @@ function VersionSwap({ look }: { look: Look }) {
         <>
           <p className="sa-body-sm" data-testid="next-piece">
             <span className="sa-muted">Próxima troca: </span>
-            <strong>{next.name}</strong>
+            <strong>{shortPieceName(next.name)}</strong>
           </p>
           {studio.singlePiece ? <VariantPicker product={next} /> : null}
           <PhotoGate />
@@ -1160,11 +1161,13 @@ function ResultDetails({ look }: { look: Look }) {
         <VersionStrip look={look} />
       </div>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="sa-btn sa-btn-primary flex-1" onClick={save} style={{ minWidth: 150 }} aria-disabled={pending || undefined}>
-          <Archive size={18} aria-hidden="true" />
-          {pending ? "Guardando…" : saved ? "Ver no Closet" : "Guardar look"}
-        </button>
-        {look.origin !== "tryon" ? (
+        {studio.caps?.outfits && studio.caps.closet === false ? null : (
+          <button type="button" className="sa-btn sa-btn-primary flex-1" onClick={save} style={{ minWidth: 150 }} aria-disabled={pending || undefined}>
+            <Archive size={18} aria-hidden="true" />
+            {pending ? "Guardando…" : saved ? "Ver no Closet" : "Guardar look"}
+          </button>
+        )}
+        {look.origin !== "tryon" && !(studio.caps?.outfits && studio.caps.edits === false) ? (
           <button type="button" className="sa-btn sa-btn-secondary flex-1" onClick={() => (studio.caps?.edits === false ? notify("A edição por texto ainda não está disponível.") : open({ kind: "edit" }))} aria-disabled={studio.caps?.edits === false || undefined} style={{ minWidth: 150 }}>
             <PencilSimpleLine size={18} aria-hidden="true" /> Editar imagem
           </button>
@@ -1312,7 +1315,7 @@ function SearchCatalogPanel({ look, search }: { look?: Look; search?: SearchResu
   return (
     <section className="sa-searchcat" aria-labelledby={titleId}>
       {search ? (
-        <div className="grid gap-1 px-4 pt-4">
+        <div className="grid gap-1 px-4 pb-4 pt-4">
           <h2 id={titleId} className="sa-title-sm">Peças encontradas</h2>
           <p className="sa-caption sa-muted sa-num">
             {plural(total, "produto", "produtos")}
@@ -1350,7 +1353,7 @@ function SearchCatalogPanel({ look, search }: { look?: Look; search?: SearchResu
           <p className="sa-body-sm sa-muted" data-testid="search-empty">{search ? "Nenhuma peça do catálogo corresponde a este pedido. Tente outra peça, cor ou orçamento." : "A busca não trouxe outras peças para este look."}</p>
         ) : (
           <>
-            <ul className={`grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 ${search && studio.caps?.outfits ? "xl:grid-cols-4" : "lg:grid-cols-2"}`}>
+            <ul className={`grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 ${search && studio.caps?.outfits && !draft.lookId ? "xl:grid-cols-4" : "lg:grid-cols-2"}`}>
               {visible.map(({ product: p, usedInLook, failed }) => {
                 const selected = selection.some((x) => x.id === p.id)
                 // With a single slot a new pick replaces the current one, so nothing is blocked.
@@ -1383,7 +1386,7 @@ function SearchCatalogPanel({ look, search }: { look?: Look; search?: SearchResu
                     </button>
                     <OfferPrice product={p} />
                     <StoreTags product={p} className="mt-2" />
-                        <p className={`sa-caption mt-2 ${failed.length ? "sa-warning-text" : "sa-muted"}`}>{failed.length ? (search ? failed[0] : `Fora das preferências: ${failed[0]}`) : search ? (p.fixture ? "Item de teste" : "Encontrada no catálogo") : usedInLook ? "No look atual" : "Não usada no look"}</p>
+                        <p className={`sa-caption mt-2 ${failed.length && !(search && studio.caps?.outfits) ? "sa-warning-text" : "sa-muted"}`}>{failed.length && !(search && studio.caps?.outfits) ? (search ? failed[0] : `Fora das preferências: ${failed[0]}`) : search ? (p.fixture ? "Item de teste" : studio.caps?.outfits ? (unfit ? "Só para ver e comprar" : "Pode ser provada") : "Encontrada no catálogo") : usedInLook ? "No look atual" : "Não usada no look"}</p>
                   </li>
                 )
               })}

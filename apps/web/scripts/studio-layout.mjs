@@ -95,6 +95,12 @@ try {
     const state = createState(front.base)
     const { page, errors } = await open(w, h, state)
     await page.locator(".sa-composer textarea").fill("me vista com roupas de verão")
+    if (await page.getByTestId("filters-toggle").getAttribute("aria-expanded") === "false") await page.getByTestId("filters-toggle").click()
+    await page.getByTestId("filter-audience-feminino").click()
+    await page.getByLabel("Peça até R$").fill("79,90")
+    await page.getByTestId("filter-rating").selectOption("90")
+    await shot(page, `${name}-0-filters`)
+    t.check(await page.locator(".sa-filters").evaluate((el) => [...el.querySelectorAll("input, select, button")].every((c) => c.scrollWidth <= c.clientWidth + 1)), `${name}: no filter control is cut`)
     state.stuck = true
     await page.getByTestId("outfit-search-button").dblclick()
     await page.getByTestId("outfit-progress").waitFor()
@@ -105,6 +111,8 @@ try {
     await page.getByTestId("outfit-card").first().waitFor({ timeout: 15000 })
     await page.waitForTimeout(500)
     t.check((await visibleShare(page, '[data-testid="outfit-card"]')).visible >= 220, `${name}: first search ever, outfits in sight`)
+    t.check(JSON.stringify(state.lastSearch.filters) === JSON.stringify({ audience: "feminino", maxPieceBrl: 79.9, minRatingPercent: 90 }), `${name}: filters are sent`, JSON.stringify(state.lastSearch))
+    t.check((await page.getByTestId("outfit-filter-report").innerText()).includes("12 anúncios"), `${name}: the page says what the filters removed`)
 
     // piece detail, lock and swap
     await page.getByTestId("outfit-swap-upper").first().click()

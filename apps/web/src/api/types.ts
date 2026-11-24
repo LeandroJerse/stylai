@@ -3,6 +3,8 @@
  * `parse.ts` turns raw responses into these shapes (and drops what is unsafe or malformed).
  */
 
+import type { FilterId } from "../lib/filters"
+
 export interface ImageAsset {
   url: string
   width: number | null
@@ -315,6 +317,8 @@ export interface StudioCapabilities {
   candidates: boolean
   /** Coordinated outfits: durable search, swaps and image batches (/studio/outfit-*). */
   outfits: boolean
+  /** Purchase filters this server applies (empty = none offered). */
+  outfitFilters: FilterId[]
 }
 
 /** Capabilities that are on/off flags (not the mode/scope strings). */

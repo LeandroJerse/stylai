@@ -31,6 +31,10 @@ export interface NormalizedAliExpressCatalogItem extends NormalizedCatalogItem {
   /** Tracked affiliate link (only when https); `productUrl` keeps the plain product page. */
   affiliateUrl: string | null
   capabilities: CatalogItemCapabilities
+  /** Positive feedback, 0-100, only when the store sent a percentage. */
+  ratingPercent: number | null
+  /** Recent units sold, as the store counts them. */
+  recentSales: number | null
 }
 
 export type NormalizeAliExpressOutcome =
@@ -55,6 +59,17 @@ function canonicalProductUrl(raw: string | null): string | null {
   return `${url.origin}${url.pathname}`
 }
 
+/** Only an explicit percentage is a rating: a bare number could be stars, and is ignored. */
+export function parsePercent(raw: string | null | undefined): number | null {
+  const m = /^(\d{1,3}(?:\.\d{1,2})?)\s*%$/.exec(raw?.trim() ?? "")
+  const n = m ? Number(m[1]) : NaN
+  return n >= 0 && n <= 100 ? n : null
+}
+export function parseSales(raw: string | null | undefined): number | null {
+  const n = /^\d{1,9}$/.test(raw?.trim() ?? "") ? Number(raw) : NaN
+  return Number.isSafeInteger(n) ? n : null
+}
+
 function mapCategory(raw: AliExpressProductRaw): { id: string; label: string } {
   // Styling advice ("combina com camisa e blazer") names other garments, not what is sold.
   const whole = raw.title.toLowerCase()
@@ -75,7 +90,9 @@ function mapCategory(raw: AliExpressProductRaw): { id: string; label: string } {
   const garment = /(cal[çc]as?|camisas?|blusas?|camisetas?|ternos?|blazers?|jaquetas?|casacos?|coletes?|conjuntos?|su[ée]ter|vestidos?|saias?|bermudas?|shorts?)/
   const at = (re: RegExp) => { const i = title.search(re); return i < 0 ? Infinity : i }
   const costume = /\b(fantasias?|halloween|cosplay|coaplay|carnaval|sereia|hussar)\b/.test(title)
-  const notGarment = costume || at(accessory) < at(garment)
+  // The store's own taxonomy says what the title hides (shapewear, sleepwear, costumes, party and children's goods).
+  const notWear = /(roupa íntima|roupas íntimas|lingerie|pijama|cosplay|fantasia|artigos para festa|infantil)/.test((raw.secondLevelCategoryName ?? "").toLowerCase())
+  const notGarment = costume || notWear || at(accessory) < at(garment)
   if (notGarment) return { id: "uncategorized", label: raw.secondLevelCategoryName ?? "Categoria não mapeada" }
   if (!notOutfit && (joined || (bundleWord && lower) || (pieceCount && clothing) || (suit && clothing && at(accessory) === Infinity))) {
     return { id: "outfit_sets", label: "Conjuntos (múltiplas peças)" }
@@ -129,6 +146,8 @@ export function normalizeAliExpressProduct(raw: AliExpressProductRaw, observedAt
         evidence: "AliExpress Affiliates API (aliexpress.affiliate.product.query): exibição e link de afiliado para descoberta; direito de envio da imagem ao provador de IA não comprovado.",
         tryOnAllowed: false,
       },
+      ratingPercent: parsePercent(raw.evaluateRate),
+      recentSales: parseSales(raw.latestVolume),
       capabilities: { displayAndLink: true, aiTryOn: false, aiTryOnBlockedReason: "ai_image_rights_unconfirmed" },
       fixture: false,
     },

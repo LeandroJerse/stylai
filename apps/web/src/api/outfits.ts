@@ -4,6 +4,7 @@
  */
 import { http } from "./client"
 import { arr, bool, isObj, money, num, obj, oneOf, parseImage, parseProduct, reqStr, str, strs } from "./parse"
+import { NO_FILTERS, type FilterReport, type SearchFilters } from "../lib/filters"
 import type { ImageAsset, Money, Product } from "./types"
 
 export const OUTFIT_SLOT_IDS = ["set", "dress", "lower", "upper", "outer"] as const
@@ -14,6 +15,9 @@ export interface OutfitPiece {
   reason: string
   variantId: string | null
   tryOn: { ready: boolean; code: string | null; message: string | null }
+  /** Positive feedback (percentage) and recent units, as the store publishes them. */
+  storeRating: number | null
+  storeSales: number | null
   product: Product
 }
 export interface OutfitSet {
@@ -45,11 +49,13 @@ export interface OutfitSearch {
   stage: { id: string; label: string; done: number | null; total: number | null }
   selection: { method: "agent" | "rules_fallback"; model: string | null } | null
   message: string | null
+  /** Filters used by this search (null while it runs or when unknown). */
+  filters: SearchFilters | null
   sets: OutfitSet[]
   report: {
     interpretedBy: "agent" | "rules_fallback"; plannedBy: "agent" | "rules_fallback"
     queries: { slot: string; query: string; outcome: string; returned: number; kept: number }[]
-    removed: number; missingSlots: string[]; agentCalls: number; agentUsd: number | null
+    removed: number; filters: FilterReport; missingSlots: string[]; agentCalls: number; agentUsd: number | null
   } | null
 }
 export interface OutfitSearchItem { id: string; prompt: string; createdAt: string | null; status: OutfitSearchStatus; sets: number }
@@ -104,7 +110,7 @@ function parsePiece(raw: unknown): OutfitPiece | null {
   const slot = slotOf(raw.slot)
   if (!slot) return null
   const t = isObj(raw.tryOn) ? raw.tryOn : {}
-  return { slot, label: str(raw.label) ?? slot, reason: str(raw.reason) ?? "", variantId: str(raw.variantId), tryOn: { ready: t.ready === true, code: str(t.code), message: str(t.message) }, product: parseProduct(raw.product) }
+  return { slot, label: str(raw.label) ?? slot, reason: str(raw.reason) ?? "", variantId: str(raw.variantId), tryOn: { ready: t.ready === true, code: str(t.code), message: str(t.message) }, storeRating: num(raw.storeRating), storeSales: num(raw.storeSales), product: parseProduct(raw.product) }
 }
 const pieces = (v: unknown): OutfitPiece[] => arr(v).map(parsePiece).filter((p): p is OutfitPiece => p !== null)
 
@@ -126,20 +132,30 @@ export function parseOutfitSetDetail(raw: unknown): OutfitSetDetail {
     revisions: arr(o.revisions).filter(isObj).map((r) => ({ revision: num(r.revision) ?? 0, label: str(r.label) ?? "Versão", createdAt: str(r.createdAt), current: r.current === true, total: money(r.total), pieces: pieces(r.pieces) })),
   }
 }
+function parseFilters(raw: unknown): SearchFilters | null {
+  if (!isObj(raw)) return null
+  return {
+    ...NO_FILTERS, audience: raw.audience === "feminino" || raw.audience === "masculino" ? raw.audience : null, minPieceBrl: num(raw.minPieceBrl), maxPieceBrl: num(raw.maxPieceBrl),
+    maxTotalBrl: num(raw.maxTotalBrl), minRatingPercent: num(raw.minRatingPercent), minSales: num(raw.minSales),
+  }
+}
 export function parseOutfitSearch(raw: unknown): OutfitSearch {
   const o = obj(raw, "outfitSearch")
   const stage = isObj(o.stage) ? o.stage : {}
   const detail = isObj(stage.detail) ? stage.detail : {}
   const r = isObj(o.report) ? o.report : null
   const agent = r && isObj(r.agent) ? r.agent : {}
+  const filtered: Record<string, unknown> = r && isObj(r.filtered) ? r.filtered : {}
   return {
     id: reqStr(o.id, "outfitSearch.id"), prompt: str(o.prompt) ?? "", source: str(o.source) ?? "", status: oneOf(o.status, STATUS, "interrupted"), createdAt: str(o.createdAt),
     stage: { id: str(stage.id) ?? "", label: str(stage.label) ?? "", done: num(detail.done), total: num(detail.total) },
-    selection: isObj(o.selection) ? { method: method(o.selection.method), model: str(o.selection.model) } : null, message: str(o.message), sets: arr(o.sets).map(parseOutfitSet),
+    selection: isObj(o.selection) ? { method: method(o.selection.method), model: str(o.selection.model) } : null, message: str(o.message), filters: parseFilters(o.filters), sets: arr(o.sets).map(parseOutfitSet),
     report: r ? {
       interpretedBy: method(r.interpretedBy), plannedBy: method(r.plannedBy),
       queries: arr(r.queries).filter(isObj).map((q) => ({ slot: str(q.slot) ?? "", query: str(q.query) ?? "", outcome: str(q.outcome) ?? "", returned: num(q.returned) ?? 0, kept: num(q.kept) ?? 0 })),
-      removed: isObj(r.filtered) ? Object.values(r.filtered).reduce<number>((a, n) => a + (num(n) ?? 0), 0) : 0, missingSlots: strs(r.missingSlots), agentCalls: num(agent.calls) ?? 0, agentUsd: num(agent.estimatedUsd),
+      removed: Object.entries(filtered).reduce<number>((a, [k, n]) => a + (k.startsWith("filter_") ? 0 : (num(n) ?? 0)), 0),
+      filters: { price: num(filtered.filter_price) ?? 0, rating: num(filtered.filter_rating) ?? 0, ratingMissing: num(filtered.filter_rating_missing) ?? 0, sales: num(filtered.filter_sales) ?? 0, audience: num(filtered.filter_audience) ?? 0 },
+      missingSlots: strs(r.missingSlots), agentCalls: num(agent.calls) ?? 0, agentUsd: num(agent.estimatedUsd),
     } : null,
   }
 }
@@ -190,7 +206,7 @@ const send = <T>(path: string, parse: (raw: unknown) => T, body?: unknown, extra
   http.request<unknown>(path, { method: "POST", auth: "required", ...(body === undefined ? {} : { body }), ...(extra.key ? { headers: { "Idempotency-Key": extra.key } } : {}), ...(extra.timeoutMs ? { timeoutMs: extra.timeoutMs } : {}) }).then(parse)
 
 export const outfitsApi = {
-  startSearch: (prompt: string, key: string) => send("/studio/outfit-searches", parseOutfitSearch, { prompt }, { key }),
+  startSearch: (prompt: string, filters: Partial<SearchFilters> | null, key: string) => send("/studio/outfit-searches", parseOutfitSearch, { prompt, ...(filters ? { filters } : {}) }, { key }),
   searches: () => read("/studio/outfit-searches", items(parseSearchItem)),
   search: (searchId: string, signal?: AbortSignal) => read(`/studio/outfit-searches/${id(searchId)}`, parseOutfitSearch, signal),
   cancelSearch: (searchId: string) => send(`/studio/outfit-searches/${id(searchId)}/cancel`, parseOutfitSearch),

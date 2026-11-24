@@ -33,6 +33,7 @@ import {
   parseUpload,
   parseUser,
 } from "./parse"
+import type { SearchFilters } from "../lib/filters"
 import type { BodyAngle, CompositionSlotId, Measurements, PreferenceRules } from "./types"
 
 export const http: HttpClient = createHttpClient({ baseUrl: env.apiBaseUrl })
@@ -170,7 +171,7 @@ export const api = {
         body: input.parentLookId ? { compositionId: input.compositionId, choices: input.choices, sourceLookId: input.parentLookId } : { compositionId: input.compositionId, choices: input.choices },
       }).then(parseJob),
     /** Search step: request + preferences -> candidates. Never generates. */
-    search: (input: { prompt: string; rules: PreferenceRules | null }) => http.request<unknown>("/studio/searches", { method: "POST", body: input, auth: "required" }).then(parseSearchResult),
+    search: (input: { prompt: string; rules: PreferenceRules | null; filters?: Partial<SearchFilters> }) => http.request<unknown>("/studio/searches", { method: "POST", body: input, auth: "required" }).then(parseSearchResult),
     activeJob: () => http.request<unknown>("/studio/jobs", { method: "GET", auth: "required", query: { active: "true" } }).then((raw) => parsePage(raw, parseJob).items[0] ?? null),
     versions: (lookId: string) => get(`/studio/looks/${encodeURIComponent(lookId)}/versions`, parseLooks, { auth: "required" }),
     edit: (lookId: string, instruction: string) => http.request<unknown>(`/studio/looks/${encodeURIComponent(lookId)}/edits`, { method: "POST", body: { instruction }, auth: "required" }).then(parseJob),

@@ -12,7 +12,7 @@ export function item(n: number, category: string, name: string, priceMinor: numb
     source: "aliexpress", canonicalKey: `aliexpress:${n}`, seller: "aliexpress-shop-9", sellerName: "Loja", externalProductId: String(n), category, categoryLabel: category,
     name, color: null, variants: [], priceMinor, currency: "BRL", priceObservedAt: "2026-11-24T10:00:00.000Z", productUrl: `https://pt.aliexpress.com/item/${n}.html`,
     affiliateUrl: `https://s.click.aliexpress.com/e/${n}`, image: `https://ae01.alicdn.com/kf/${n}.jpg`, rights: { basis: "unconfirmed", evidence: "x", tryOnAllowed: false },
-    capabilities: { displayAndLink: true, aiTryOn: false, aiTryOnBlockedReason: "ai_image_rights_unconfirmed" }, fixture: false,
+    capabilities: { displayAndLink: true, aiTryOn: false, aiTryOnBlockedReason: "ai_image_rights_unconfirmed" }, fixture: false, ratingPercent: null, recentSales: null,
   } as NormalizedAliExpressCatalogItem
 }
 
