@@ -134,7 +134,7 @@ try {
   const unavailableCalls = []
   const frontDeletes = []
   page.on("request", (r) => { if (r.method() === "DELETE" && new URL(r.url()).pathname === "/v1/me/body-photos/front") frontDeletes.push(Date.now()) })
-  page.on("request", (r) => { const u = new URL(r.url()); if (/^\/v1\/(closet|me\/measurements|plans|preferences|studio\/match)(\/|$)|\/candidates$/.test(u.pathname)) unavailableCalls.push(u.pathname) })
+  page.on("request", (r) => { const u = new URL(r.url()); if (/^\/v1\/(me\/measurements|plans|preferences)(\/|$)|\/candidates$/.test(u.pathname)) unavailableCalls.push(u.pathname) })
   const shots = (name) => page.screenshot({ path: join(OUT, `${name}.png`) })
 
   await page.goto(`${ORIGIN}/#/criar-conta`)
@@ -179,10 +179,10 @@ try {
   t.check(await page.getByRole("button", { name: "Entrar" }).count() === 0, "recarregar mantém a sessão (cookie HttpOnly + refresh)")
   t.check(pageErrors.length === 0, "sem erros de JavaScript no navegador", pageErrors.join(" | "))
   await page.evaluate(() => { location.hash = "#/closet" })
-  t.check(await page.getByTestId("closet-unavailable").waitFor({ timeout: 10000 }).then(() => true, () => false), "Closet indisponível mostra estado neutro (sem carregamento infinito)")
+  t.check(await page.getByText("Nenhum look guardado").waitFor({ timeout: 10000 }).then(() => true, () => false), "Closet vazio explica como guardar o primeiro look (sem carregamento infinito)")
   await page.evaluate(() => { location.hash = "#/perfil" })
   t.check(await page.getByTestId("measurements-unavailable").waitFor({ timeout: 10000 }).then(() => true, () => false), "Medidas indisponíveis mostram estado neutro no Perfil")
-  t.check(unavailableCalls.length === 0, "nenhuma chamada a Closet, medidas, planos, preferências, Match ou acervo durante a jornada", [...new Set(unavailableCalls)].join(","))
+  t.check(unavailableCalls.length === 0, "nenhuma chamada a medidas, planos, preferências ou acervo durante a jornada", [...new Set(unavailableCalls)].join(","))
   // Photos persist (server + private storage): after reload, side and profile are still approved and in use.
   await page.evaluate(() => { location.hash = "#/perfil" })
   await page.getByTestId("photo-slot-profile").waitFor({ timeout: 15000 })
