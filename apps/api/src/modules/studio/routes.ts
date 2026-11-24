@@ -57,7 +57,8 @@ const compositionBody = z.object({
 }).strict()
 /** Stored plan subset the generation route trusts (written by the server itself). */
 const storedPlan = z.object({ plan: z.object({ selectionReviewRequired: z.boolean().optional(), interpretedBy: z.string().optional(), selectionMethod: z.string().optional(), slots: z.array(z.object({
-  slot: slotId, required: z.boolean().default(true), candidates: z.array(z.object({ id: z.string(), generationEligible: z.boolean() }).passthrough()),
+  slot: slotId, required: z.boolean().default(true), candidates: z.array(z.object({ id: z.string(), generationEligible: z.boolean(),
+    generationReference: z.object({ productId: uuid, variantId: uuid, imageUrl: z.string().url() }).optional() }).passthrough()),
 }).passthrough()) }).passthrough() }).passthrough()
 const tryOnBody = z.object({ sourceLookId: uuid, productIds: z.array(uuid).max(6), variantId: uuid.nullable().optional() }).strict()
 const idempotencyKey = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/)
@@ -142,20 +143,20 @@ function presentJob(row: z.infer<typeof jobRow>) {
 const itemSnapshot = snapshot.extend({ slot: z.string().nullable().optional() })
 type ItemSnapshot = z.infer<typeof itemSnapshot>
 
-function presentPiece(s: ItemSnapshot, id: string, variantId: string | null, base: string, warnings: string[]) {
+export function presentPiece(s: ItemSnapshot, id: string, variantId: string | null, base: string, warnings: string[]) {
   return {
     role: "chosen",
     slot: s.slot ?? null,
     warnings,
     product: {
-      id, name: s.name, category: null,
+      id: typeof s.canonical_id === "string" ? s.canonical_id : id, name: s.name, category: null,
       partner: { id: s.source, name: s.partner },
       price: s.price_minor == null ? null : { amount: s.price_minor / 100, currency: s.currency ?? "BRL" },
       images: s.garment_image_url ? [{ url: displayImageUrl(s.garment_image_url, base), alt: s.name }] : [],
-      variants: s.variant_label && variantId ? [{ id: variantId, label: s.variant_label, available: true }] : [],
+      variants: s.reference_kind !== "image_reference" && s.variant_label && variantId ? [{ id: variantId, label: s.variant_label, available: true }] : [],
       availability: "unknown",
       updatedAt: s.source_updated_at ?? null,
-      links: { productUrl: s.product_url ?? null, affiliateUrl: null },
+      links: { productUrl: s.product_url ?? null, affiliateUrl: typeof s.affiliate_url === "string" ? s.affiliate_url : null },
     },
   }
 }
@@ -252,7 +253,7 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
     }
   }
 
-  type Piece = { slot: SlotId; productId: string; variantId: string | null }
+  type Piece = { slot: SlotId; productId: string; variantId: string | null; imageUrl?: string }
 
   /** Pieces from catalog ids (no composition): slot derived from each product's category. */
   async function piecesFromCatalog(ids: readonly string[]): Promise<Piece[] | null> {
@@ -284,7 +285,7 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
         const groups = ordered.map((x) => (x.slot === "outer" ? "upper" : x.slot))
         if (!supports.success || groups.some((g) => supports.data.supports[g] !== true)) return reply.code(409).send(apiError("photo_framing_insufficient", FRAMING_MESSAGE))
       }
-      const items = ordered.map((x) => ({ slot: x.slot, product_id: x.productId, variant_id: x.variantId }))
+      const items = ordered.map((x) => ({ slot: x.slot, product_id: x.productId, variant_id: x.variantId, ...(x.imageUrl ? { image_url: x.imageUrl } : {}) }))
       const jobId = await deps.db.call("enqueue_composition_job", user, key.data, hash, deps.photoPolicyVersion, items, input.parent, input.compositionId)
       return reply.code(202).send(presentJob(jobRow.parse(await deps.db.call("read_ai_job", user, jobId))))
     } catch (error) {
@@ -309,7 +310,13 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
       const slot = plan.data.plan.slots.find((x) => x.slot === choice.slot)
       const cand = slot?.candidates.find((c) => c.id === choice.productId)
       if (!cand || out.some((x) => x.slot === choice.slot)) return "invalid"
-      if (!cand.generationEligible || !uuid.safeParse(cand.id).success) return "blocked"
+      if (!cand.generationEligible) return "blocked"
+      if (cand.generationReference) {
+        if (choice.variantId && choice.variantId !== cand.generationReference.variantId) return "invalid"
+        out.push({ slot: choice.slot, productId: cand.generationReference.productId, variantId: cand.generationReference.variantId, imageUrl: cand.generationReference.imageUrl })
+        continue
+      }
+      if (!uuid.safeParse(cand.id).success) return "blocked"
       // The person's size choice (validated by the database against the product); null only when one size exists.
       out.push({ slot: choice.slot, productId: cand.id, variantId: choice.variantId ?? null })
     }

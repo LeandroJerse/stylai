@@ -206,3 +206,30 @@ Soma calculada por uso reportado, não faturamento conciliado; falta custo de se
 - [Plano de look completo e alternativas](../superpowers/plans/2026-11-23-look-completo-fallback.md)
 
 Os artefatos em `test-results/` são locais/ignorados pelo Git. O diário preserva os resultados essenciais para revisão, mas não substitui os artefatos brutos. Antes de cada futura alteração, adicionar ciclo com: horário, sintoma, hipótese, evidência, arquivos, teste RED/GREEN, resultado real, custo, pendência e commit quando houver.
+
+### Ciclo E04 — referências AliExpress autorizadas (em andamento)
+
+- Checkpoint anterior 515e928. Migração nova 20261124003226 cria referência visual tipada, sem estoque/tamanho/SKU de fornecedor; API resolve imagem exata e worker mantém revogação antes de despacho.
+- RED/GREEN observado: SQL coluna ausente → suíte PostgreSQL descartável aprovada; API não elegível → 18 testes aprovados; worker falhava com SKU nulo → nove testes aprovados. Importador novo: RED módulo ausente → dois testes aprovados.
+- `bun run check` concluiu com sucesso em check-source-references.log; typecheck, build e smoke aprovados. Banco ativo ainda não migrado neste registro.
+- CLI bunx incompatível; usado supabase.exe instalado. Docker read local exigiu elevação do sandbox, concedida. Consulta inicial usou coluna snapshot inexistente, corrigida para plan sem executar leitura ampla.
+- Manifesto limitado às duas roupas já selecionadas. Validação recusou título maior que160; truncado somente título interno ao limite do schema, mantendo anúncio/ID/imagem e snapshot comercial original.
+- Inspeção visual: calça chino verde-oliva, camisa branca em anúncio com pessoa e texto promocional. Combinação smart casual coerente, sem prova de origem italiana ou alfaiataria formal. Avaliar transferência só da peça e preservação do rosto após geração.
+- Revisão independente iniciada. Zero chamadas de imagem nesta etapa; teto original preservado.
+
+### E04 — revisão e correções antes de qualquer geração
+
+- Revisão independente encontrou dois bloqueadores críticos: troca da imagem entre composição/job e revogação durante camada anterior. RED/GREEN SQL comprovado: URL exata agora acompanha job; gate de cada despacho confere direitos e imagem; alteração URL/product/variant revoga autorização da linha de imagem. Worker libera reserva não despachada e reporta falha específica; primeira camada já paga não é repetida.
+- Importantes corrigidos: RLS oculta image_reference; look final não exibe estoque para referência e conserva canonical ID/link afiliado no snapshot; importador rejeita mesmo anúncio com outro vendedor e serializa por ID de fonte; piloto verifica todas as peças, com opção de lista explícita de produtos de vendedores diferentes.
+- Evidências: source-review-red/green, source-dispatch-red/green, source-dispatch-worker-red/green, source-commerce-red/green, source-pilot-red/green e source-final-db.log. PostgreSQL17 completo passou, incluindo autorização explícita de duas peças e rejeição de vendedor secundário não permitido.
+- Suite de aplicação: 287 testes, zero falhas; build/smoke em verificação final. CLI Scoop v2 não lê config v3; binário local node_modules/.bin/supabase.exe v3.1 lê corretamente (sem editar dependências). Histórico local não registra migration20261122001000 embora schema exista; reaplicar idempotentemente junto da nova, sem resetar dados/contadores.
+- Histórico de provider_calls consultado: 68 chamadas antigas em environment=test, custo zero. Não são imagens pagas deste piloto. Contadores reais ainda serão conferidos pelo pilot_status antes do disparo.
+- Ruling: autorização do parceiro é declaração do operador, não validação independente de contrato. Mesma URL CDN pode mudar bytes; esse risco de fornecedor não foi resolvido por pin de URL e deve ser distinguido de fidelidade validada.
+
+### E05 — primeiro job real autorizado
+
+- Migrações20261122001000 (histórico ausente) e20261124003226 aplicadas pelo CLI3.1 no Supabase local. Importação transacional das duas referências concluída. Nenhuma alteração em env nem reset.
+- Full check final:287 testes/zero falhas, build e smoke concluídos. PostgreSQL descartável completo aprovado. Piloto antes do envio:0 tentativas,0 em andamento,US$2 disponíveis. Tetos global/dia,user/dia,Segmind/dia,job alinhados aUS$2; cap global do piloto cinco chamadas/US$2 permanece.
+- API natural retestada em italian-authorized.json: composição cf801dda-4295-492a-852d-0c44d42e3181, duas peças obrigatórias aprovadas. Haiku adicionou blazer opcional R$696,59 cujo título também menciona calças: nova falha de seleção/ambiguidade, não validado como peça avulsa. Operador excluiu slot opcional via contrato normal choices; sem editar composição ou contornar elegibilidade das peças obrigatórias.
+- Custo Haiku adicional US$0,000593; subtotal conhecido US$0,004333, ressalva anterior sobre seleção truncada não conciliada permanece.
+- POST real feito uma única vez, HTTP202, job27a7a68a-07d7-4427-b62b-ad1fdc3ca4c7. Duas camadas, própria foto frontal, reserva máximaUS$1. Harness nunca repete POST em resultado desconhecido; relatório italian-generation.json registra evolução. Resultado ainda em andamento neste registro.

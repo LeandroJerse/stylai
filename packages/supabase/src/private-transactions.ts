@@ -2,7 +2,7 @@ import type { Json } from "./database.types.js"
 import type { DatabasePurpose } from "./private-config.js"
 
 /** Must match private.server_boundary_version() of the latest boundary migration. */
-export const privateBoundaryVersion = "20261123231214"
+export const privateBoundaryVersion = "20261124003226"
 
 // bigint inputs/outputs remain decimal text: never silently round money/fences.
 type Call<A extends unknown[], R> = { args: A; result: R }
@@ -29,6 +29,7 @@ export interface PrivateTransactions {
     read_version_asset: Call<[actor: string,version: string],Json|null>
     list_catalog_products: Call<[limit: number,offset: number,category: string|null],Json|null>
     read_catalog_product: Call<[product: string],Json|null>
+    read_source_generation_references: Call<[source: string,items: Json],Json|null>
     catalog_facets: Call<[],Json|null>
     create_app_session: Call<[actor: string,providerSession: string,cookieHash: string,ciphertext: string,keyVersion: string,tokenTtlSeconds: number,sessionTtlSeconds: number],string>
     begin_session_refresh: Call<[cookieHash: string],Json|null>
@@ -133,6 +134,7 @@ export const privateOperations = {
     read_version_asset: transaction('read_version_asset',['uuid','uuid'],'json'),
     list_catalog_products: transaction('list_catalog_products',['integer','integer','text'],'json'),
     read_catalog_product: transaction('read_catalog_product',['uuid'],'json'),
+    read_source_generation_references: transaction('read_source_generation_references',['text','jsonb'],'json'),
     catalog_facets: transaction('catalog_facets',[],'json'),
     create_app_session: transaction('create_app_session',['uuid','uuid','text','text','text','integer','integer'],'uuid'),
     begin_session_refresh: transaction('begin_session_refresh',['text'],'json'),

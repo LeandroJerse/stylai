@@ -68,7 +68,9 @@ export interface EngineDeps {
 
 const variantSchema = z.object({
   product_id: z.string().uuid(), variant_id: z.string().uuid(), name: z.string(), category_id: z.string().nullable(),
-  source: z.string(), partner: z.string(), external_product_id: z.string(), external_variant_id: z.string(),
+  source: z.string(), partner: z.string(), external_product_id: z.string(), external_variant_id: z.string().nullable(),
+  reference_kind: z.enum(["sku", "image_reference"]).default("sku"),
+  canonical_id: z.string().optional(), affiliate_url: z.string().nullable().optional(),
   variant_label: z.string(), product_url: z.string().nullable(), price_minor: z.number().int().nullable(), currency: z.string(),
   availability: z.string(), variant_available: z.boolean().nullable(), published: z.boolean(), rights_cleared: z.boolean(),
   source_updated_at: z.string().nullable(), image_url: z.string().nullable(), fixture: z.boolean().optional(),
@@ -177,6 +179,8 @@ export function createEngine(deps: EngineDeps) {
       name: p.v.name, source: p.v.source, partner: p.v.partner, catalog_kind: p.v.source === "curated" ? "curated" : "source",
       slot: "slot" in p.v ? p.v.slot : null,
       external_product_id: p.v.external_product_id, external_variant_id: p.v.external_variant_id, variant_label: p.v.variant_label,
+      reference_kind: p.v.reference_kind,
+      canonical_id: p.v.canonical_id, affiliate_url: p.v.affiliate_url,
       product_url: p.v.product_url, price_minor: p.v.price_minor, currency: p.v.currency, garment_image_url: p.v.image_url,
       source_updated_at: p.v.source_updated_at, provider_category: p.category,
       link_verification: "unverified", visual_fidelity: "unverified", fixture: p.v.fixture === true,
@@ -334,7 +338,16 @@ export function createEngine(deps: EngineDeps) {
       if (!pilotRes.data.ok) throw new JobFailure(`pilot_${pilotRes.data.reason ?? "blocked"}`)
     }
     // A recovered job whose call was already dispatched is never re-sent.
-    if (!(await db.call("begin_provider_call", callId, fence))) throw new JobFailure("generation_needs_reconciliation")
+    try {
+      if (!(await db.call("begin_provider_call", callId, fence))) throw new JobFailure("generation_needs_reconciliation")
+    } catch (error) {
+      if (error instanceof PrivateDatabaseError && error.outcome === "rejected" && ["SA003", "SA004"].includes(error.sqlState ?? "")) {
+        const code = error.sqlState === "SA003" ? "try_on_rights_revoked" : "selection_changed"
+        await db.call("settle_provider_call", callId, "released", null, {}, {}, reserveMicros.toString(), "0", null, "rejected_before_run", 0, code)
+        throw new JobFailure(code)
+      }
+      throw error
+    }
 
     const genStart = now()
     let submitCount = 1

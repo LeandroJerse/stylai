@@ -13,7 +13,7 @@ import {
   buildSlotQueries, requiresSelectionReview, selectCompositionRules, SLOT_LABEL, slotOfCategory,
   type CandidatesBySlot, type CatalogSourceMode, type CompositionCandidate, type CompositionChoice, type CompositionIntent, type LockedSlots, type SlotId,
 } from "@stylai/contracts"
-import type { AliExpressCatalogService } from "@stylai/commerce"
+import type { AliExpressCatalogService, NormalizedAliExpressCatalogItem } from "@stylai/commerce"
 import type { Composer, InterpretationCache } from "@stylai/ai"
 import { ComposerResponseError } from "@stylai/ai"
 import type { PrivateDatabase } from "@stylai/supabase"
@@ -54,7 +54,7 @@ interface SlotPlan {
   slot: SlotId
   label: string
   required: boolean
-  candidates: (Presented & { slot: SlotId; generationEligible: boolean })[]
+  candidates: (Presented & { slot: SlotId; generationEligible: boolean; generationReference?: { productId: string; variantId: string; imageUrl: string } })[]
   choice: CompositionChoice | null
   error: string | null
 }
@@ -78,6 +78,18 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
     const tags = colorTagsOf(name)
     return intent.colors.filter((c) => tags.includes(c)).length * 2 + intent.terms.filter((t) => n.includes(t)).length
       - intent.avoid.filter((a) => n.includes(a)).length * 5
+  }
+
+  async function sourceCandidates(items: NormalizedAliExpressCatalogItem[], slot: SlotId): Promise<SlotPlan["candidates"]> {
+    const refs = z.array(z.object({ externalProductId: z.string(), imageUrl: z.string(), productId: uuid, variantId: uuid,
+      referenceKind: z.literal("image_reference") })).parse(await deps.db.call("read_source_generation_references", "aliexpress",
+      items.map((i) => ({ externalProductId: i.externalProductId, imageUrl: i.image }))) ?? [])
+    return items.map((i) => {
+      const reference = refs.find((r) => r.externalProductId === i.externalProductId && r.imageUrl === i.image)
+      return { ...presentAliExpressProduct(i), slot, generationEligible: Boolean(reference), tryOnReady: Boolean(reference),
+        ...(reference ? { generationReference: { productId: reference.productId, variantId: reference.variantId, imageUrl: reference.imageUrl },
+          capabilities: { displayAndLink: true, aiTryOn: true, aiTryOnBlockedReason: null } } : {}) }
+    })
   }
 
   async function retrieve(intent: CompositionIntent, viewer: string): Promise<Map<SlotId, Retrieved>> {
@@ -105,7 +117,7 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
           out.set(slot, { candidates: [], error: "no_results", query: keywords, retrieval: provenance(res.items.length ? "filtered_out" : "provider_empty", 0) })
           continue
         }
-        out.set(slot, { candidates: items.slice(0, MAX_CANDIDATES_PER_SLOT).map((i) => ({ ...presentAliExpressProduct(i), slot, generationEligible: false })), error: null, query: keywords, retrieval: provenance("ok", items.length) })
+        out.set(slot, { candidates: await sourceCandidates(items.slice(0, MAX_CANDIDATES_PER_SLOT), slot), error: null, query: keywords, retrieval: provenance("ok", items.length) })
         break
         }
       }
@@ -129,7 +141,7 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
   async function lockedPiece(slot: SlotId, id: string): Promise<SlotPlan["candidates"][number] | null> {
     if (source === "aliexpress_affiliate") {
       const item = await deps.aliexpressCatalog?.findFresh(id)
-      return item ? { ...presentAliExpressProduct(item), slot, generationEligible: false } : null
+      return item && slotOfCategory(item.category) === slot ? (await sourceCandidates([item], slot))[0]! : null
     }
     if (source !== "curated" || !uuid.safeParse(id).success) return null
     const raw = await deps.db.call("read_catalog_product", id)

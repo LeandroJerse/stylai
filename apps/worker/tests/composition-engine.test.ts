@@ -14,7 +14,7 @@ const piece = (n: number, slot: "lower" | "upper", category: string) => ({
   slot, position: n,
 })
 
-function harness(opts: { failLayer?: number; revokeSnapshot?: number; changedSnapshot?: number; beginFalse?: boolean; bytesOutput?: boolean; budget?: { ok: boolean; limiting: string[] } | "unavailable" } = {}) {
+function harness(opts: { revokeAtDispatch?: number; imageReferences?: boolean; failLayer?: number; revokeSnapshot?: number; changedSnapshot?: number; beginFalse?: boolean; bytesOutput?: boolean; budget?: { ok: boolean; limiting: string[] } | "unavailable" } = {}) {
   const budgetChecks: unknown[][] = []
   const stored: string[] = []
   const removed: string[] = []
@@ -22,6 +22,7 @@ function harness(opts: { failLayer?: number; revokeSnapshot?: number; changedSna
   const settled: { key: string; status: string }[] = []
   const keys = new Map<string, string>()
   const snapshots: number[] = []
+  const selections: unknown[] = []
   const db = { call: async (op: string, ...args: unknown[]) => {
     ops.push(op)
     switch (op) {
@@ -29,8 +30,10 @@ function harness(opts: { failLayer?: number; revokeSnapshot?: number; changedSna
       case "load_ai_job": return {
         id: JOB, user_id: USER, category_id: "pants", search_query: "", parent_version_id: null, composition_id: "50000000-0000-4000-8000-000000000088",
         photo: { bucket: "body-photos", object_key: `${USER}/front.png`, mime: "image/png", usable: true },
-        variant: piece(1, "lower", "pants"), items: [piece(1, "lower", "pants"), piece(2, "upper", "tops")],
+        variant: piece(1, "lower", "pants"), items: [piece(1, "lower", "pants"), piece(2, "upper", "tops")].map((p) => opts.imageReferences
+          ? { ...p, source: "aliexpress", canonical_id: `aliexpress:${p.external_product_id}`, affiliate_url: "https://s.click.aliexpress.com/e/test", reference_kind: "image_reference", external_variant_id: null, variant_available: null, variant_label: "Referência visual; tamanho não informado" } : p),
       }
+      case "record_ai_selection": selections.push(args[4]); return true
       case "record_job_item_snapshot":
         if (opts.revokeSnapshot === args[2]) throw new PrivateDatabaseError("rejected", "SA003")
         if (opts.changedSnapshot === args[2]) throw new PrivateDatabaseError("rejected", "SA004")
@@ -41,7 +44,7 @@ function harness(opts: { failLayer?: number; revokeSnapshot?: number; changedSna
         return { ok: true, limiting: [], max_layers: 3, needed_usd_micros: 150000, effective_ceiling_usd_micros: 2000000, ...(opts.budget ?? {}) }
       case "reserve_provider_call": { const id = `call-${String(args[6])}`; keys.set(id, String(args[6])); return id }
       case "reserve_pilot_dispatch": return { ok: true, attempt_no: 1 }
-      case "begin_provider_call": return !opts.beginFalse
+      case "begin_provider_call": if (opts.revokeAtDispatch && String(args[0]).endsWith(`_${opts.revokeAtDispatch}`)) throw new PrivateDatabaseError("rejected", "SA003"); return !opts.beginFalse
       case "settle_provider_call": settled.push({ key: keys.get(String(args[0]))!, status: String(args[1]) }); return true
       case "register_generated_asset": return "60000000-0000-4000-8000-000000000088"
       case "complete_look_job": return "70000000-0000-4000-8000-000000000088"
@@ -71,10 +74,26 @@ function harness(opts: { failLayer?: number; revokeSnapshot?: number; changedSna
     config: { ...defaultEngineConfig, provider: "fal", environment: "development", pseudonymKey: "k".repeat(32), simulatedProvider: false, pilotId: "stylai-first-real-tryon-pilot" },
     sleep: async () => {},
   })
-  return { engine, ops, settled, submits, snapshots, stored, removed, budgetChecks }
+  return { engine, ops, settled, submits, snapshots, stored, removed, budgetChecks, selections }
 }
 
 describe("multi-piece composition engine", () => {
+  test("revocation at second dispatch preserves first spend and releases the undispatched reservation", async () => {
+    const h = harness({ revokeAtDispatch: 2 })
+    expect(await h.engine.processJob(JOB)).toEqual({ status: "failed", code: "try_on_rights_revoked" })
+    expect(h.submits).toHaveLength(1)
+    expect(h.settled.at(-1)).toMatchObject({ status: "released" })
+    expect(h.ops).not.toContain("complete_look_job")
+  })
+  test("authorized image references render without inventing supplier SKU or stock", async () => {
+    const h = harness({ imageReferences: true })
+    expect((await h.engine.processJob(JOB)).status).toBe("succeeded")
+    expect(h.submits).toHaveLength(2)
+    expect(h.selections[0]).toMatchObject({ items: [
+      { source: "aliexpress", reference_kind: "image_reference", external_variant_id: null, affiliate_url: "https://s.click.aliexpress.com/e/test" },
+      { source: "aliexpress", reference_kind: "image_reference", external_variant_id: null, affiliate_url: "https://s.click.aliexpress.com/e/test" },
+    ] })
+  })
   test("renders base then upper layer, chaining the provider output, one paid call per layer", async () => {
     const h = harness()
     expect(await h.engine.processJob(JOB)).toEqual({ status: "succeeded", versionId: "70000000-0000-4000-8000-000000000088" })

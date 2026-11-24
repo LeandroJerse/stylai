@@ -20,12 +20,13 @@ const ROWS = [row(1, "tops", "Blusa preta", 9000), row(2, "tops", "Blusa branca"
 /** Readable by id but not returned by the listing (e.g. outside the top candidates of a new retrieval). */
 const EXTRA = row(6, "tops", "Blusa travada fora do topo", 7000)
 
-function fakeDb(opts: { quota?: boolean } = {}) {
+function fakeDb(opts: { quota?: boolean; sourceReferences?: unknown[] } = {}) {
   const compositions = new Map<string, { user: string; plan: unknown; method: string }>()
   const enqueued: unknown[][] = []
   let seq = 0
   const db = { call: async (op: string, ...args: unknown[]) => {
     switch (op) {
+      case "read_source_generation_references": return opts.sourceReferences ?? []
       case "list_catalog_products": return { total: ROWS.length, items: ROWS }
       case "read_catalog_product": return [...ROWS, EXTRA].find((r) => r.id === args[0]) ?? null
       case "composition_quota_available": return opts.quota ?? true
@@ -44,8 +45,8 @@ function fakeDb(opts: { quota?: boolean } = {}) {
   return { db, compositions, enqueued }
 }
 
-async function build(opts: { composer?: Composer | null; mode?: "test_catalog" | "aliexpress_affiliate"; aliexpress?: AliExpressCatalogService | null; quota?: boolean } = {}) {
-  const f = fakeDb({ quota: opts.quota })
+async function build(opts: { composer?: Composer | null; mode?: "test_catalog" | "aliexpress_affiliate"; aliexpress?: AliExpressCatalogService | null; quota?: boolean; sourceReferences?: unknown[] } = {}) {
+  const f = fakeDb({ quota: opts.quota, sourceReferences: opts.sourceReferences })
   const keys = readSessionKeys({ STYLAI_SESSION_KEY: randomBytes(32).toString("base64") })!
   const resolveActor = async (request: { headers: Record<string, unknown> }) => request.headers["x-test-user"] === "b" ? B : request.headers["x-test-user"] === "a" ? A : null
   const app = await buildApp({
@@ -277,6 +278,23 @@ describe("empty answers are observable (P14)", () => {
         retrieval: { provider: "aliexpress", outcome: "provider_empty", returned: 0, kept: 0, code: "405", requestId: "req-camisa", message: "The result is empty" } })
       expect(JSON.stringify(body)).not.toMatch(/app_?secret|sign=|access_token/i)
     } finally { await t.app.close() }
+  })
+
+  test("authorized source image resolves internal render reference without fabricating a commercial SKU", async () => {
+    const reference = { externalProductId: "1", imageUrl: "https://ae01.alicdn.com/x.jpg", productId: ROWS[0]!.id, variantId: ROWS[0]!.variants[0]!.id, referenceKind: "image_reference" }
+    for (const authorized of [true, false]) {
+      const t = await build({ mode: "aliexpress_affiliate", aliexpress: svc([item("1", "Camisa social", "shirts")]), sourceReferences: [{ ...reference, imageUrl: authorized ? reference.imageUrl : "https://ae01.alicdn.com/old.jpg" }] })
+      try {
+        const c = (await post(t.app, "/v1/studio/compositions", { prompt: "camisa social" })).json()
+        expect(c.slots[0].choice.productId).toBe("aliexpress:1")
+        expect(c.slots[0].candidates[0].variants).toEqual([])
+        expect(c.generation.eligible).toBe(authorized)
+        const gen = await post(t.app, "/v1/studio/generations", { compositionId: c.id, choices: [{ slot: "upper", productId: "aliexpress:1" }] }, "a", { "idempotency-key": "reference-key-001" })
+        expect(gen.statusCode).toBe(authorized ? 202 : 409)
+        if (authorized) expect(t.enqueued[0]![4]).toEqual([{ slot: "upper", product_id: reference.productId, variant_id: reference.variantId, image_url: reference.imageUrl }])
+        else expect(t.enqueued).toHaveLength(0)
+      } finally { await t.app.close() }
+    }
   })
 
   test("store returned items but none mapped to the slot: 'filtered_out', not a store-empty claim", async () => {
