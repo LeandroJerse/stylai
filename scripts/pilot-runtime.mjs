@@ -20,9 +20,12 @@ export function planPilotRuntime({ argv, rootEnv }) {
   const googleConfig = provider === "gemini" ? {STYLAI_GOOGLE_BACKEND:googleBackend,...(vertex?{GOOGLE_CLOUD_PROJECT:googleProject}: {})} : {}
   if (!["segmind", "gemini"].includes(provider)) errors.push("unknown provider")
   if (provider === "gemini" && !real) errors.push("Gemini native requires --real; no native simulator is configured")
-  const segmindModel = value("segmind-model") ?? (real ? "flux-3-klein-image-edit" : "try-on-diffusion")
+  // Simulation: the free loopback FLUX also serves the batches of coordinated outfits. The manually curated pilot
+  // catalog keeps the single-garment simulator (its image hosts are not references of the joint flow).
+  const simulatedModel = ["aliexpress_affiliate", "test_catalog"].includes(value("catalog") ?? "curated_pilot") ? "flux-3-klein-image-edit" : "try-on-diffusion"
+  const segmindModel = value("segmind-model") ?? (real ? "flux-3-klein-image-edit" : simulatedModel)
   if(!["try-on-diffusion","nano-banana-pro","nano-banana-2-lite","nano-banana-2.1","flux-3-klein-image-edit"].includes(segmindModel)) errors.push("unknown Segmind model")
-  if(segmindModel !== "try-on-diffusion" && !real) errors.push("Joint outfit models require --real")
+  if(!["try-on-diffusion","flux-3-klein-image-edit"].includes(segmindModel) && !real) errors.push("Joint outfit models require --real")
   const pilot = value("pilot")
   const relay = value("relay")
   const catalog = value("catalog") ?? "curated_pilot"
@@ -43,13 +46,15 @@ export function planPilotRuntime({ argv, rootEnv }) {
     STYLAI_TRYON_PROVIDER: provider, STYLAI_PAID_CALLS_ENABLED: "true", STYLAI_PILOT_ID: pilot ?? "",
     SEGMIND_SUBMIT_RETRIES: "0", STYLAI_ENVIRONMENT: "development",
     ...(relay ? { STYLAI_PHOTO_RELAY: relay } : {}),
-  } : {}
+  } : { SEGMIND_MODEL: segmindModel }
   const api = {
     ...googleConfig,
     SEGMIND_MODEL: segmindModel,
     STYLAI_CATALOG_MODE: catalog,
     STYLAI_GENERATION_MODE: real ? "real" : "simulated",
     STYLAI_TRYON_PROVIDER: provider,
+    // Presence of the pilot lets the API quote and reserve whole batches against it (never a key).
+    ...(real && pilot ? { STYLAI_PILOT_ID: pilot } : {}),
     ...(composerModel ? { STYLAI_COMPOSER_ENABLED: "true", STYLAI_COMPOSER_MODEL: composerModel, STYLAI_COMPOSER_CALLS_PER_DAY: callsPerDay, ANTHROPIC_API_KEY: rootEnv.ANTHROPIC_API_KEY } : {}),
   }
   const names = (env) => Object.fromEntries(Object.entries(env).map(([k, v]) => [k, /KEY|SECRET|TOKEN/.test(k) ? (v ? "configurado" : "ausente") : v]))

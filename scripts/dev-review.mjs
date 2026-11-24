@@ -45,7 +45,9 @@ function start(name, command, args, env, cwd = root) {
 }
 
 // Real mode: only the provider/telemetry names below are read from the worker env file.
-let workerProvider = { SEGMIND_BASE_URL: "http://127.0.0.1:54395", STYLAI_ENVIRONMENT: "test" }
+// Simulation uses the loopback FLUX, the same path of the real default (batches of outfits included).
+const simulatedModel = { SEGMIND_MODEL: "flux-3-klein-image-edit" }
+let workerProvider = { SEGMIND_BASE_URL: "http://127.0.0.1:54395", STYLAI_ENVIRONMENT: "test", ...simulatedModel }
 if (real) {
   const file = resolve(root, "apps/worker/.env.local")
   const env = existsSync(file) ? parseEnv(readFileSync(file, "utf8")) : {}
@@ -62,7 +64,7 @@ start("pose-analyzer", "uv", ["run", "tools/pose-validator/analyzer.py", "serve"
 start("api", process.execPath, [...tsx, "apps/api/src/server.ts"], {
   NODE_ENV: "development", API_PORT: "3100", SERVICE_HOST: "127.0.0.1", APP_ORIGIN: origin, API_PUBLIC_BASE_URL: `${origin}/v1`,
   STYLAI_API_DATABASE_URL: db("stylai_api"), STYLAI_SESSION_KEY: randomBytes(32).toString("base64"),
-  STYLAI_RATE_LIMIT_PER_MINUTE: "600", STYLAI_POSE_ANALYZER_URL: "http://127.0.0.1:54391", STYLAI_GENERATION_MODE: real ? "real" : "simulated", ...supabase,
+  STYLAI_RATE_LIMIT_PER_MINUTE: "600", STYLAI_POSE_ANALYZER_URL: "http://127.0.0.1:54391", STYLAI_GENERATION_MODE: real ? "real" : "simulated", ...(real ? {} : simulatedModel), ...supabase,
   ...aliexpressEnv,
 })
 start("worker", process.execPath, [...tsx, "apps/worker/src/server.ts"], {

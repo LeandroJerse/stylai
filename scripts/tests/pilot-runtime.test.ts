@@ -67,4 +67,10 @@ test("real default selects FLUX consistently while simulation stays local", () =
   expect(plan.api.SEGMIND_MODEL).toBe("flux-3-klein-image-edit")
   expect(plan.worker.SEGMIND_MODEL).toBe("flux-3-klein-image-edit")
   expect(planPilotRuntime({ argv: [], rootEnv }).api.SEGMIND_MODEL).toBe("try-on-diffusion")
+  // The API learns the pilot (whole-batch quotas) but never a provider key; a simulation has no pilot.
+  expect(plan.api.STYLAI_PILOT_ID).toBe("existing-pilot")
+  const sim = planPilotRuntime({ argv: ["--catalog=aliexpress_affiliate"], rootEnv })
+  expect(sim.ok).toBe(true)
+  expect([sim.api.SEGMIND_MODEL, sim.worker.SEGMIND_MODEL, sim.api.STYLAI_PILOT_ID]).toEqual(["flux-3-klein-image-edit", "flux-3-klein-image-edit", undefined])
+  expect(Object.keys(sim.worker)).toEqual(["SEGMIND_MODEL"])
 })

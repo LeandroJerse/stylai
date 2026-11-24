@@ -10,6 +10,9 @@
  *   node --import tsx scripts/pilot.ts resume <pilotId>
  *   node --import tsx scripts/pilot.ts mark-usable <pilotId> <providerCallId> <true|false> [note]
  *   node --import tsx scripts/pilot.ts release-unsent <pilotId> <providerCallId> [reason]
+ *   node --import tsx scripts/pilot.ts authorize <pilotId> --attempts=N --limit-usd=X --policy-references=on|off --note="..." [--commit]
+ *   node --import tsx scripts/pilot.ts revoke-source aliexpress --note="..." [--commit]
+ * authorize/revoke-source only SHOW the change unless --commit is given; nothing is widened silently.
  */
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -129,6 +132,18 @@ export function formatPilotReport(st: PilotStatusReport): string {
   return lines.join("\n")
 }
 
+export interface AuthorizationChange { attempts: number; limitMicros: number; policyReferences: boolean; note: string }
+/** Parses the operator's explicit numbers. Anything missing or out of bounds is an error, never a default. */
+export function parseAuthorization(args: readonly string[]): AuthorizationChange {
+  const value = (name: string) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3).trim()
+  const attempts = Number(value("attempts")), usd = Number(value("limit-usd")), refs = value("policy-references"), note = value("note") ?? ""
+  if (!Number.isInteger(attempts) || attempts < 1 || attempts > 200) throw new Error("--attempts must be an integer between 1 and 200 (total, not additional)")
+  if (!Number.isFinite(usd) || usd <= 0 || usd > 20) throw new Error("--limit-usd must be above 0 and at most 20 (total, not additional)")
+  if (refs !== "on" && refs !== "off") throw new Error("--policy-references must be on or off")
+  if (note.length < 10 || note.length > 300) throw new Error("--note must say who authorized it and why (10 to 300 characters)")
+  return { attempts, limitMicros: Math.round(usd * 1_000_000), policyReferences: refs === "on", note }
+}
+
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))
 if (isMain) {
   const [cmd = "report", pilotId = process.env.STYLAI_PILOT_ID ?? "stylai-first-real-tryon-pilot", arg3, arg4, ...rest] = process.argv.slice(2)
@@ -171,6 +186,33 @@ if (isMain) {
       const reason = [arg4, ...rest].filter(Boolean).join(" ") || "operator_released"
       const res = await client.query<{ ok: boolean }>("select private.release_unsent_pilot_call($1, $2::uuid, $3) as ok", [pilotId, arg3, reason])
       console.log(JSON.stringify({ action: "release-unsent", pilotId, providerCallId: arg3, ok: Boolean(res.rows[0]?.ok) }))
+    } else if (cmd === "authorize") {
+      const args = [arg3, arg4, ...rest].filter((a): a is string => Boolean(a))
+      const change = parseAuthorization(args)
+      const commit = args.includes("--commit")
+      await client.query("begin")
+      const before = (await client.query<{ max_attempts: number; limit_usd_micros: string; allow_policy_references: boolean }>(
+        "select max_attempts,limit_usd_micros,allow_policy_references from private.ai_pilots where id=$1 for update", [pilotId])).rows[0]
+      if (!before) { console.error(`Piloto não encontrado: ${pilotId}`); process.exitCode = 1 }
+      else {
+        if (commit) {
+          await client.query(`update private.ai_pilots set max_attempts=$2,limit_usd_micros=$3,allow_policy_references=$4,
+            authorization_note=left($5||' | '||authorization_note,500) where id=$1`, [pilotId, change.attempts, change.limitMicros, change.policyReferences, `${new Date().toISOString().slice(0, 10)}: ${change.note}`])
+        }
+        console.log(JSON.stringify({ action: "authorize", pilotId, committed: commit,
+          before: { attempts: before.max_attempts, limitUsd: Number(before.limit_usd_micros) / 1e6, policyReferences: before.allow_policy_references },
+          after: { attempts: change.attempts, limitUsd: change.limitMicros / 1e6, policyReferences: change.policyReferences }, ...(commit ? {} : { hint: "nada foi alterado; repita com --commit" }) }, null, 2))
+      }
+      await client.query("commit")
+    } else if (cmd === "revoke-source") {
+      const args = [arg3, arg4, ...rest].filter((a): a is string => Boolean(a))
+      const note = args.find((a) => a.startsWith("--note="))?.slice(7).trim() ?? ""
+      if (note.length < 5 || note.length > 200) throw new Error("--note is required (5 to 200 characters)")
+      const commit = args.includes("--commit")
+      const policy = (await client.query<{ id: string; references: string }>(`select p.id,(select count(*) from private.catalog_image_rights r where r.policy_id=p.id and r.try_on_allowed)::text as "references"
+        from private.source_image_policies p where p.source=$1 and p.revoked_at is null`, [pilotId])).rows[0]
+      if (policy && commit) await client.query("update private.source_image_policies set revoked_at=now(),revoked_reason=$2 where id=$1 and revoked_at is null", [policy.id, note])
+      console.log(JSON.stringify({ action: "revoke-source", source: pilotId, policy: policy?.id ?? null, activeReferences: Number(policy?.references ?? 0), committed: Boolean(policy && commit) }))
     } else {
       console.error(`Comando desconhecido: ${cmd}`)
       process.exit(2)

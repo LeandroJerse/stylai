@@ -71,7 +71,7 @@ start("api", process.execPath, [...tsx, "apps/api/src/server.ts"], {
 start("worker", process.execPath, [...tsx, "apps/worker/src/server.ts"], {
   NODE_ENV: "development", WORKER_PORT: "3101", SERVICE_HOST: "127.0.0.1", STYLAI_AI_WORKER_DATABASE_URL: db("stylai_ai_worker"),
   TELEMETRY_PSEUDONYM_KEY: randomBytes(32).toString("hex"), WORKER_POLL_IDLE_MS: "500", ...supabase, ...langfuse,
-  ...(plan.real ? plan.worker : { SEGMIND_BASE_URL: "http://127.0.0.1:54395", STYLAI_ENVIRONMENT: "test" }),
+  ...plan.worker, ...(plan.real ? {} : { SEGMIND_BASE_URL: "http://127.0.0.1:54395", STYLAI_ENVIRONMENT: "test" }),
 })
 start("web", process.execPath, [resolve(root, "node_modules/vite/bin/vite.js"), "--port", "5198", "--strictPort"],
   { VITE_API_BASE_URL: `${origin}/v1`, VITE_API_PROXY_TARGET: "http://127.0.0.1:3100" }, resolve(root, "apps/web"))
