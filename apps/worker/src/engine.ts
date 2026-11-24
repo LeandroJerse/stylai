@@ -8,7 +8,7 @@
 import { z } from "zod"
 import {
   defaultSegmindPreset, falCost, findPrice, microsToUsdNumber, pseudonymizeUser, segmindCost, spanIdFor, traceIdForJob, validateOutputImage,
-  segmindOutfitProfile, type SegmindOutfitClient,
+  segmindOutfitProfile, type SegmindHistory, type SegmindOutfitClient,
   GEMINI_OUTFIT_RESERVE, GEMINI_OUTFIT_PRICE_VERSION, VERTEX_OUTFIT_MODEL, VERTEX_OUTFIT_RESERVE, VERTEX_OUTFIT_PRICE_VERSION, validateGeminiOutfitInput, type GeminiOutfitClient,
   type FalClient, type FalTryOnModel, type GpuSecondPrice, type PerImagePrice, type SegmindCategory, type SegmindClient, type SegmindPreset, type SpanRecord, type AttributeValue,
 } from "@stylai/ai"
@@ -18,6 +18,12 @@ import type { PhotoRelay, PhotoRelayLease } from "./photo-relay.js"
 
 /** Plain-data copy for jsonb parameters (drops undefined, rejects non-JSON values). */
 function toJson(value: unknown): Json { return JSON.parse(JSON.stringify(value)) as Json }
+const unreconciledCall = z.object({
+  id: z.string().uuid(), provider: z.string(), model: z.string().optional(), provider_request_id: z.string().nullable(),
+  started_at: z.string().nullish(), finished_at: z.string().nullish(), error_code: z.string().nullish().transform((v) => v ?? null), environment: z.string().nullish(),
+  taken: z.array(z.string()).default([]), rivals: z.number().int().default(0),
+})
+type UnreconciledCall = z.infer<typeof unreconciledCall>
 
 export interface EngineConfig {
   environment: "development" | "test" | "staging" | "production"
@@ -59,6 +65,8 @@ export interface EngineDeps {
   /** Null when paid calls are disabled or the key is absent: jobs fail without spending. */
   segmind: SegmindClient | null
   segmindReconcilers?: Partial<Record<string, SegmindClient>>
+  /** Segmind's own request history (real mode only): settles calls whose outcome we never learned. */
+  segmindHistory?: SegmindHistory | null
   segmindOutfit?: SegmindOutfitClient | null
   /** Verified private copies of garment references; absent = the provider client's own download. */
   garments?: GarmentLoader
@@ -389,7 +397,7 @@ export function createEngine(deps: EngineDeps) {
     }
     if(result.kind!=="completed") {
       // Still unknown and still reserved; the reason and the real duration are kept for whoever reconciles it.
-      await db.call("settle_provider_call",call,"unknown",null,{}, {},reserve.toString(),null,null,"unknown",duration,result.code)
+      await db.call("settle_provider_call",call,"unknown",result.requestId??null,{}, {},reserve.toString(),null,null,"unknown",duration,result.code)
       throw new JobFailure("provider_outcome_unknown")
     }
     await db.call("settle_provider_call",call,"succeeded",result.requestId,toJson(result.usage),{resolution,images:1},reserve.toString(),
@@ -535,21 +543,55 @@ export function createEngine(deps: EngineDeps) {
     }
   }
 
-  /** Reconciles dispatched/unknown Segmind and fal calls by polling with the stored request id. */
+  /** When each unresolved call may be asked about again (in memory: a restart only asks once more). */
+  const askAgainAt = new Map<string, number>()
+  const CALL_MAX_MS = 5 * 60_000, SETTLE_MS = 60_000, ABSENT_AFTER_MS = 30 * 60_000, WINDOW_MS = 3 * 60_000
+  /**
+   * One synchronous Segmind call, settled by the provider's history. Only a definite record counts; a call that may still
+   * be running, a row that could belong to another call, or any doubt leaves it for later (or for the operator).
+   */
+  async function reconcileByHistory(history: SegmindHistory, row: UnreconciledCall): Promise<boolean> {
+    const at = now(), started = Date.parse(row.started_at ?? ""), finished = Date.parse(row.finished_at ?? "")
+    if (!Number.isFinite(started) || row.environment === "test") return false
+    // A stored reason means the call ended. Without one it may be in flight, or the worker died.
+    const ended = row.error_code !== null && Number.isFinite(finished)
+    if (ended ? at < finished + SETTLE_MS : at < started + CALL_MAX_MS) return false
+    if (row.provider_request_id === null && row.rivals > 0) return false
+    if (at < (askAgainAt.get(row.id) ?? 0)) return false
+    askAgainAt.set(row.id, at + Math.min(30 * 60_000, Math.max(60_000, (at - started) / 2)))
+    const answer = await history.find({ model: row.model ?? "", startedAt: new Date(started), endAt: new Date(ended ? Math.max(finished + SETTLE_MS, started + SETTLE_MS) : started + WINDOW_MS), requestId: row.provider_request_id, taken: row.taken })
+    // A success without a price yet may still be billed.
+    const unpriced = answer.kind === "found" && answer.httpStatus === 200 && answer.costMicros === 0n && at < started + ABSENT_AFTER_MS
+    if (answer.kind === "found" && !unpriced) {
+      const done = await db.call("reconcile_provider_call", row.id, "failed", answer.costMicros.toString(), "provider_confirmed", toJson({
+        source: "segmind_history", http_status: answer.httpStatus, charged: answer.costMicros > 0n, has_output: answer.hasOutput, error_family: answer.errorFamily, request_id: answer.requestId }))
+      if (done) askAgainAt.delete(row.id)
+      return done
+    }
+    // Not in the provider's record long after: only a request that may never have arrived. An HTTP answer must have a row.
+    if (answer.kind === "absent" && at >= started + ABSENT_AFTER_MS && (row.error_code === null || row.error_code.startsWith("segmind_transport_"))) {
+      const done = await db.call("reconcile_provider_call", row.id, "failed", "0", "provider_confirmed", toJson({ source: "segmind_history", charged: false, absent: true }))
+      if (done) askAgainAt.delete(row.id)
+      return done
+    }
+    console.info(JSON.stringify({ event: "reconcile_waiting", callId: row.id, answer: answer.kind, ...(answer.kind === "unavailable" ? { code: answer.code } : {}) }))
+    return false
+  }
+
+  /** Reconciles dispatched/unknown Segmind and fal calls by polling with the stored request id, or by the provider's history. */
   async function reconcileOnce(limit = 20): Promise<number> {
     const segmind = deps.segmind
     const hasSegmind = Boolean(segmind || (deps.segmindReconcilers && Object.keys(deps.segmindReconcilers).length))
     const hasFal = Boolean(deps.fal || (deps.falReconcilers && Object.keys(deps.falReconcilers).length > 0))
-    if (!hasSegmind && !hasFal) return 0
-    const rows = z.array(z.object({
-      id: z.string().uuid(),
-      provider: z.string(),
-      model: z.string().optional(),
-      provider_request_id: z.string().nullable(),
-    })).safeParse(await db.call("list_unreconciled_calls", limit))
+    if (!hasSegmind && !hasFal && !deps.segmindHistory) return 0
+    const rows = z.array(unreconciledCall).safeParse(await db.call("list_unreconciled_calls", limit))
     if (!rows.success) return 0
     let settled = 0
     for (const row of rows.data) {
+      if (row.provider === "segmind" && deps.segmindHistory && row.model && segmindOutfitProfile(row.model)) {
+        if (await reconcileByHistory(deps.segmindHistory, row)) settled++
+        continue
+      }
       if (!row.provider_request_id) continue // needs operator evidence
       if (row.provider === "segmind" && hasSegmind) {
         const client = (row.model && deps.segmindReconcilers?.[row.model]) || (segmind && (!row.model || segmind.model === row.model) ? segmind : null)

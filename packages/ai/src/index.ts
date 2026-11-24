@@ -14,4 +14,5 @@ export * from "./telemetry.js"
 export const implementationStatus = "first_slice" as const
 export * from "./segmind-outfit.js"
 export * from "./transport.js"
+export * from "./segmind-history.js"
 export * from "./reference-image.js"

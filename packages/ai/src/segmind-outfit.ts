@@ -46,7 +46,12 @@ export function createSegmindOutfitClient(config:{apiKey:string;model?:string;fe
     })
    }catch(error){return neverSent(error)?{kind:'rejected',code:'provider_unreachable'}:{kind:'unknown',code:`segmind_transport_${transportCode(error)}`}}
    try{
-    if(!response.ok)return {kind:[400,401,403,404,406,429].includes(response.status)?'rejected':'unknown',code:`segmind_http_${response.status}`}
+    if(!response.ok){
+     if([400,401,403,404,406,429].includes(response.status))return {kind:'rejected',code:`segmind_http_${response.status}`}
+     // The id lets the provider's own history say later, exactly, whether this was charged.
+     const id=response.headers.get('x-request-id')
+     return {kind:'unknown',code:`segmind_http_${response.status}`,requestId:id&&/^[A-Za-z0-9_-]{8,128}$/.test(id)?id:null}
+    }
     let bytes:Uint8Array
     if(response.headers.get('content-type')?.startsWith('image/')){
      if(!response.body)return {kind:'unknown',code:'segmind_empty_image'}

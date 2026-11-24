@@ -1,6 +1,6 @@
 import { readServiceConfig } from "@stylai/config"
 import {
-  segmindOutfitProfile, createSegmindOutfitClient, createReferenceDownloader, createGeminiOutfitClient, createFalClient, createOtlpExporter, createSegmindClient, FAL_FASHN_MODEL, FAL_IMAGE_APPS_MODEL, readLangfuseConfig,
+  segmindOutfitProfile, createSegmindHistory, createSegmindOutfitClient, createReferenceDownloader, createGeminiOutfitClient, createFalClient, createOtlpExporter, createSegmindClient, FAL_FASHN_MODEL, FAL_IMAGE_APPS_MODEL, readLangfuseConfig,
   type FalClient, type FalTryOnModel,
 } from "@stylai/ai"
 import {
@@ -51,6 +51,7 @@ const exporter = langfuse ? createOtlpExporter(langfuse) : null
 const segmindOutfit = runtime.provider !== "segmind" || !segmindOutfitProfile(runtime.segmind.model) ? null
   : runtime.segmind.simulated ? createSegmindOutfitClient({ apiKey: "simulator-no-key", model: runtime.segmind.model, simulatorUrl: runtime.segmind.baseUrl })
   : runtime.paidCallsEnabled && runtime.segmind.apiKey ? createSegmindOutfitClient({ apiKey: runtime.segmind.apiKey, model: runtime.segmind.model }) : null
+const segmindHistory = runtime.segmind.apiKey && !runtime.segmind.simulated ? createSegmindHistory({ apiKey: runtime.segmind.apiKey }) : null
 const segmindReconcilers = runtime.segmind.apiKey && !runtime.segmind.simulated ? {"try-on-diffusion":createSegmindClient({apiKey:runtime.segmind.apiKey,model:"try-on-diffusion"})} : {}
 const vertexProject = process.env.STYLAI_GOOGLE_BACKEND === 'vertex' ? process.env.GOOGLE_CLOUD_PROJECT : undefined
 if(process.env.STYLAI_GOOGLE_BACKEND === 'vertex' && !vertexProject) throw new Error('vertex_project_required')
@@ -60,7 +61,7 @@ const photoRelay = runtime.provider !== "gemini" && runtime.photoRelay === "clou
 const garments = segmindOutfit ? createGarmentLoader({ store, download: createReferenceDownloader({ hosts: ["alicdn.com", "aliexpress-media.com"] }),
   fallback: (url) => segmindOutfit.garment(url), testImages: runtime.segmind.simulated }) : undefined
 const engine = db && runtime.engine.pseudonymKey
-  ? createEngine({ db, store, segmind, gemini, segmindOutfit, ...(garments ? { garments } : {}), segmindReconcilers, fal, falReconcilers, photoRelay, config: { ...runtime.engine, pseudonymKey: runtime.engine.pseudonymKey } })
+  ? createEngine({ db, store, segmind, gemini, segmindOutfit, ...(garments ? { garments } : {}), segmindReconcilers, segmindHistory, fal, falReconcilers, photoRelay, config: { ...runtime.engine, pseudonymKey: runtime.engine.pseudonymKey } })
   : null
 const loop = createWorkerLoop({
   engine,

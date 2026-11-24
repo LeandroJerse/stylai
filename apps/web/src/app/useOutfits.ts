@@ -36,7 +36,8 @@ export function useOutfits() {
   })
   const renders = useQuery({
     queryKey: outfitKeys.renders, queryFn: ({ signal }) => outfitsApi.renders(signal), enabled,
-    refetchInterval: (q) => (q.state.data?.some(active) ? 3000 : false),
+    // A panel under reconciliation settles on the server within minutes.
+    refetchInterval: (q) => (q.state.data?.some(active) ? 3000 : q.state.data?.some((r) => r.panels.some((p) => p.state === "needs_reconciliation")) ? 30_000 : false),
   })
 
   const putSet = (detail: OutfitSetDetail) => {

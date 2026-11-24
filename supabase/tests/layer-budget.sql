@@ -42,7 +42,7 @@ do $$
 declare job uuid := current_setting('test.job')::uuid;
 declare fence bigint; declare r jsonb;
 begin
-  assert private.server_boundary_version()='20261124210000', 'boundary version';
+  assert private.server_boundary_version()='20261124220000', 'boundary version';
   fence := private.claim_ai_job(job);
   -- 2 layers x US$0.50 = US$1.00 > job US$0.60: refused before any reservation, naming the limiting scope.
   r := private.check_layer_budget(job,fence,'segmind',2,500000,'layer-pilot');

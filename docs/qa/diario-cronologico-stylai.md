@@ -483,3 +483,11 @@ Criado prompt de implementação baseado em Superpowers e nos módulos existente
 - Leandro mostrou o painel do Segmind: a chamada das 18:07 terminou em HTTP 502 (serviço indisponível), 5,9 s, sem custo. Cinco chamadas FLUX no painel e cinco no registro, correspondência única.
 - Conciliada como `failed`, custo 0, `provider_confirmed`. O painel da imagem volta a poder ser refeito.
 - CORREÇÃO à E30: a causa deste caso foi um 502 do Segmind, não a rede local. A correção da E30 não o teria evitado: 502 continua desconhecido até conferência (agora com `segmind_http_502` no registro), porque um 502 sozinho não prova que não houve cobrança.
+
+### E32 — 2026-11-24 — Conferência automática pelo histórico do Segmind
+- Pedido de Leandro: automatizar a conferência. Consulta `GET request-history` do Segmind, com a chave que já existia: funciona, só leitura, créditos iguais antes e depois (US$ 9,68786).
+- O worker, a cada minuto, confere as chamadas sem resultado do FLUX e demais modelos de conjunto: só liquida com um registro único e definitivo do provedor. Cobrada: grava o valor e refazer pede aceite. Não cobrada: custo zero. Pode estar rodando, duas possíveis, linha ilegível, histórico vazio ou chave recusada: espera. Ausente do histórico: só depois de 30 minutos e só se a falha foi de transporte ou queda do worker.
+- O número do pedido nas respostas de erro agora é guardado, para achar a linha exata. Uma linha nunca serve a duas chamadas.
+- Conferido com os dados reais: o 502 das 18:07 (sem cobrança), a chamada cobrada das 17:46 e um horário sem chamada.
+- Regra escrita do Segmind: só HTTP 200 é cobrado. Mesmo assim, a decisão vem do registro, não do código da resposta.
+- Migração 20261124220000 (só leitura, aditiva) aplicada no banco local, com backup `pre-20261124220000.dump`.

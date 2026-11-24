@@ -53,7 +53,7 @@ describe("providers", () => {
     const r = await flux(async () => new Response(body, { headers: { "content-type": "image/png" } })).generate(input)
     expect(r.kind).toBe("unknown")
   })
-  test("FLUX: server errors stay unknown", async () => expect(await flux(async () => new Response("x", { status: 503 })).generate(input)).toEqual({ kind: "unknown", code: "segmind_http_503" }))
+  test("FLUX: server errors stay unknown", async () => expect(await flux(async () => new Response("x", { status: 503 })).generate(input)).toEqual({ kind: "unknown", code: "segmind_http_503", requestId: null }))
   test("Gemini follows the same rule", async () => {
     const gemini = (error: unknown) => createGeminiOutfitClient({ apiKey: "test", fetch: (async () => { throw error }) as never }).generate(input)
     expect(await gemini(failed(sys("ECONNREFUSED", "connect")))).toEqual({ kind: "rejected", code: "provider_unreachable" })

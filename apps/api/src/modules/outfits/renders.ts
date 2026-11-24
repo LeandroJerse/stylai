@@ -249,7 +249,7 @@ export async function registerOutfitRenderRoutes(app: FastifyInstance, deps: Out
         panel: p.panel, setId: p.set_id, searchId: p.search_id, revision: p.revision, title: p.label, state, stateLabel: PANEL_LABEL[state]!, dropped: p.dropped, attempts: p.attempts,
         lookId: p.version_id, image: p.version_id ? { url: signMediaUrl(base, deps.keys, "look", p.version_id, user), width: null, height: null, alt: `Prévia: ${p.label}` } : null,
         pieces: (p.pieces ?? []).map((x) => presentPieceCard(x, base)),
-        error: state === "needs_reconciliation" ? { code: "needs_reconciliation", message: "O provador não confirmou o resultado. Esta imagem só poderá ser refeita depois da conferência, para não cobrar duas vezes." }
+        error: state === "needs_reconciliation" ? { code: "needs_reconciliation", message: "O provador não confirmou o resultado. Estamos conferindo com ele, sem repetir o pedido, para não cobrar duas vezes. Costuma levar alguns minutos; se demorar, precisa de conferência manual." }
           : retryable && p.job?.failure_code ? { code: p.job.failure_code, message: failureMessage(p.job.failure_code) } : null,
         spentUsd: usd(p.settled_usd_micros),
         canRetry: retryable && row.photo_current === true && p.attempts < 5, retryNeedsChargeAcceptance: state === "failed_charged",

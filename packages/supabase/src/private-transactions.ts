@@ -2,7 +2,7 @@ import type { Json } from "./database.types.js"
 import type { DatabasePurpose } from "./private-config.js"
 
 /** Must match private.server_boundary_version() of the latest boundary migration. */
-export const privateBoundaryVersion = "20261124210000"
+export const privateBoundaryVersion = "20261124220000"
 
 // bigint inputs/outputs remain decimal text: never silently round money/fences.
 type Call<A extends unknown[], R> = { args: A; result: R }

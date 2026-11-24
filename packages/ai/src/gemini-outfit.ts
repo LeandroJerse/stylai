@@ -34,7 +34,7 @@ async function quotaDiagnostic(response: Response): Promise<QuotaDiagnostic | un
   } catch { return undefined }
 }
 export type OutfitResult = { kind: "completed"; bytes: Uint8Array; requestId: string | null; computedMicros: bigint | null; usage: Record<string, number> }
-  | { kind: "rejected"; code: string; diagnostic?: QuotaDiagnostic } | { kind: "unknown"; code: string }
+  | { kind: "rejected"; code: string; diagnostic?: QuotaDiagnostic } | { kind: "unknown"; code: string; requestId?: string | null }
 const usageSchema = z.object({ promptTokenCount: z.number().int().nonnegative(), candidatesTokenCount: z.number().int().nonnegative(),
   thoughtsTokenCount: z.number().int().nonnegative().optional() })
 const responseSchema = z.object({ responseId: z.string().max(200).optional(), usageMetadata: z.unknown().optional(),

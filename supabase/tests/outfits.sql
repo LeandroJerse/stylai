@@ -147,7 +147,7 @@ set local role stylai_ai_worker;
 do $$
 declare j1 uuid; declare j2 uuid; declare f bigint; declare f2 bigint; declare c uuid; declare asset uuid; declare loaded jsonb;
 begin
-  assert private.server_boundary_version()='20261124210000', 'boundary version';
+  assert private.server_boundary_version()='20261124220000', 'boundary version';
   j1 := private.next_ai_job(); f := private.claim_ai_job(j1);
   loaded := private.load_ai_job(j1,f);
   assert loaded->'items'->0->>'canonical_id'='aliexpress:1002' and loaded->'items'->0->>'affiliate_url'='https://s.click.aliexpress.com/e/b', 'commerce link not bound to its panel';
@@ -206,7 +206,16 @@ begin
   assert private.read_outfit_render(a,r)->'panels'->1->>'charge_state'='unknown', 'unknown charge not reported';
   begin perform private.retry_outfit_panel(a,r,2::smallint,'dev-v1','segmind','flux-3-klein-image-edit',20000,null,true); raise exception 'unknown outcome retried'; exception when sqlstate 'SA008' then null; end;
 end $$;
+-- What automatic reconciliation reads: why, when, which ids are taken, and whether another call could own the same row.
+reset role;
+update private.provider_calls set started_at=clock_timestamp()-interval '10 minutes',error_code='segmind_http_502' where id=current_setting('t.call')::uuid;
+update private.provider_calls set started_at=clock_timestamp()-interval '12 minutes',provider_request_id='req-taken-1' where id<>current_setting('t.call')::uuid and provider='segmind' and status='succeeded'
+  and id=(select id from private.provider_calls where provider='segmind' and status='succeeded' order by created_at limit 1);
 set local role stylai_ai_worker;
+do $$ declare x jsonb := (select e from jsonb_array_elements(private.list_unreconciled_calls(50)) e where e->>'id'=current_setting('t.call')); begin
+  assert x->>'error_code'='segmind_http_502' and x->>'finished_at' is not null and x->>'environment'='test' and (x->>'rivals')::integer=0, 'reconciliation facts missing: '||coalesce(x::text,'null');
+  assert x->'taken' ? 'req-taken-1', 'taken ids missing';
+end $$;
 do $$ begin assert private.reconcile_provider_call(current_setting('t.call')::uuid,'failed',20000,'provider_confirmed','{}'), 'reconcile'; end $$;
 set local role stylai_api;
 do $$

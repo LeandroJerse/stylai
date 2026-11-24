@@ -58,3 +58,5 @@ Subir em modo real: `node scripts/start-pilot.mjs --real --pilot=stylai-first-re
 Contagem de verificações não mede qualidade da seleção: ler os nomes impressos e as capturas em `test-results/e2e-outfits-*`.
 
 Desde 2026-11-24, sem conexão com o provador o pedido falha antes da reserva (`provider_unreachable`, custo zero, nenhuma tentativa do piloto). Um resultado desconhecido traz o motivo em `provider_calls.error_code` (ex.: `segmind_transport_econnreset`) e a duração real em `latency_ms`; nos registros anteriores, `latency_ms=0` não mede nada.
+
+Conferência automática (desde 2026-11-24): em modo real o worker consulta o histórico do Segmind e resolve sozinho os pedidos em conferência, em geral em poucos minutos. Para olhar à mão: `node scripts/diagnose-segmind-history.mjs` (gratuito, só leitura). Só precisam de operador os casos ambíguos, registrados no log do worker como `reconcile_waiting`.
