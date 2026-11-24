@@ -2,7 +2,7 @@ import type { Json } from "./database.types.js"
 import type { DatabasePurpose } from "./private-config.js"
 
 /** Must match private.server_boundary_version() of the latest boundary migration. */
-export const privateBoundaryVersion = "20261124220000"
+export const privateBoundaryVersion = "20261124230000"
 
 // bigint inputs/outputs remain decimal text: never silently round money/fences.
 type Call<A extends unknown[], R> = { args: A; result: R }
@@ -102,6 +102,7 @@ export interface PrivateTransactions {
     settle_provider_call: Call<[call: string,status: string,requestId: string|null,units: Json,report: Json,estimated: string|null,computed: string|null,confirmed: string|null,source: string,latencyMs: number|null,error: string|null],boolean>
     reconcile_provider_call: Call<[call: string,status: string,confirmed: string,source: string,report: Json],boolean>
     list_unreconciled_calls: Call<[limit: number],Json|null>
+    recover_look_job: Call<[call: string,objectKey: string,bytes: number,mime: string,width: number,height: number,costMicros: string,report: Json],string|null>
     reserve_pilot_dispatch: Call<[pilot: string,call: string,fence: string,mode: "real"|"simulated",params: Json],Json|null>
     pilot_status: Call<[pilot: string],Json|null>
     claim_reference_purges: Call<[limit: number],Json|null>
@@ -238,6 +239,7 @@ export const privateOperations = {
     begin_provider_call: transaction('begin_provider_call',['uuid','bigint'],'boolean'),
     settle_provider_call: transaction('settle_provider_call',['uuid','text','text','jsonb','jsonb','bigint','bigint','bigint','text','integer','text'],'boolean'),
     reconcile_provider_call: transaction('reconcile_provider_call',['uuid','text','bigint','text','jsonb'],'boolean'),
+    recover_look_job: transaction('recover_look_job',['uuid','text','integer','text','integer','integer','bigint','jsonb'],'nullable_uuid'),
     list_unreconciled_calls: transaction('list_unreconciled_calls',['integer'],'json'),
     reserve_pilot_dispatch: transaction('reserve_pilot_dispatch',['text','uuid','bigint','text','jsonb'],'json'),
     pilot_status: transaction('pilot_status',['text'],'json'),

@@ -5,7 +5,8 @@
  * request (prompt and images): they are parsed for outcome fields only, and never kept or logged.
  */
 import { z } from "zod"
-import type { FetchLike } from "./segmind.js"
+import { imageLimits, validateOutputImage, type ImageInfo } from "./image.js"
+import { isAllowedOutputUrl, type FetchLike } from "./segmind.js"
 
 export const SEGMIND_HISTORY_ORIGIN = "https://api.spotprod.segmind.com"
 const PER_PAGE = 100
@@ -31,7 +32,7 @@ export interface HistoryQuery {
   taken: readonly string[]
 }
 export type HistoryAnswer =
-  | { kind: "found"; requestId: string; httpStatus: number; costMicros: bigint; hasOutput: boolean; errorFamily: string | null }
+  | { kind: "found"; requestId: string; httpStatus: number; costMicros: bigint; hasOutput: boolean; /** Download address, only when it is a Segmind one; never stored or logged. */ outputUrl: string | null; errorFamily: string | null }
   | { kind: "pending" | "absent" | "ambiguous" }
   | { kind: "unavailable"; code: string }
 
@@ -45,6 +46,27 @@ export function createSegmindHistory(config: { apiKey: string; fetch?: FetchLike
     return await response.json()
   }
   return {
+    /** The image already paid for: no key sent, no redirect, size capped, checked by content. Null = not available now. */
+    async output(url: string): Promise<{ bytes: Uint8Array; info: ImageInfo } | null> {
+      if (!isAllowedOutputUrl(url)) return null
+      try {
+        const response = await http(url, { method: "GET", redirect: "error", signal: AbortSignal.timeout(config.timeoutMs ?? 30_000) })
+        if (response.status !== 200 || !response.body || Number(response.headers.get("content-length") ?? "0") > imageLimits.maxBytes) return null
+        const reader = response.body.getReader(), chunks: Uint8Array[] = []
+        let size = 0
+        try {
+          for (;;) {
+            const part = await reader.read()
+            if (part.done) break
+            size += part.value.length
+            if (size > imageLimits.maxBytes) return null
+            chunks.push(part.value)
+          }
+        } finally { await reader.cancel().catch(() => undefined) }
+        const bytes = new Uint8Array(Buffer.concat(chunks))
+        return { bytes, info: validateOutputImage(bytes) }
+      } catch { return null }
+    },
     async find(q: HistoryQuery): Promise<HistoryAnswer> {
       const start = q.startedAt.getTime(), end = q.endAt.getTime()
       const rows: z.infer<typeof row>[] = []
@@ -79,7 +101,7 @@ export function createSegmindHistory(config: { apiKey: string; fetch?: FetchLike
       if (!["COMPLETED", "FAILED"].includes(hit.model_status) || hit.response_code === null || hit.credits_deduction === null) return { kind: "pending" }
       return {
         kind: "found", requestId: hit.request_id, httpStatus: hit.response_code, costMicros: BigInt(Math.round(hit.credits_deduction * 1_000_000)),
-        hasOutput: Boolean(hit.generation_url), errorFamily: hit.error_family && /^[a-z0-9_]{1,64}$/.test(hit.error_family) ? hit.error_family : null,
+        hasOutput: Boolean(hit.generation_url), outputUrl: hit.generation_url && isAllowedOutputUrl(hit.generation_url) ? hit.generation_url : null, errorFamily: hit.error_family && /^[a-z0-9_]{1,64}$/.test(hit.error_family) ? hit.error_family : null,
       }
     },
   }

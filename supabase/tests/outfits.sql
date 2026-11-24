@@ -147,7 +147,7 @@ set local role stylai_ai_worker;
 do $$
 declare j1 uuid; declare j2 uuid; declare f bigint; declare f2 bigint; declare c uuid; declare asset uuid; declare loaded jsonb;
 begin
-  assert private.server_boundary_version()='20261124220000', 'boundary version';
+  assert private.server_boundary_version()='20261124230000', 'boundary version';
   j1 := private.next_ai_job(); f := private.claim_ai_job(j1);
   loaded := private.load_ai_job(j1,f);
   assert loaded->'items'->0->>'canonical_id'='aliexpress:1002' and loaded->'items'->0->>'affiliate_url'='https://s.click.aliexpress.com/e/b', 'commerce link not bound to its panel';
@@ -213,9 +213,53 @@ update private.provider_calls set started_at=clock_timestamp()-interval '12 minu
   and id=(select id from private.provider_calls where provider='segmind' and status='succeeded' order by created_at limit 1);
 set local role stylai_ai_worker;
 do $$ declare x jsonb := (select e from jsonb_array_elements(private.list_unreconciled_calls(50)) e where e->>'id'=current_setting('t.call')); begin
-  assert x->>'error_code'='segmind_http_502' and x->>'finished_at' is not null and x->>'environment'='test' and (x->>'rivals')::integer=0, 'reconciliation facts missing: '||coalesce(x::text,'null');
+  assert x->>'error_code'='segmind_http_502' and x->>'finished_at' is not null and x->>'environment'='test' and (x->>'job_active')='false' and (x->>'rivals')::integer=0, 'reconciliation facts missing: '||coalesce(x::text,'null');
   assert x->'taken' ? 'req-taken-1', 'taken ids missing';
 end $$;
+-- Recovering a paid image: every refusal leaves the call exactly as it was.
+reset role;
+savepoint recover;
+create function pg_temp.recover(p_cost bigint,p_key text default null) returns uuid language sql as $f$
+  select private.recover_look_job(current_setting('t.call')::uuid,coalesce(p_key,'80000000-0000-4000-8000-00000000000a/'||(select job_id from private.provider_calls where id=current_setting('t.call')::uuid)||'/recovered.png'),
+    10,'image/png',300,400,p_cost,'{"source":"segmind_history","request_id":"req-recovered"}') $f$;
+update private.photo_consents set revoked_at=now() where user_id='80000000-0000-4000-8000-00000000000a';
+do $$ begin assert pg_temp.recover(12870) is null, 'recovered without consent'; end $$;
+rollback to savepoint recover;
+update private.assets set state='deleting' where id='85000000-0000-4000-8000-00000000000a';
+do $$ begin
+  assert private.recover_look_job(current_setting('t.call')::uuid,'x',10,'image/png',300,400,12870,'{}') is null, 'recovered with the photo removed';
+end $$;
+rollback to savepoint recover;
+do $$ begin
+  begin perform private.recover_look_job(current_setting('t.call')::uuid,'80000000-0000-4000-8000-00000000000b/x/recovered.png',10,'image/png',300,400,12870,'{}'); raise exception 'foreign object key accepted'; exception when check_violation then null; end;
+  begin perform private.recover_look_job(current_setting('t.call')::uuid,'x',10,'image/png',300,400,0,'{}'); raise exception 'free image recovered'; exception when check_violation then null; end;
+end $$;
+do $$ begin assert (select status from private.provider_calls where id=current_setting('t.call')::uuid)='unknown', 'a refusal settled the call'; end $$;
+-- The real recovery, with the worker role, in a branch that is undone so the next tests keep their own story.
+set local role stylai_ai_worker;
+do $$ declare v uuid; declare j uuid; begin
+  j := (select (e->>'job_id')::uuid from jsonb_array_elements(private.list_unreconciled_calls(50)) e where e->>'id'=current_setting('t.call'));
+  assert (select e->>'user_id' from jsonb_array_elements(private.list_unreconciled_calls(50)) e where e->>'id'=current_setting('t.call'))='80000000-0000-4000-8000-00000000000a', 'owner not listed';
+  v := private.recover_look_job(current_setting('t.call')::uuid,'80000000-0000-4000-8000-00000000000a/'||j||'/recovered.png',10,'image/png',300,400,12870,'{"source":"segmind_history","request_id":"req-recovered"}');
+  assert v is not null, 'paid image not recovered';
+  perform set_config('t.recovered',v::text,true);
+  assert private.recover_look_job(current_setting('t.call')::uuid,'80000000-0000-4000-8000-00000000000a/'||j||'/recovered2.png',10,'image/png',300,400,12870,'{}') is null, 'recovered twice';
+end $$;
+reset role;
+do $$ declare c private.provider_calls%rowtype; begin
+  select * into c from private.provider_calls where id=current_setting('t.call')::uuid;
+  assert c.status='succeeded' and c.settled_usd_micros=12870 and c.look_version_id=current_setting('t.recovered')::uuid, 'ledger not settled at the real cost';
+  assert (select status='succeeded' and failure_code is null and result_asset_id is not null from private.ai_jobs where id=c.job_id), 'job not completed';
+  assert (select count(*) from private.look_version_items where version_id=current_setting('t.recovered')::uuid)>=1, 'pieces not kept';
+  assert (select comparison_state from private.outfit_renders where id=current_setting('t.render')::uuid)='pending', 'comparison not buildable after the recovery';
+  assert (select reserved from private.ai_daily_usage where user_id='80000000-0000-4000-8000-00000000000a' order by usage_date desc limit 1)>=0, 'daily usage broken';
+end $$;
+set local role stylai_api;
+do $$ begin assert private.read_outfit_render('80000000-0000-4000-8000-00000000000a',current_setting('t.render')::uuid)->'panels'->1->>'version_id'=current_setting('t.recovered'), 'recovered image not on its panel'; end $$;
+do $$ begin perform private.recover_look_job(current_setting('t.call')::uuid,'x',1,'image/png',1,1,1,'{}'); raise exception 'api role recovered'; exception when insufficient_privilege then null; end $$;
+reset role;
+rollback to savepoint recover;
+set local role stylai_ai_worker;
 do $$ begin assert private.reconcile_provider_call(current_setting('t.call')::uuid,'failed',20000,'provider_confirmed','{}'), 'reconcile'; end $$;
 set local role stylai_api;
 do $$

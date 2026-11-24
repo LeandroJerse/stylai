@@ -19,9 +19,9 @@ import type { PhotoRelay, PhotoRelayLease } from "./photo-relay.js"
 /** Plain-data copy for jsonb parameters (drops undefined, rejects non-JSON values). */
 function toJson(value: unknown): Json { return JSON.parse(JSON.stringify(value)) as Json }
 const unreconciledCall = z.object({
-  id: z.string().uuid(), provider: z.string(), model: z.string().optional(), provider_request_id: z.string().nullable(),
+  id: z.string().uuid(), job_id: z.string().uuid().nullish(), user_id: z.string().uuid().nullish(), provider: z.string(), model: z.string().optional(), provider_request_id: z.string().nullable(),
   started_at: z.string().nullish(), finished_at: z.string().nullish(), error_code: z.string().nullish().transform((v) => v ?? null), environment: z.string().nullish(),
-  taken: z.array(z.string()).default([]), rivals: z.number().int().default(0),
+  job_active: z.boolean().default(false), taken: z.array(z.string()).default([]), rivals: z.number().int().default(0),
 })
 type UnreconciledCall = z.infer<typeof unreconciledCall>
 
@@ -545,14 +545,14 @@ export function createEngine(deps: EngineDeps) {
 
   /** When each unresolved call may be asked about again (in memory: a restart only asks once more). */
   const askAgainAt = new Map<string, number>()
-  const CALL_MAX_MS = 5 * 60_000, SETTLE_MS = 60_000, ABSENT_AFTER_MS = 30 * 60_000, WINDOW_MS = 3 * 60_000
+  const CALL_MAX_MS = 5 * 60_000, SETTLE_MS = 60_000, ABSENT_AFTER_MS = 30 * 60_000, WINDOW_MS = 3 * 60_000, RECOVER_FOR_MS = 2 * 60 * 60_000
   /**
    * One synchronous Segmind call, settled by the provider's history. Only a definite record counts; a call that may still
    * be running, a row that could belong to another call, or any doubt leaves it for later (or for the operator).
    */
   async function reconcileByHistory(history: SegmindHistory, row: UnreconciledCall): Promise<boolean> {
     const at = now(), started = Date.parse(row.started_at ?? ""), finished = Date.parse(row.finished_at ?? "")
-    if (!Number.isFinite(started) || row.environment === "test") return false
+    if (!Number.isFinite(started) || row.environment === "test" || row.job_active) return false
     // A stored reason means the call ended. Without one it may be in flight, or the worker died.
     const ended = row.error_code !== null && Number.isFinite(finished)
     if (ended ? at < finished + SETTLE_MS : at < started + CALL_MAX_MS) return false
@@ -563,8 +563,27 @@ export function createEngine(deps: EngineDeps) {
     // A success without a price yet may still be billed.
     const unpriced = answer.kind === "found" && answer.httpStatus === 200 && answer.costMicros === 0n && at < started + ABSENT_AFTER_MS
     if (answer.kind === "found" && !unpriced) {
-      const done = await db.call("reconcile_provider_call", row.id, "failed", answer.costMicros.toString(), "provider_confirmed", toJson({
-        source: "segmind_history", http_status: answer.httpStatus, charged: answer.costMicros > 0n, has_output: answer.hasOutput, error_family: answer.errorFamily, request_id: answer.requestId }))
+      const report = { source: "segmind_history", http_status: answer.httpStatus, charged: answer.costMicros > 0n, has_output: answer.hasOutput, error_family: answer.errorFamily, request_id: answer.requestId }
+      if (answer.httpStatus === 200 && answer.costMicros > 0n && answer.outputUrl && row.job_id && row.user_id) {
+        const image = await history.output(answer.outputUrl)
+        // Paid and not downloadable right now: worth waiting for before asking the person to pay again.
+        if (!image && at < started + RECOVER_FOR_MS) return false
+        if (image) {
+          const key = `${row.user_id}/${row.job_id}/recovered.${image.info.mime === "image/png" ? "png" : image.info.mime === "image/webp" ? "webp" : "jpg"}`
+          await store.put("generated-looks", key, image.bytes, image.info.mime)
+          let version: string | null = null
+          try {
+            version = await db.call("recover_look_job", row.id, key, image.bytes.length, image.info.mime, image.info.width, image.info.height, answer.costMicros.toString(), toJson({ ...report, recovered: true }))
+          } catch (error) {
+            await store.remove("generated-looks", key).catch(() => undefined)
+            throw error
+          }
+          if (version) { askAgainAt.delete(row.id); return true }
+          // Photo, consent or account gone since: the copy is not kept, only the charge is recorded.
+          await store.remove("generated-looks", key).catch(() => undefined)
+        }
+      }
+      const done = await db.call("reconcile_provider_call", row.id, "failed", answer.costMicros.toString(), "provider_confirmed", toJson(report))
       if (done) askAgainAt.delete(row.id)
       return done
     }

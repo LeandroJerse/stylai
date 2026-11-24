@@ -491,3 +491,11 @@ Criado prompt de implementação baseado em Superpowers e nos módulos existente
 - Conferido com os dados reais: o 502 das 18:07 (sem cobrança), a chamada cobrada das 17:46 e um horário sem chamada.
 - Regra escrita do Segmind: só HTTP 200 é cobrado. Mesmo assim, a decisão vem do registro, não do código da resposta.
 - Migração 20261124220000 (só leitura, aditiva) aplicada no banco local, com backup `pre-20261124220000.dump`.
+
+### E33 — 2026-11-24 — Imagem já paga é recuperada em vez de paga duas vezes
+- Pedido de Leandro. Quando o histórico do Segmind prova que a chamada foi cobrada e tem imagem, o worker baixa a imagem (sem chave, só endereço https do Segmind, limite de tamanho, conferida pelo conteúdo), guarda no armazenamento privado, fecha o trabalho e liquida o custo real. O painel fica pronto e o comparativo pode ser montado.
+- Só recupera com a conta ativa, o termo aceito e a mesma foto ainda válida; senão a cópia é apagada e só a cobrança é registrada. Não volta a debitar moeda, que já tinha sido devolvida na falha.
+- Imagem indisponível: espera até 2 horas antes de registrar só a cobrança.
+- Conferido com dado real: a imagem das 17:46 baixada pelo histórico tem o mesmo tamanho da guardada (1.708.024 bytes, 880x1184). A recuperação completa foi provada em teste de banco; nenhum caso real ocorreu ainda.
+- Migração 20261124230000 no banco local, com backup.
+- PRIVACIDADE, em aberto: as imagens geradas ficam no Segmind em endereço que abre sem login (conferido: 4 de 4, HTTP 200 sem chave) e, pela documentação, sem prazo para apagar. O termo atual fala da foto enviada, não da imagem gerada guardada pelo provedor.
