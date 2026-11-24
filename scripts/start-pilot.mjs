@@ -11,11 +11,13 @@ import { resolve } from "node:path"
 import { parseEnv } from "node:util"
 import { planPilotRuntime } from "./pilot-runtime.mjs"
 import { loadAliExpressEnvironment, withoutAliExpressEnv } from "./aliexpress-runtime.mjs"
+import { loadVertexEnvironment } from "./vertex-runtime.mjs"
 
 const root = process.cwd()
 const argv = process.argv.slice(2)
 const rootEnvFile = resolve(root, "../.env.local")
 const rootEnv = existsSync(rootEnvFile) ? parseEnv(readFileSync(rootEnvFile, "utf8")) : {}
+if(argv.includes('--google-backend=vertex')) Object.assign(rootEnv,loadVertexEnvironment())
 const plan = planPilotRuntime({ argv, rootEnv })
 const aliexpress = plan.catalog === "aliexpress_affiliate"
 // AliExpress credentials come from the DPAPI store: validated BEFORE any mutation (also in --dry-run; values never printed).
@@ -44,7 +46,7 @@ const roles = spawnSync("docker", ["exec", "-i", "supabase_db_stylai-local", "ps
 if (roles.status !== 0) throw new Error("Local role initialization failed")
 
 const clean = withoutAliExpressEnv(Object.fromEntries(Object.entries(process.env)
-  .filter(([k]) => !/^(FAL_|TIKTOK_|OPENAI_|STYLAI_|SUPABASE_|LANGFUSE_|SEGMIND_|ANTHROPIC_|GEMINI_|TELEMETRY_|VITE_)/.test(k))))
+  .filter(([k]) => !/^(FAL_|TIKTOK_|OPENAI_|STYLAI_|SUPABASE_|LANGFUSE_|SEGMIND_|ANTHROPIC_|GEMINI_|VERTEX_|GOOGLE_|TELEMETRY_|VITE_)/.test(k))))
 const supabase = { SUPABASE_URL: status.API_URL, SUPABASE_PUBLISHABLE_KEY: status.PUBLISHABLE_KEY, SUPABASE_SECRET_KEY: status.SECRET_KEY, STYLAI_OBJECT_STORE: "supabase" }
 const db = (role) => `postgres://${role}:${password}@127.0.0.1:54322/postgres`
 const origin = "http://localhost:5198"

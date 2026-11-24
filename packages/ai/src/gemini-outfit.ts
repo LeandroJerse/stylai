@@ -52,10 +52,19 @@ export function buildOutfitPrompt(input: OutfitInput): string {
       ].join("\n")
 }
 
-export function createGeminiOutfitClient(config: { apiKey: string; fetch?: FetchLike }) {
+export const VERTEX_OUTFIT_MODEL = "gemini-nano-banana-2.1"
+export const VERTEX_OUTFIT_RESERVE = 200_000n
+export const VERTEX_OUTFIT_PRICE_VERSION = "vertex-nano-banana-21-1k-2026-11-23"
+export function createGeminiOutfitClient(config: { apiKey: string; vertexProject?: string; fetch?: FetchLike }) {
+  if(config.vertexProject!==undefined && !/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/.test(config.vertexProject)) throw new Error('invalid_vertex_project')
+  const vertex = config.vertexProject !== undefined
+  const model = vertex ? VERTEX_OUTFIT_MODEL : GEMINI_OUTFIT_MODEL
+  const endpoint = vertex
+    ? `https://aiplatform.googleapis.com/v1/projects/${config.vertexProject}/locations/global/publishers/google/models/${model}:generateContent`
+    : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
   const http = config.fetch ?? fetch
   return {
-    model: GEMINI_OUTFIT_MODEL,
+    model,
     async garment(imageUrl: string): Promise<InlineImage> {
       const u = new URL(imageUrl)
       if(u.protocol !== "https:" || u.username || u.password || u.port || !["alicdn.com","aliexpress-media.com"].some(h => u.hostname===h || u.hostname.endsWith(`.${h}`))) throw new Error("garment_host_not_allowed")
@@ -74,9 +83,9 @@ export function createGeminiOutfitClient(config: { apiKey: string; fetch?: Fetch
       const instructions = buildOutfitPrompt(input)
       const parts = [{text:instructions}, ...[input.person,...input.garments].map(i=>({inlineData:{mimeType:i.mime,data:Buffer.from(i.bytes).toString("base64")}}))]
       try {
-        const response=await http(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_OUTFIT_MODEL}:generateContent`,{
+        const response=await http(endpoint,{
           method:"POST",headers:{"x-goog-api-key":config.apiKey,"Content-Type":"application/json"}, redirect:"error", signal:AbortSignal.timeout(100000),
-          body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{responseModalities:["IMAGE"],candidateCount:1,maxOutputTokens:8192,imageConfig:{imageSize:"2K",aspectRatio:"3:4"}}}),
+          body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{responseModalities:["IMAGE"],candidateCount:1,maxOutputTokens:8192,...(vertex?{thinkingConfig:{thinkingLevel:"MINIMAL"}}:{}),imageConfig:{imageSize:vertex?"1K":"2K",aspectRatio:"3:4"}}}),
         })
         if(!response.ok) return [400,401,403,404,429].includes(response.status) ? {kind:"rejected",code:`gemini_http_${response.status}`,diagnostic:await quotaDiagnostic(response)} : {kind:"unknown",code:`gemini_http_${response.status}`}
         const parsed=responseSchema.safeParse(await response.json())
@@ -88,7 +97,9 @@ export function createGeminiOutfitClient(config: { apiKey: string; fetch?: Fetch
         const usage=usageSchema.safeParse(parsed.data.usageMetadata)
         const units: Record<string,number>=usage.success ? {input_tokens:usage.data.promptTokenCount,output_tokens:usage.data.candidatesTokenCount,thinking_tokens:usage.data.thoughtsTokenCount??0} : {}
         const computed=usage.success && usage.data.candidatesTokenCount>=1120
-          ? 134400n+BigInt(usage.data.promptTokenCount)*2n+BigInt(usage.data.candidatesTokenCount-1120+(usage.data.thoughtsTokenCount??0))*12n : null
+          ? vertex
+            ? 33600n+(BigInt(usage.data.promptTokenCount)*3n+BigInt(usage.data.candidatesTokenCount-1120+(usage.data.thoughtsTokenCount??0))*15n+1n)/2n
+            : 134400n+BigInt(usage.data.promptTokenCount)*2n+BigInt(usage.data.candidatesTokenCount-1120+(usage.data.thoughtsTokenCount??0))*12n : null
         return {kind:"completed",bytes:Buffer.from(inline.data,"base64"),requestId:parsed.data.responseId??null,computedMicros:computed,usage:units}
       } catch { return {kind:"unknown",code:"gemini_transport_or_response_unknown"} }
     },

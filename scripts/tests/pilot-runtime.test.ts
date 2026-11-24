@@ -46,3 +46,17 @@ test("Segmind Pro model is consistent between API and worker without leaking its
  expect(plan.api.SEGMIND_API_KEY).toBeUndefined()
  expect(planPilotRuntime({argv:["--segmind-model=nano-banana-pro"],rootEnv}).ok).toBe(false)
 })
+
+test("Vertex mode requires project and isolated credential, sends public config to both processes",()=>{
+ const argv=["--real","--provider=gemini","--google-backend=vertex","--google-project=stylai-test","--pilot=existing-pilot"]
+ const plan=planPilotRuntime({argv,rootEnv:{...rootEnv,VERTEX_API_KEY:"vertex-secret"}})
+ expect(plan.ok).toBe(true)
+ expect(plan.worker.GEMINI_API_KEY).toBe("vertex-secret")
+ expect(plan.api.GOOGLE_CLOUD_PROJECT).toBe("stylai-test")
+ expect(plan.worker.GOOGLE_CLOUD_PROJECT).toBe("stylai-test")
+ expect(plan.worker.STYLAI_GOOGLE_BACKEND).toBe("vertex")
+ expect(JSON.stringify(plan.api)).not.toContain("vertex-secret")
+ expect(JSON.stringify(plan.report)).not.toContain("vertex-secret")
+ expect(planPilotRuntime({argv,rootEnv}).ok).toBe(false)
+ expect(planPilotRuntime({argv:argv.filter(a=>!a.startsWith("--google-project")),rootEnv:{VERTEX_API_KEY:"v"}}).ok).toBe(false)
+})

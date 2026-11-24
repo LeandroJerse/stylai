@@ -23,3 +23,17 @@ test('Segmind uncertainty never retries and input URLs are required before HTTP'
  await expect(client.generate({person:{bytes:png,mime:'image/png'},garments})).rejects.toThrow('invalid_outfit_urls')
  expect(calls).toBe(1)
 })
+
+for(const [model,thinking,cost] of [['nano-banana-2-lite','high',42000n],['nano-banana-2.1','minimal',45000n]] as const){
+ test(`${model} uses its own endpoint, 1K preset and price`,async()=>{
+  const client=createSegmindOutfitClient({apiKey:'test',model,fetch:async(url,init)=>{
+   expect(String(url)).toBe(`https://api.segmind.com/v1/${model}`)
+   expect(JSON.parse(String(init?.body))).toMatchObject({output_resolution:'1K',thinking_level:thinking,image_urls:[photo.url,...garments.map(g=>g.url)]})
+   return new Response(png,{headers:{'content-type':'image/png'}})
+  }})
+  const result=await client.generate({person:photo,garments})
+  expect(client.model).toBe(model)
+  if(result.kind!=='completed')throw new Error('expected completed')
+  expect(result.computedMicros).toBe(cost)
+ })
+}

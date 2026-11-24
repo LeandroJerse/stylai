@@ -1,6 +1,6 @@
 import { readServiceConfig } from "@stylai/config"
 import {
-  createSegmindOutfitClient, createGeminiOutfitClient, createFalClient, createOtlpExporter, createSegmindClient, FAL_FASHN_MODEL, FAL_IMAGE_APPS_MODEL, readLangfuseConfig,
+  segmindOutfitProfile, createSegmindOutfitClient, createGeminiOutfitClient, createFalClient, createOtlpExporter, createSegmindClient, FAL_FASHN_MODEL, FAL_IMAGE_APPS_MODEL, readLangfuseConfig,
   type FalClient, type FalTryOnModel,
 } from "@stylai/ai"
 import {
@@ -45,9 +45,11 @@ const falReconcilers: Partial<Record<FalTryOnModel, FalClient>> = runtime.fal.ap
 const langfuse = readLangfuseConfig(process.env)
 const exporter = langfuse ? createOtlpExporter(langfuse) : null
 
-const segmindOutfit = runtime.provider === "segmind" && runtime.segmind.model === "nano-banana-pro" && runtime.paidCallsEnabled && runtime.segmind.apiKey ? createSegmindOutfitClient({apiKey:runtime.segmind.apiKey}) : null
+const segmindOutfit = runtime.provider === "segmind" && segmindOutfitProfile(runtime.segmind.model) && runtime.paidCallsEnabled && runtime.segmind.apiKey ? createSegmindOutfitClient({apiKey:runtime.segmind.apiKey,model:runtime.segmind.model}) : null
 const segmindReconcilers = runtime.segmind.apiKey && !runtime.segmind.simulated ? {"try-on-diffusion":createSegmindClient({apiKey:runtime.segmind.apiKey,model:"try-on-diffusion"})} : {}
-const gemini = runtime.paidCallsEnabled && runtime.gemini.apiKey ? createGeminiOutfitClient({apiKey:runtime.gemini.apiKey}) : null
+const vertexProject = process.env.STYLAI_GOOGLE_BACKEND === 'vertex' ? process.env.GOOGLE_CLOUD_PROJECT : undefined
+if(process.env.STYLAI_GOOGLE_BACKEND === 'vertex' && !vertexProject) throw new Error('vertex_project_required')
+const gemini = runtime.paidCallsEnabled && runtime.gemini.apiKey ? createGeminiOutfitClient({apiKey:runtime.gemini.apiKey,...(vertexProject?{vertexProject}:{})}) : null
 const activeSimulated = runtime.provider === "gemini" ? false : runtime.provider === "fal" ? runtime.fal.simulated : runtime.segmind.simulated
 const photoRelay = runtime.provider !== "gemini" && runtime.photoRelay === "cloudflared" && !activeSimulated ? createCloudflaredPhotoRelay() : null
 const engine = db && runtime.engine.pseudonymKey

@@ -8,8 +8,8 @@
 import { z } from "zod"
 import {
   defaultSegmindPreset, falCost, findPrice, microsToUsdNumber, pseudonymizeUser, segmindCost, spanIdFor, traceIdForJob, validateOutputImage,
-  SEGMIND_OUTFIT_RESERVE, SEGMIND_OUTFIT_PRICE_VERSION, type SegmindOutfitClient,
-  GEMINI_OUTFIT_RESERVE, GEMINI_OUTFIT_PRICE_VERSION, validateGeminiOutfitInput, type GeminiOutfitClient,
+  segmindOutfitProfile, type SegmindOutfitClient,
+  GEMINI_OUTFIT_RESERVE, GEMINI_OUTFIT_PRICE_VERSION, VERTEX_OUTFIT_MODEL, VERTEX_OUTFIT_RESERVE, VERTEX_OUTFIT_PRICE_VERSION, validateGeminiOutfitInput, type GeminiOutfitClient,
   type FalClient, type FalTryOnModel, type GpuSecondPrice, type PerImagePrice, type SegmindCategory, type SegmindClient, type SegmindPreset, type SpanRecord, type AttributeValue,
 } from "@stylai/ai"
 import { PrivateDatabaseError, type Json, type PrivateDatabase, type PrivateObjectStore } from "@stylai/supabase"
@@ -317,8 +317,12 @@ export function createEngine(deps: EngineDeps) {
   async function renderJointOutfit(job: LoadedJob, fence: string, pieces: {category: SegmindCategory; imageUrl: string; garmentType:string; slot:string|null}[]): Promise<string> {
     const provider = config.provider === "segmind" ? "segmind" : "gemini"
     const client = provider === "segmind" ? deps.segmindOutfit : deps.gemini
-    const reserve = provider === "segmind" ? SEGMIND_OUTFIT_RESERVE : GEMINI_OUTFIT_RESERVE
-    const priceVersion = provider === "segmind" ? SEGMIND_OUTFIT_PRICE_VERSION : GEMINI_OUTFIT_PRICE_VERSION
+    const profile = provider === "segmind" && client ? segmindOutfitProfile(client.model) : null
+    if(provider === "segmind" && !profile) throw new JobFailure("provider_price_unknown")
+    const vertex = provider === 'gemini' && client?.model === VERTEX_OUTFIT_MODEL
+    const reserve = profile?.reserveMicros ?? (vertex ? VERTEX_OUTFIT_RESERVE : GEMINI_OUTFIT_RESERVE)
+    const priceVersion = profile?.priceVersion ?? (vertex ? VERTEX_OUTFIT_PRICE_VERSION : GEMINI_OUTFIT_PRICE_VERSION)
+    const resolution = profile?.resolution ?? (vertex ? '1K' : '2K')
     if(!client || !config.pilotId) throw new JobFailure("provider_not_enabled")
     if(job.photo.usable===false) throw new JobFailure("photo_removed")
     const person: {bytes:Uint8Array;mime:string;url?:string} = {bytes:await store.get("body-photos",job.photo.object_key),mime:job.photo.mime ?? "image/jpeg"}
@@ -347,7 +351,7 @@ export function createEngine(deps: EngineDeps) {
     const call = await db.call("reserve_provider_call",job.id,fence,provider,client.model,priceVersion,"generation",
       `gen_${job.id.replace(/-/g,"")}_joint`,reserve.toString(),pseudonymizeUser(job.user_id,config.pseudonymKey),config.environment)
     const gate = z.object({ok:z.boolean(),reason:z.string().optional()}).parse(await db.call("reserve_pilot_dispatch",config.pilotId,call,fence,"real",
-      {provider,model:client.model,images_per_call:1,pieces:pieces.length,resolution:"2K",render:"joint_outfit"}))
+      {provider,model:client.model,images_per_call:1,pieces:pieces.length,resolution,render:"joint_outfit"}))
     if(!gate.ok) throw new JobFailure(`pilot_${gate.reason??"blocked"}`)
     try { if(!await db.call("begin_provider_call",call,fence)) throw new JobFailure("generation_needs_reconciliation") }
     catch(error) {
@@ -368,7 +372,7 @@ export function createEngine(deps: EngineDeps) {
       throw new JobFailure(result.code)
     }
     if(result.kind!=="completed") throw new JobFailure("provider_outcome_unknown")
-    await db.call("settle_provider_call",call,"succeeded",result.requestId,toJson(result.usage),{resolution:"2K",images:1},reserve.toString(),
+    await db.call("settle_provider_call",call,"succeeded",result.requestId,toJson(result.usage),{resolution,images:1},reserve.toString(),
       result.computedMicros?.toString()??null,null,result.computedMicros===null?"unknown":"computed_from_usage",duration,null)
     await telemetry(job,"generation:joint",{name:"joint-outfit",startMs:started,endMs:now(),attributes:{
       "langfuse.observation.type":"generation","langfuse.observation.model.name":client.model,

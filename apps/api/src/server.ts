@@ -2,7 +2,7 @@ import { resolve } from "node:path"
 import { readServiceConfig } from "@stylai/config"
 import type { CatalogSourceMode } from "@stylai/contracts"
 import { createAliExpressAffiliateClient, createAliExpressCatalogService, createTikTokCatalogCache, createTikTokCreatorClient } from "@stylai/commerce"
-import { createAnthropicComposer, createInterpretationCache, DEFAULT_COMPOSER_MODEL, FAL_FASHN_MODEL, findPrice } from "@stylai/ai"
+import { VERTEX_OUTFIT_MODEL, VERTEX_OUTFIT_RESERVE, segmindOutfitProfile, createAnthropicComposer, createInterpretationCache, DEFAULT_COMPOSER_MODEL, FAL_FASHN_MODEL, findPrice } from "@stylai/ai"
 import { buildApp } from "./app.js"
 import {
   readSupabaseConfig, probeFoundation, readPrivateDatabaseConfig, createPrivateDatabase, createLocalObjectStore, createSupabaseObjectStore, createAdminClient, defaultLocalStoreDir,
@@ -61,8 +61,10 @@ const tiktokCache = tiktokClient ? createTikTokCatalogCache({ client: tiktokClie
 }) : null
 // Shown before a paid call. Estimate: mean public inference ~8.06 s x US$ 0.0072/GPU-s; reserve per call = worker ceiling.
 const nativeGemini = process.env.STYLAI_TRYON_PROVIDER === "gemini"
-const segmindOutfit = process.env.STYLAI_TRYON_PROVIDER === "segmind" && process.env.SEGMIND_MODEL === "nano-banana-pro"
-const realProvider = segmindOutfit ? {provider:"Segmind",model:"nano-banana-pro",callsPerGeneration:1,estimatedUsdPerCall:0.152273,maxUsdPerCall:0.20} : nativeGemini ? {provider:"Google Gemini",model:"gemini-3-pro-image",callsPerGeneration:1,estimatedUsdPerCall:0.15,maxUsdPerCall:0.35} : { provider: "Segmind", model: "try-on-diffusion", callsPerGeneration: 1, estimatedUsdPerCall: 0.06, maxUsdPerCall: 0.5 }
+const vertexGemini = nativeGemini && process.env.STYLAI_GOOGLE_BACKEND === "vertex"
+const outfitProfile = process.env.STYLAI_TRYON_PROVIDER === "segmind" ? segmindOutfitProfile(process.env.SEGMIND_MODEL??"") : null
+const segmindOutfit = Boolean(outfitProfile)
+const realProvider = segmindOutfit ? {provider:"Segmind",model:outfitProfile!.model,callsPerGeneration:1,estimatedUsdPerCall:Number(outfitProfile!.priceMicros)/1e6,maxUsdPerCall:Number(outfitProfile!.reserveMicros)/1e6} : vertexGemini ? {provider:"Google Cloud Vertex",model:VERTEX_OUTFIT_MODEL,callsPerGeneration:1,estimatedUsdPerCall:0.04,maxUsdPerCall:Number(VERTEX_OUTFIT_RESERVE)/1e6} : nativeGemini ? {provider:"Google Gemini",model:"gemini-3-pro-image",callsPerGeneration:1,estimatedUsdPerCall:0.15,maxUsdPerCall:0.35} : { provider: "Segmind", model: "try-on-diffusion", callsPerGeneration: 1, estimatedUsdPerCall: 0.06, maxUsdPerCall: 0.5 }
 
 // AliExpress Affiliates API: app-level signature only (no seller OAuth). Values come from the process environment.
 const aliexpressAppKey = process.env.ALIEXPRESS_APP_KEY?.trim() || null
@@ -104,7 +106,7 @@ const composerPrice = composerPriceEntry?.kind === "tokens" ? { inputPerMTok: co
 const interpretationCache = composer ? createInterpretationCache() : null
 // Render estimate shown before confirmation must match the worker's provider and per-layer reservation (P04).
 const renderProvider = nativeGemini ? "gemini" as const : process.env.STYLAI_TRYON_PROVIDER?.trim() === "fal" ? "fal" as const : "segmind" as const
-const reservePerLayerMicros = segmindOutfit ? 200_000n : nativeGemini ? 350_000n : BigInt(renderProvider === "fal"
+const reservePerLayerMicros = segmindOutfit ? outfitProfile!.reserveMicros : vertexGemini ? VERTEX_OUTFIT_RESERVE : nativeGemini ? 350_000n : BigInt(renderProvider === "fal"
   ? (process.env.FAL_RESERVE_USD_MICROS?.trim() || "75000") : (process.env.SEGMIND_RESERVE_USD_MICROS?.trim() || "500000"))
 const renderPrice = findPrice("fal", FAL_FASHN_MODEL)
 

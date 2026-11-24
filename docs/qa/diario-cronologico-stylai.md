@@ -314,3 +314,54 @@ Os artefatos em `test-results/` são locais/ignorados pelo Git. O diário preser
 - Revisão independente de código solicitada conforme Superpowers requesting-code-review; escopo somente leitura, sem chamadas externas ou novas gerações.
 - Revisão final encontrou P2 de reconciliação: ativar novo modelo retirava preço legado e deixava chamadas try-on-diffusion antigas sem conciliação. Corrigido com cliente reconciliador separado e preço pelo modelo persistido. Teste RED reproduziu falha e GREEN confirmou recuperação legada sem usar preço try-on para Nano Banana. Nenhum outro achado crítico/importante pelo revisor.
 - Verificação após correção da revisão: check completo passou, 303 testes/0 falhas, typecheck, build e smoke. Checkpoint local preparado; sem push/deploy. Runtime será reiniciado com reconciliador legado preservado; piloto continua bloqueado por max_attempts_reached.
+
+### E11 — 2026-11-23, recomendacao de economia (sem novas geracoes)
+- Consultadas tabelas publicas atuais Segmind: Nano Banana 2 Lite US$0,042/1K; Nano Banana 2.1 US$0,045/1K minimal ou US$0,055/high; Seedream5.5 US$0,021164/saida1K-1.5K + US$0,0084656/referencia (3 refs = US$0,0465608); Pro US$0,15227224/1K-2K; Seedream4 US$0,0350001/geracao.
+- Recomendacao pendente de aprovacao/testes: comparar Lite e 2.1 em 1K com Pro como referencia de qualidade; Seedream5.5 como alternativa. Nao assumir equivalencia de rosto/roupas sem benchmark. Pro permanece unico destes validado no fluxo real.
+- Priorizar custo por look aprovado; reduzir chamadas por cache privado, selecao antes da geracao, deduplicacao e uma composicao conjunta. Haiku atual para interpretacao/selecao com contexto pequeno; filtros/precos/estoque por algoritmos, sem LLM. Sem fine-tuning nesta etapa.
+- Nenhuma mudanca de modelo, novo limite ou chamada paga executada por esta recomendacao.
+
+### E12 — 2026-11-23, comparacao autorizada de qualidade/custo
+- Pedido explicito: fazer comparacoes para decidir qualidade/custo. Duas chamadas adicionais: Nano Banana 2 Lite 1K high (US$0,042) e 2.1 1K minimal (US$0,045), mesmas referencias/composicao Haiku e prompt do Pro. Reserva maxima conjunta US$0,12; teto compartilhado US$2 preservado. Piloto ampliado de 5 para 7 tentativas, sem reset de historico/consumo.
+- Adaptador e runtime passam a aceitar perfis com modelo, resolucao, raciocinio e precos especificos. Dois testes de payload/preco adicionados; check completo passou.
+- Cota local tinha 2/3 requisicoes gastas. Licenca sandbox temporaria de 2h para permitir as duas comparacoes, sem pagamento/assinatura externa e sem apagar consumo. Revogar ao concluir.
+- Lite job 5df21cec-9c4d-4385-a481-c28093df1d3a falhou em cloudflared_startup_timeout ANTES de reservar/chamar provedor: piloto permaneceu 5 chamadas e US$0,543162. Diagnostico com pixel sintetico via Bun retornou not_reachable; via Node (runtime do worker) passou. Sem evidencia para atribuir a causa ao modelo nem para mudar codigo do tunel; instabilidade registrada. Nova tentativa local permitida pois nenhuma chamada paga ocorreu.
+- Segunda tentativa Lite 424a8d28-9163-4de3-8135-5bb59947b60a: cloudflared_not_reachable, zero chamada/custo. Diagnostico sintetico Node HTTP200; terceira tentativa local finalmente chegou ao provedor, sem repetir chamada paga.
+- Lite job 2781a9d7-2c61-4505-b59a-91b10424e12c succeeded: 896x1200, US$0,042 calculados, 19921ms. Preview coerente, mas frontalizou pose e trocou relogio de lado. Usable com ressalvas.
+- 2.1 job aeb90b77-bd78-465d-b01e-dcfc61ded926 succeeded: 896x1200, US$0,045 calculados, 17062ms. Melhor custo/qualidade desta amostra: preservou melhor pose e relogio; ~70,4% mais barato que Pro. Uma amostra nao demonstra desempenho geral; fidelidade exata de SKU nao comprovada.
+- Relatorio: docs/qa/comparacao-modelos-2026-11-23.md. Imagens privadas ignoradas e montagem comparativa preservadas em test-results. Sem novas buscas Haiku para manter referencias constantes; geracoes realizadas pela API do app.
+- Total novo US$0,087; acumulado piloto US$0,630162, 7/7 chamadas, reserva pendente zero. Licenca sandbox temporaria revogada. Tunel fecha apos cada chamada. Runtime 2.1 ativo, mas chamadas adicionais bloqueadas pelo teto de tentativas.
+- Check completo 305 testes/0 falhas, typecheck/build/smoke passaram. Intermitencia do tunel permanece pendencia de infraestrutura, nao foi declarada corrigida. Nenhum push/deploy.
+
+### E13 — 2026-11-23, diagnostico do faturamento Google por UI
+- Cloud Billing da conta StylAI Desenvolvimento confirma credito promocional disponivel de R$61,02 (100%).
+- Visao geral > Como voce fara o pagamento mostra DOIS saldos separados: pos-pago Google Cloud com credito de R$180,00, pagamento manual de 20/11; pre-pagamento AI Studio com R$0,00, sem transacoes, recarga automatica desativada.
+- Isso confirma que pagamento anterior nao abasteceu saldo pre-pago Gemini. Nenhuma transferencia automatica foi demonstrada; nao afirmar que basta ativar para aproveitar o valor. Nenhum novo pagamento, reembolso, recarga automatica ou alteracao de conta foi executado.
+- Proximo encaminhamento: verificar com suporte possibilidade de realocacao do saldo existente, ou avaliar API Google Cloud compativel com o saldo pos-pago; nao recarregar sem nova instrucao.
+
+### E14 — 2026-11-23, Google Cloud com saldo existente
+- Pedido: verificar uso dos R$180 pelo Google Cloud e configurar se viavel, sem recarga. Documentacao confirma abatimento de pagamento manual pos-pago em custos futuros; imagem suportada via endpoint aiplatform.googleapis.com com projeto explicito.
+- Preflight countTokens sem imagem retornou 403 API_KEY_SERVICE_BLOCKED para aiplatform.googleapis.com. Chave nao impressa. API inicialmente desativada; usuario aprovou explicitamente ativacao/termos; UI depois confirmou Ativado no projeto StylAI Desenvolvimento.
+- Credencial existente stylai-dev-backend vinculada a conta de servico, restrita somente a Gemini API. Solicitada confirmacao especifica para adicionar apenas Agent Platform API. Nenhuma nova chave/recarga criada.
+
+### E15 — 2026-11-23, Vertex autenticado e integração local
+- Alteração da chave anterior falhou duas vezes no Console. Com autorização específica, criada credencial dedicada restrita somente à Agent Platform API, vinculada à conta de serviço existente. Chave armazenada por DPAPI em diretório ignorado, sem plaintext em código, .env ou logs; clipboard limpo.
+- Preflight da nova chave identificou ausência de aiplatform.endpoints.predict. Usuário autorizou papel personalizado somente com essa permissão e vínculo ao backend. Console confirmou papel criado e política atualizada. Nenhum papel administrativo concedido.
+- Propagação IAM: inicialmente 403; após propagação, countTokens retornou HTTP 200, totalTokens=1 para Nano Banana 2.1 no endpoint Google Cloud com projeto explícito. Isso comprova autenticação/autorização do endpoint de contagem, não geração de imagem nem débito faturado.
+- Falha local diagnosticada: powershell.exe legado não carregou Microsoft.PowerShell.Security; pwsh.exe abriu a mesma credencial DPAPI corretamente. Leitor atualizado sem alterar políticas do sistema.
+- Integração adicionada: backend Vertex explícito, saída 1K, reserva US$0,20, estimativa US$0,04, preço calculado por uso reportado. Credencial somente no worker; API recebe somente configuração pública. Sem túnel para envio inline ao Google.
+- Revisão independente encontrou reserva da composição ainda em US$0,35; corrigida para a mesma constante US$0,20 do worker. Nenhum outro problema importante identificado na revisão estática.
+- Runtime reiniciado em Vertex; API e worker /health/ready responderam status ok, dependências prontas, fila consumindo. Primeira verificação completa passou; nova verificação após correção da estimativa em andamento.
+- Ruling: não ampliar silenciosamente as 7/7 tentativas consumidas. Solicitada autorização para uma única imagem adicional, reserva US$0,20, teto acumulado US$2 preservado. Nenhuma geração Vertex executada nesta etapa. Não houve recarga nem alteração do saldo/pré-pagamento; débito no crédito existente ainda não demonstrado em fatura.
+- Verificação final após correção: bun run check concluído com 308 testes passando, zero falhas; lint, typecheck, build e smoke passaram. Validação paga pendente da autorização adicional; limites preservados.
+- Usuário autorizou explicitamente uma geração adicional. Piloto ampliado de 7 para 8 tentativas, teto US$2 e gasto anterior US$0,630162 intactos; adicionado alvo Vertex. Licença sandbox temporária por 2h reativada para esta validação. Job e4eaec30-57fd-44e3-913d-44c44569592b enfileirado pela API do app (202), mesma composição italiana/foto/peças aprovadas, sem nova busca para controlar a comparação.
+- Geração Vertex concluída com sucesso: job e4eaec30-57fd-44e3-913d-44c44569592b; uma chamada, saída PNG 896x1200, 11452 ms. Uso: 3635 tokens de entrada, 1120 de saída, zero thinking; custo calculado US$0,039053, não conciliado com fatura.
+- Avaliação visual: rosto reconhecível, camisa branca e calça verde-oliva coerentes, comprimento correto, relógio no mesmo lado. Alterou enquadramento/pose/proporções do corpo; prévia ilustrativa aproveitável, não prova de caimento ou SKU exato. Resultado privado test-results/pilot-2026-11-23/italian-vertex-look.png.
+- Acumulado US$0,669215, 8/8 tentativas, reserva zero. Licença sandbox temporária revogada após sucesso; chamadas adicionais bloqueadas. Nenhuma recarga, push ou deploy. API Cloud funcional; qual crédito será abatido (promocional versus pagamento manual) depende da consolidação do faturamento.
+
+### E16 — 2026-11-23, preparação de commit e push autorizados
+- Usuário solicitou commit/push de todo o trabalho e reforçou prevenção de vazamento de chaves.
+- Remoto confirmado: LeandroJerse/stylai_frontend, branch feat/motor-first-slice; 12 commits anteriores ainda pendentes de envio.
+- Check completo novo: 308 testes passaram, zero falhas; lint, typecheck, build e smoke aprovados. git diff --check sem erros.
+- Auditoria local de 699 conteúdos (arquivos e objetos dos commits pendentes): nenhum padrão de credencial ou valor das 5 credenciais locais comparadas encontrado. Comparação adicional com chave Vertex DPAPI executada sem exibir valor.
+- .env, .data/ (incluindo DPAPI), fotos e test-results permanecem ignorados. Somente código, testes, planos e documentação serão versionados; nenhum artefato privado de geração será enviado.
