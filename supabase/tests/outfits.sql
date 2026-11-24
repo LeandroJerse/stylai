@@ -89,6 +89,19 @@ begin
   begin perform private.set_outfit_locks(a,set_id,3,'["dress"]'); raise exception 'lock without piece accepted'; exception when check_violation then null; end;
   begin perform private.set_outfit_locks(a,set_id,2,'[]'); raise exception 'stale lock accepted'; exception when serialization_failure then null; end;
   begin perform private.set_outfit_locks(b,set_id,3,'[]'); raise exception 'foreign lock accepted'; exception when insufficient_privilege then null; end;
+  -- "Buscar outra": options found by the server join the pool of that part only, newest first, never twice, owner only.
+  assert private.add_outfit_options(a,set_id,'upper','[{"slot":"upper","id":"aliexpress:2001"},{"slot":"upper","id":"aliexpress:2002"},{"slot":"upper","id":"aliexpress:2001"}]')=2, 'options not added once';
+  assert private.add_outfit_options(a,set_id,'upper','[{"slot":"upper","id":"aliexpress:2002"},{"slot":"upper","id":"aliexpress:2003"}]')=1, 'known option added again';
+  assert private.add_outfit_options(a,set_id,'upper','[{"slot":"upper","id":"aliexpress:2003"}]')=0, 'repeated option counted';
+  assert private.read_outfit_set(a,set_id)#>>'{plan,pools,upper,0,id}'='aliexpress:2003' and jsonb_array_length(private.read_outfit_set(a,set_id)#>'{plan,pools,upper}')=3, 'options not readable';
+  assert (private.read_outfit_set(a,set_id)->>'revision')::integer=3, 'options created a revision';
+  begin perform private.add_outfit_options(b,set_id,'upper','[{"slot":"upper","id":"x"}]'); raise exception 'foreign options accepted'; exception when insufficient_privilege then null; end;
+  begin perform private.add_outfit_options(a,set_id,'dress','[{"slot":"dress","id":"x"}]'); raise exception 'options for an absent part accepted'; exception when check_violation then null; end;
+  begin perform private.add_outfit_options(a,set_id,'upper','[{"slot":"lower","id":"x"}]'); raise exception 'wrong slot accepted'; exception when check_violation then null; end;
+  begin perform private.add_outfit_options(a,set_id,'upper','[]'); raise exception 'empty options accepted'; exception when check_violation then null; end;
+  perform private.add_outfit_options(a,set_id,'upper',(select jsonb_agg(jsonb_build_object('slot','upper','id','aliexpress:3'||lpad(n::text,3,'0'))) from generate_series(1,24) n));
+  perform private.add_outfit_options(a,set_id,'upper',(select jsonb_agg(jsonb_build_object('slot','upper','id','aliexpress:4'||lpad(n::text,3,'0'))) from generate_series(1,24) n));
+  assert jsonb_array_length(private.read_outfit_set(a,set_id)#>'{plan,pools,upper}')=48 and private.read_outfit_set(a,set_id)#>>'{plan,pools,upper,0,id}'='aliexpress:4001', 'options not bounded, newest first';
   -- A cancelled search refuses further stages.
   s := private.create_outfit_search(a,'search-key-3',repeat('4',64),'frio','aliexpress_affiliate',null);
   assert private.cancel_outfit_search(a,(s->>'id')::uuid) and not private.update_outfit_search(a,(s->>'id')::uuid,'selecting','{}'), 'cancelled search kept running';
@@ -134,7 +147,7 @@ set local role stylai_ai_worker;
 do $$
 declare j1 uuid; declare j2 uuid; declare f bigint; declare f2 bigint; declare c uuid; declare asset uuid; declare loaded jsonb;
 begin
-  assert private.server_boundary_version()='20261124100000', 'boundary version';
+  assert private.server_boundary_version()='20261124200000', 'boundary version';
   j1 := private.next_ai_job(); f := private.claim_ai_job(j1);
   loaded := private.load_ai_job(j1,f);
   assert loaded->'items'->0->>'canonical_id'='aliexpress:1002' and loaded->'items'->0->>'affiliate_url'='https://s.click.aliexpress.com/e/b', 'commerce link not bound to its panel';

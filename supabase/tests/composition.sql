@@ -43,7 +43,7 @@ declare dress uuid := '62000000-0000-4000-8000-000000000003';
 declare jacket uuid := '62000000-0000-4000-8000-000000000004';
 declare comp uuid; declare job uuid; declare again uuid;
 begin
-  assert private.server_boundary_version()='20261124100000', 'boundary version';
+  assert private.server_boundary_version()='20261124200000', 'boundary version';
   assert private.take_provider_call_slot('aliexpress',2) and private.take_provider_call_slot('aliexpress',2), 'slots within budget';
   assert not private.take_provider_call_slot('aliexpress',2), 'global call budget exceeded';
   assert private.take_provider_daily_slot('anthropic',1) and not private.take_provider_daily_slot('anthropic',1), 'daily ceiling';

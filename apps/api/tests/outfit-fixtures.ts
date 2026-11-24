@@ -97,6 +97,14 @@ export function fakeDb(extend: (op: string, args: unknown[]) => unknown = () => 
         return s.revision
       }
       case "set_outfit_locks": { const s = mine(args[0], args[1], args[2]); s.revisions.at(-1)!.locked = args[3] as string[]; return true }
+      case "add_outfit_options": {
+        const s = mine(args[0], args[1])
+        const plan = searches.find((q) => q.id === s.search)!.plan as { pools: Record<string, { id: string }[]> }
+        const slot = String(args[2]), known = plan.pools[slot] ?? []
+        const fresh = (args[3] as { id: string }[]).filter((p) => !known.some((k) => k.id === p.id))
+        plan.pools[slot] = [...fresh, ...known].slice(0, 48)
+        return fresh.length
+      }
       default: return null
     }
   } } as unknown as PrivateDatabase<"api">

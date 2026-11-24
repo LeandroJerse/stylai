@@ -6,7 +6,7 @@
 import { z } from "zod"
 import {
   interpretCompositionRules, MAX_OUTFITS, outfitSlotOfCategory, OUTFIT_WINDOW_PER_SLOT, rankCandidates, searchPlan, selectOutfitsRules,
-  applyFiltersToIntent, NO_FILTERS, normalizeFilters, type OutfitFilters,
+  applyFiltersToIntent, normalizeText, storeQuery, NO_FILTERS, normalizeFilters, type OutfitFilters,
   type CompositionIntent, type LockedPieces, type OutfitCandidate, type OutfitPools, type OutfitSlot, type SlotId, type ValidOutfit,
 } from "@stylai/contracts"
 import type { AliExpressCatalogService } from "@stylai/commerce"
@@ -282,7 +282,35 @@ export function createOutfitSearch(deps: OutfitSearchDeps) {
     return null
   }
 
-  return { run, resuggest, prepare }
+  /**
+   * "Buscar outra": one store query for one part of an outfit. What the person asks for replaces the style of the first
+   * request; the part, the audience, the purchase filters and "is it outfit clothing at all" still apply.
+   */
+  async function options(user: string, plan: StoredPlan, slot: OutfitSlot, query: string): Promise<{ pieces: StoredPiece[]; returned: number; outside: Record<string, number> } | "unavailable"> {
+    const outside: Record<string, number> = {}
+    const left = (reason: string, n = 1) => { if (n) outside[reason] = (outside[reason] ?? 0) + n }
+    let found: StoredPiece[] = []
+    let returned: number
+    if (deps.source === "curated") {
+      const words = normalizeText(query).split(/\s+/).filter((w) => w.length > 2)
+      const rows = (await deps.listCatalog()).filter((r) => r.availability !== "unavailable" && words.some((w) => normalizeText(r.name).includes(w)))
+      returned = rows.length
+      found = rows.filter((r) => r.category && outfitSlotOfCategory(r.category.id) === slot).map((r) => pieceFromCatalog(r, slot))
+    } else {
+      if (!deps.aliexpressCatalog) return "unavailable"
+      const res = await deps.aliexpressCatalog.search({ keywords: storeQuery(query), pageSize: 50, viewer: user })
+      if (res.state !== "ready") { log({ stage: "options", reason: res.errorCode ?? res.errorKind ?? "unavailable" }); return "unavailable" }
+      returned = res.items.length
+      found = res.items.filter((x) => outfitSlotOfCategory(x.category) === slot).map((x) => pieceFromAliExpress(x, slot))
+    }
+    left("other_part", returned - found.length)
+    const asked: CompositionIntent = { ...plan.intent, style: [], occasion: null, climate: undefined, avoid: [], colors: [], terms: query.split(/\s+/), slots: slot === "set" ? [] : [{ slot, required: true, query }] }
+    const { kept, rejected } = rankCandidates(asked, found.map(candidateOf), plan.filters ?? NO_FILTERS)
+    for (const r of rejected) left(r.reason)
+    return { pieces: kept.map((c) => found.find((p) => p.id === c.id)!), returned, outside }
+  }
+
+  return { run, resuggest, prepare, options }
 }
 export type OutfitSearch = ReturnType<typeof createOutfitSearch>
 export type { OutfitCandidate }

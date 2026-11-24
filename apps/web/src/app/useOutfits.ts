@@ -5,7 +5,7 @@
 import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { isApiError, messageOf } from "../api/errors"
-import { outfitsApi, type OutfitQuote, type OutfitRender, type OutfitSearch, type OutfitSet, type OutfitSetDetail } from "../api/outfits"
+import { outfitsApi, type OptionsFound, type OutfitQuote, type OutfitRender, type OutfitSearch, type OutfitSet, type OutfitSetDetail } from "../api/outfits"
 import { keys } from "../api/queries"
 import { filtersToSend, type SearchFilters } from "../lib/filters"
 import { forgetKey, keyFor } from "../lib/requestKeys"
@@ -83,6 +83,16 @@ export function useOutfits() {
     },
     cancelSearch: (id: string) => change(() => outfitsApi.cancelSearch(id), (s) => { qc.setQueryData(outfitKeys.search(s.id), s); void qc.invalidateQueries({ queryKey: outfitKeys.searches }) }, () => undefined),
     swap: (s: OutfitSet, slot: OutfitSet["locked"][number], productId: string, variantId?: string | null) => changeSet(s, () => outfitsApi.swap(s.id, { slot, productId, ...(variantId === undefined ? {} : { variantId }), base: s.revision })),
+    /** “Buscar outra”: more options for one part; the outfit only changes when the person picks one. */
+    findOptions: async (s: OutfitSet, slot: OutfitSet["locked"][number], query: string): Promise<{ ok: true; found: OptionsFound } | { ok: false; message: string }> => {
+      try {
+        const r = await outfitsApi.options(s.id, { slot, query })
+        qc.setQueryData(outfitKeys.set(s.id), r.set)
+        return { ok: true, found: r.found }
+      } catch (e) {
+        return { ok: false, message: messageOf(e) }
+      }
+    },
     lock: (s: OutfitSet, locked: OutfitSet["locked"]) => changeSet(s, () => outfitsApi.locks(s.id, { locked, base: s.revision })),
     suggest: (s: OutfitSet) => changeSet(s, () => outfitsApi.suggest(s.id, { locked: s.locked, base: s.revision })),
     restore: (s: OutfitSet, revision: number) => changeSet(s, () => outfitsApi.restore(s.id, { revision, base: s.revision })),

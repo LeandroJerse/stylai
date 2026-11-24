@@ -137,9 +137,22 @@ export async function mockApi(page, state) {
     m = path.match(/^\/studio\/outfit-sets\/([^/]+)(?:\/(\w+))?$/)
     if (m) {
       const s = state.sets.find((x) => x.id === m[1])
+      const options = (p) => [...(state.extra?.[`${s.id}:${p.slot}`] ?? []), ...[1, 2, 3].map((k) => piece(base, p.slot, p.product.name, 40 + k, { id: `alt-${p.slot}-${k}` }))]
+      if (m[2] === "options") {
+        const b = body()
+        const none = /nada/.test(b.query)
+        if (/caiu/.test(b.query)) return json({ error: { code: "source_unavailable", message: "A loja não respondeu agora. O conjunto não mudou; tente de novo em instantes." } }, 503)
+        if (!none) (state.extra ??= {})[`${s.id}:${b.slot}`] = [piece(base, b.slot, "Bermuda Jeans Feminina Cintura Alta Casual Verão Nova Coleção Moda", 64.9, { id: "new-1" }), piece(base, b.slot, "Bermuda Linho Feminina", 54.9, { id: "new-2" })]
+        return json({ ...s, alternatives: Object.fromEntries(s.pieces.map((p) => [p.slot, options(p)])), revisions: [], found: none ? { returned: 49, added: 0, outside: { other_part: 40, filter_price: 9 } } : { returned: 40, added: 2, outside: { other_part: 38 } } })
+      }
+      if (m[2] === "piece") {
+        const b = body()
+        const picked = options(s.pieces.find((p) => p.slot === b.slot)).find((p) => p.product.id === b.productId)
+        if (picked) s.pieces = s.pieces.map((p) => (p.slot === b.slot ? picked : p))
+      }
       if (m[2]) s.revision += 1
       if (m[2] === "locks") s.locked = body().locked
-      return json({ ...s, alternatives: Object.fromEntries(s.pieces.map((p) => [p.slot, [1, 2, 3].map((k) => piece(base, p.slot, p.product.name, 40 + k, { id: `alt-${p.slot}-${k}` }))])), revisions: [{ revision: 1, label: "Original", current: true, total: s.total, pieces: s.pieces }] })
+      return json({ ...s, alternatives: Object.fromEntries(s.pieces.map((p) => [p.slot, options(p)])), revisions: [{ revision: 1, label: "Original", current: true, total: s.total, pieces: s.pieces }] })
     }
     if (path === "/studio/outfit-renders/quote") {
       const b = body()

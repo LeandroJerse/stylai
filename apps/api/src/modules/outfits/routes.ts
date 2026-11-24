@@ -35,6 +35,7 @@ export const filtersBody = z.object({
 const searchBody = z.object({ prompt: z.string().trim().min(1).max(500), filters: filtersBody.optional() }).strict()
 const base = z.number().int().min(1)
 const pieceBody = z.object({ slot: slotSchema, productId: z.string().min(1).max(200), variantId: uuid.nullable().optional(), base }).strict()
+const optionsBody = z.object({ slot: slotSchema, query: z.string().trim().min(2).max(80) }).strict()
 const locksBody = z.object({ locked: z.array(slotSchema).max(3), base }).strict()
 const suggestBody = z.object({ locked: z.array(slotSchema).max(3), base }).strict()
 const restoreBody = z.object({ revision: z.number().int().min(1), base }).strict()
@@ -221,6 +222,21 @@ export async function registerOutfitRoutes(app: FastifyInstance, deps: OutfitRou
       await deps.search.prepare([next])
       if (next.blocked !== null && next.source === "aliexpress") return reply.code(409).send(apiError("piece_blocked", `${blockedMessage(next.blocked)} A peça anterior foi mantida.`))
       return await save(user, row, "swap", row.pieces.map((p) => (p.slot === slot ? next : p)), row.locked)
+    } catch (error) { return failure(request, reply, error) }
+  })
+  // "Buscar outra": new swap options for one part. The outfit itself does not change until the person picks one.
+  app.post<{ Params: { id: string } }>("/v1/studio/outfit-sets/:id/options", { config: { rateLimit: { max: 12, timeWindow: "1 minute" } } }, async (request, reply) => {
+    const user = await actor(request, reply); if (!user) return reply
+    const body = optionsBody.safeParse(request.body)
+    if (!body.success) return reply.code(422).send(apiError("validation", "Diga a peça que você procura (de 2 a 80 letras)."))
+    try {
+      const row = uuid.safeParse(request.params.id).success ? await readSet(user, request.params.id) : null
+      if (!row) return notFound(reply, "Conjunto")
+      if (!row.pieces.some((p) => p.slot === body.data.slot)) return reply.code(422).send(apiError("validation", "Esta parte não faz parte do conjunto."))
+      const found = await deps.search.options(user, row.plan, body.data.slot, body.data.query)
+      if (found === "unavailable") return reply.code(503).send(apiError("source_unavailable", "A loja não respondeu agora. O conjunto não mudou; tente de novo em instantes."))
+      const added = found.pieces.length ? await deps.db.call("add_outfit_options", user, row.id, body.data.slot, JSON.parse(JSON.stringify(found.pieces)) as Json) : 0
+      return { ...presentFull((await readSet(user, row.id))!), found: { returned: found.returned, added, outside: found.outside } }
     } catch (error) { return failure(request, reply, error) }
   })
   app.post<{ Params: { id: string } }>("/v1/studio/outfit-sets/:id/locks", async (request, reply) => {

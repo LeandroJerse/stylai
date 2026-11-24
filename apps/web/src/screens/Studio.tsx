@@ -379,9 +379,12 @@ function OutfitSearchRow({ onSearch, onError }: { onSearch: () => void; onError:
           {studio.caps?.searchScope === "curated_catalog" ? "Busca no catálogo selecionado pelo StylAI. " : ""}
           Buscar não gera imagem e não gasta moedas.
         </p>
-        <button type="button" className="sa-btn-quiet sa-body-sm -ml-2" aria-disabled={busy || undefined} onClick={() => !busy && onSearch()} data-testid="search-button">
-          {studio.searching ? "Buscando…" : "Buscar peças avulsas"}
-        </button>
+        {/* Real stores: one path. Another piece is searched inside the outfit, where it can be worn. */}
+        {studio.caps?.searchScope === "stores" ? null : (
+          <button type="button" className="sa-btn-quiet sa-body-sm -ml-2" aria-disabled={busy || undefined} onClick={() => !busy && onSearch()} data-testid="search-button">
+            {studio.searching ? "Buscando…" : "Buscar peças avulsas"}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -1077,7 +1080,7 @@ function VersionSwap({ look }: { look: Look }) {
   const studio = useStudio()
   const [error, setError] = useState<string | null>(null)
   // A look of several pieces changes in its outfit (Conjuntos), not one loose piece at a time.
-  if (!studio.singlePiece || (studio.caps?.outfits && look.pieces.length > 1)) return null
+  if (!studio.singlePiece || (studio.caps?.outfits && (look.pieces.length > 1 || (studio.caps.searchScope === "stores" && draft.chosen.length === 0)))) return null
   const current = look.pieces[0]?.product ?? null
   const next = draft.chosen[0] ?? null
   const differs = !!next && next.id !== current?.id

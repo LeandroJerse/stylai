@@ -260,7 +260,7 @@ export function buildBundleQueries(intent: CompositionIntent): string[] {
  * Store queries, as observed on the real source (free read-only calls, 2026-11-24): "short" returns 0 garments of 49 (read
  * as an English adjective) and "bermuda" 45 of 49; season words ("camiseta leve verão") come back empty.
  */
-function storeQuery(raw: string): string {
+export function storeQuery(raw: string): string {
   const words = raw.split(/\s+/).filter((w) => w && !/^(verao|calor|inverno|frio|outono|primavera|leves?|fresc[oa]s?|para|de|do|da|o|a)$/.test(normalizeText(w)))
   const out = words.map((w) => (/^shorts?$/.test(normalizeText(w)) ? "bermuda" : w))
   if (out.includes("bermuda")) for (let i = 0; i < out.length; i++) out[i] = normalizeText(out[i]!) === "femininos" ? "feminina" : normalizeText(out[i]!) === "masculinos" ? "masculina" : out[i]!

@@ -1,8 +1,8 @@
 /** One coordinated outfit: the pieces as photos (tap one to see, swap or lock it), the total and the actions. */
-import { useId, useState } from "react"
+import { useId, useState, type FormEvent } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowUpRight, ArrowsClockwise, CaretDown, CircleNotch, ClockCounterClockwise, Lock, LockOpen } from "@phosphor-icons/react"
-import { outfitsApi, type OutfitPiece, type OutfitSet, type OutfitSlotId } from "../../api/outfits"
+import { ArrowUpRight, ArrowsClockwise, CaretDown, CircleNotch, ClockCounterClockwise, Lock, LockOpen, MagnifyingGlass } from "@phosphor-icons/react"
+import { outfitsApi, type OptionsFound, type OutfitPiece, type OutfitSet, type OutfitSlotId } from "../../api/outfits"
 import type { Money } from "../../api/types"
 import { useStore } from "../../app/store"
 import { outfitKeys, type Outfits } from "../../app/useOutfits"
@@ -43,6 +43,43 @@ function PieceTile({ piece, locked, open, panelId, onToggle }: { piece: OutfitPi
   )
 }
 
+/** One line about what the search for another piece brought. */
+export function optionsText(f: OptionsFound): string {
+  const why = [f.otherPart ? `${f.otherPart} de outra parte do look` : "", f.filtered ? `${f.filtered} fora dos seus filtros` : "", f.unsuitable ? `${f.unsuitable} que não servem para este look ou repetidas` : ""].filter(Boolean)
+  const rest = why.length ? ` Ficaram de fora: ${why.join(", ")}.` : ""
+  if (f.added) return `${f.added === 1 ? "1 opção nova" : `${f.added} opções novas`}, na frente da lista.`
+  if (!f.returned) return "A loja não devolveu nada para esta busca. Tente um nome mais curto, como “bermuda jeans”."
+  return `Nenhuma opção nova.${rest}`
+}
+
+function OptionSearch({ set, piece, outfits, busy }: { set: OutfitSet; piece: OutfitPiece; outfits: Outfits; busy: boolean }) {
+  const [query, setQuery] = useState("")
+  const [sending, setSending] = useState(false)
+  const [note, setNote] = useState<{ tone: "ok" | "error"; text: string } | null>(null)
+  const submit = async (e: FormEvent): Promise<void> => {
+    e.preventDefault()
+    const text = query.trim()
+    if (sending || busy) return
+    if (text.length < 2) { setNote({ tone: "error", text: "Diga a peça, por exemplo “bermuda jeans”." }); return }
+    setSending(true)
+    setNote(null)
+    const r = await outfits.findOptions(set, piece.slot, text)
+    setSending(false)
+    setNote(r.ok ? { tone: "ok", text: optionsText(r.found) } : { tone: "error", text: r.message })
+  }
+  return (
+    <form className="grid gap-1" onSubmit={(e) => void submit(e)} noValidate>
+      <div className="flex items-center gap-2">
+        <input className="sa-field sa-field-sm min-w-0 flex-1" type="search" name="query" autoComplete="off" maxLength={80} value={query} placeholder="Buscar outra…" aria-label={`Buscar outra opção para ${piece.label}`} onChange={(e) => setQuery(e.target.value)} data-testid="outfit-option-query" />
+        <button type="submit" className="sa-iconbtn flex-none" aria-label="Buscar na loja" disabled={busy || sending} data-testid="outfit-option-search">
+          {sending ? <CircleNotch size={20} className="sa-spin" aria-hidden="true" /> : <MagnifyingGlass size={20} aria-hidden="true" />}
+        </button>
+      </div>
+      <p className={`sa-caption ${note?.tone === "error" ? "sa-error-text" : "sa-muted"}`} role="status" data-testid="outfit-option-note">{sending ? "Buscando na loja…" : (note?.text ?? "")}</p>
+    </form>
+  )
+}
+
 function PieceDetail({ id, set, piece, outfits, busy, run, onClose }: { id: string; set: OutfitSet; piece: OutfitPiece; outfits: Outfits; busy: boolean; run: Run; onClose: () => void }) {
   const locked = set.locked.includes(piece.slot)
   const detail = useQuery({ queryKey: outfitKeys.set(set.id), queryFn: ({ signal }) => outfitsApi.set(set.id, signal), staleTime: 0 })
@@ -74,12 +111,13 @@ function PieceDetail({ id, set, piece, outfits, busy, run, onClose }: { id: stri
       ) : (
         <div className="grid gap-2">
           <p className="sa-caption font-semibold">Trocar por</p>
+          <OptionSearch set={set} piece={piece} outfits={outfits} busy={busy} />
           {detail.isPending ? <p className="sa-caption sa-muted" role="status">Carregando opções…</p> : null}
           {detail.isError ? <p className="sa-caption sa-error-text">Não foi possível carregar as opções. Feche e abra a peça para tentar de novo.</p> : null}
-          {detail.data && alternatives.length === 0 ? <p className="sa-caption sa-muted">A busca não trouxe outras opções compatíveis para esta parte.</p> : null}
+          {detail.data && alternatives.length === 0 ? <p className="sa-caption sa-muted">Ainda não há outras opções para esta parte. Busque uma acima.</p> : null}
           {alternatives.length ? (
             <ul className="sa-altstrip" aria-label={`Outras opções para ${piece.label}`}>
-              {alternatives.slice(0, 8).map((a) => (
+              {alternatives.slice(0, 24).map((a) => (
                 <li key={a.product.id}>
                   <button
                     type="button"

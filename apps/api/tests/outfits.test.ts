@@ -112,6 +112,41 @@ describe("outfit search", () => {
       expect((await t.call("POST", "/v1/studio/outfit-searches", { prompt: PROMPT, filters: { maxPieceBrl: 2 } }, "a", "search-key-g")).statusCode).toBe(409)
     } finally { await t.app.close() }
   })
+  test("“buscar outra”: a real search for one part joins its swap options, with the same filters, and can be worn", async () => {
+    const EXTRA = [item(51, "shirts", "Camisa polo masculina verde", 8000), item(52, "shirts", "Camisa polo feminina rosa", 8000), item(53, "shirts", "Camisa polo masculina cara", 90000), item(54, "pants", "Calça masculina bege", 8000), item(55, "shirts", "Pijama camisa masculina", 5000)]
+    const t = await make({ store: (k) => /polo/.test(k) ? EXTRA : all(k) })
+    try {
+      const res = await t.call("POST", "/v1/studio/outfit-searches", { prompt: PROMPT, filters: { maxPieceBrl: 200, audience: "masculino" } }, "a", "search-key-o")
+      await Promise.all(t.work)
+      const set = (await t.call("GET", `/v1/studio/outfit-searches/${res.json().id}`)).json().sets.find((s: { kind: string }) => s.kind === "assembled")
+      const options = await t.call("POST", `/v1/studio/outfit-sets/${set.id}/options`, { slot: "upper", query: "camisa polo" })
+      expect(options.statusCode).toBe(200)
+      expect(t.store.queries.at(-1)).toBe("camisa polo")
+      // Only what fits this part, this audience and these filters; everything left out is counted.
+      expect(options.json().found).toEqual({ returned: 5, added: 1, outside: { audience: 1, filter_price: 1, other_part: 1, not_outfit: 1 } })
+      expect(options.json().alternatives.upper[0].product.id).toBe("aliexpress:51")
+      expect(options.json().revision).toBe(set.revision)
+      const worn = await t.call("POST", `/v1/studio/outfit-sets/${set.id}/piece`, { slot: "upper", productId: "aliexpress:51", base: set.revision })
+      expect(worn.statusCode).toBe(200)
+      expect(worn.json().pieces.find((p: { slot: string }) => p.slot === "upper")).toMatchObject({ tryOn: { ready: true }, product: { id: "aliexpress:51" } })
+      // The same question again adds nothing, and says so.
+      expect((await t.call("POST", `/v1/studio/outfit-sets/${set.id}/options`, { slot: "upper", query: "camisa polo" })).json().found.added).toBe(0)
+      // What the person asks for wins over the style of the first request; a part that is not in the outfit is refused.
+      expect((await t.call("POST", `/v1/studio/outfit-sets/${set.id}/options`, { slot: "dress", query: "vestido" })).statusCode).toBe(422)
+      expect((await t.call("POST", `/v1/studio/outfit-sets/${set.id}/options`, { slot: "upper", query: " " })).statusCode).toBe(422)
+      expect((await t.call("POST", `/v1/studio/outfit-sets/${set.id}/options`, { slot: "upper", query: "camisa polo" }, "b")).statusCode).toBe(404)
+    } finally { await t.app.close() }
+  })
+  test("“buscar outra” with the store down keeps the outfit and says it", async () => {
+    const t = await make({ store: (k) => /polo/.test(k) ? "down" : all(k) })
+    try {
+      const { search } = await t.run()
+      const set = search.sets.find((s: { kind: string }) => s.kind === "assembled")
+      const r = await t.call("POST", `/v1/studio/outfit-sets/${set.id}/options`, { slot: "upper", query: "camisa polo" })
+      expect([r.statusCode, r.json().error.code]).toEqual([503, "source_unavailable"])
+      expect((await t.call("GET", `/v1/studio/outfit-sets/${set.id}`)).json().revision).toBe(set.revision)
+    } finally { await t.app.close() }
+  })
   test("idempotent start, one search at a time, isolation between accounts", async () => {
     let release: () => void = () => undefined
     const t = await make({ gate: new Promise((r) => { release = r }) })

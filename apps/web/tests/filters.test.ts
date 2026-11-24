@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseOutfitSearch, parseOutfitSet } from "../src/api/outfits"
+import { parseOptions, parseOutfitSearch, parseOutfitSet } from "../src/api/outfits"
 import { parseStudioConfig } from "../src/api/parse"
 import { FILTER_IDS, filterLabels, filterReportText, filtersToSend, NO_FILTERS, parseAmount } from "../src/lib/filters"
 
@@ -35,6 +35,11 @@ describe("parsing", () => {
     const set = (extra: object) => parseOutfitSet({ id: "a", searchId: "b", pieces: [{ slot: "upper", label: "x", tryOn: { ready: true }, product: { id: "p", name: "Camisa", partner: { id: "l" } }, ...extra }] }).pieces[0]!
     expect([set({ storeRating: 92.1, storeSales: 12 }).storeRating, set({ storeRating: 92.1, storeSales: 12 }).storeSales]).toEqual([92.1, 12])
     expect([set({ storeRating: "a" }).storeRating, set({}).storeSales]).toEqual([null, null])
+  })
+  test("“buscar outra” groups the reasons and never trusts malformed counts", () => {
+    const found = (f: unknown) => parseOptions({ id: "a", searchId: "b", pieces: [], found: f }).found
+    expect(found({ returned: 10, added: 2, outside: { other_part: 3, filter_price: 2, audience: 1, not_outfit: 1, duplicate_title: 1 } })).toEqual({ returned: 10, added: 2, otherPart: 3, filtered: 3, unsuitable: 2 })
+    expect(found(null)).toEqual({ returned: 0, added: 0, otherPart: 0, filtered: 0, unsuitable: 0 })
   })
   test("offered filters fail closed", () => {
     const config = (caps: object) => parseStudioConfig({ costs: { generate: 10, edit: null, tryOn: 10 }, budget: { min: 0, max: 0 }, capabilities: caps }).capabilities.outfitFilters

@@ -39,6 +39,8 @@ export interface OutfitSetDetail extends OutfitSet {
   alternatives: Partial<Record<OutfitSlotId, OutfitPiece[]>>
   revisions: { revision: number; label: string; createdAt: string | null; current: boolean; total: Money | null; pieces: OutfitPiece[] }[]
 }
+/** Answer of “buscar outra”: how many came back, how many became options, and why the others did not. */
+export interface OptionsFound { returned: number; added: number; otherPart: number; filtered: number; unsuitable: number }
 export type OutfitSearchStatus = "running" | "interrupted" | "succeeded" | "empty" | "failed" | "cancelled"
 export interface OutfitSearch {
   id: string
@@ -139,6 +141,14 @@ function parseFilters(raw: unknown): SearchFilters | null {
     maxTotalBrl: num(raw.maxTotalBrl), minRatingPercent: num(raw.minRatingPercent), minSales: num(raw.minSales),
   }
 }
+export function parseOptions(raw: unknown): { set: OutfitSetDetail; found: OptionsFound } {
+  const o = obj(raw, "options")
+  const f = isObj(o.found) ? o.found : {}
+  const outside = isObj(f.outside) ? Object.entries(f.outside).map(([k, n]): [string, number] => [k, num(n) ?? 0]) : []
+  const sum = (ok: (k: string) => boolean) => outside.reduce((a, [k, n]) => a + (ok(k) ? n : 0), 0)
+  const isFilter = (k: string) => k.startsWith("filter_") || k === "audience"
+  return { set: parseOutfitSetDetail(raw), found: { returned: num(f.returned) ?? 0, added: num(f.added) ?? 0, otherPart: sum((k) => k === "other_part"), filtered: sum(isFilter), unsuitable: sum((k) => k !== "other_part" && !isFilter(k)) } }
+}
 export function parseOutfitSearch(raw: unknown): OutfitSearch {
   const o = obj(raw, "outfitSearch")
   const stage = isObj(o.stage) ? o.stage : {}
@@ -212,6 +222,7 @@ export const outfitsApi = {
   cancelSearch: (searchId: string) => send(`/studio/outfit-searches/${id(searchId)}/cancel`, parseOutfitSearch),
   set: (setId: string, signal?: AbortSignal) => read(`/studio/outfit-sets/${id(setId)}`, parseOutfitSetDetail, signal),
   swap: (setId: string, input: { slot: OutfitSlotId; productId: string; variantId?: string | null; base: number }) => send(`/studio/outfit-sets/${id(setId)}/piece`, parseOutfitSetDetail, input, { timeoutMs: 60_000 }),
+  options: (setId: string, input: { slot: OutfitSlotId; query: string }) => send(`/studio/outfit-sets/${id(setId)}/options`, parseOptions, input, { timeoutMs: 60_000 }),
   locks: (setId: string, input: { locked: OutfitSlotId[]; base: number }) => send(`/studio/outfit-sets/${id(setId)}/locks`, parseOutfitSetDetail, input),
   suggest: (setId: string, input: { locked: OutfitSlotId[]; base: number }) => send(`/studio/outfit-sets/${id(setId)}/suggest`, parseOutfitSetDetail, input, { timeoutMs: 90_000 }),
   restore: (setId: string, input: { revision: number; base: number }) => send(`/studio/outfit-sets/${id(setId)}/restore`, parseOutfitSetDetail, input),

@@ -2,7 +2,7 @@ import type { Json } from "./database.types.js"
 import type { DatabasePurpose } from "./private-config.js"
 
 /** Must match private.server_boundary_version() of the latest boundary migration. */
-export const privateBoundaryVersion = "20261124100000"
+export const privateBoundaryVersion = "20261124200000"
 
 // bigint inputs/outputs remain decimal text: never silently round money/fences.
 type Call<A extends unknown[], R> = { args: A; result: R }
@@ -40,6 +40,7 @@ export interface PrivateTransactions {
     list_outfit_searches: Call<[actor: string,limit: number],Json|null>
     read_outfit_set: Call<[actor: string,set: string],Json|null>
     save_outfit_set_revision: Call<[actor: string,set: string,base: number,origin: "swap"|"resuggest"|"refresh",pieces: Json,locked: Json,totalMinor: string|null],number>
+    add_outfit_options: Call<[actor: string,set: string,slot: string,pieces: Json],number>
     set_outfit_locks: Call<[actor: string,set: string,base: number,locked: Json],boolean>
     outfit_budget: Call<[actor: string,provider: string,model: string,reserveMicros: string,calls: number,pilot: string|null,products: string[]|null],Json|null>
     enqueue_outfit_render: Call<[actor: string,key: string,hash: string,policy: string,mode: "individual"|"comparison",provider: string,model: string,reserveMicros: string,pilot: string|null,panels: Json],string>
@@ -169,6 +170,7 @@ export const privateOperations = {
     list_outfit_searches: transaction('list_outfit_searches',['uuid','integer'],'json'),
     read_outfit_set: transaction('read_outfit_set',['uuid','uuid'],'json'),
     save_outfit_set_revision: transaction('save_outfit_set_revision',['uuid','uuid','integer','text','jsonb','jsonb','bigint'],'count'),
+    add_outfit_options: transaction('add_outfit_options',['uuid','uuid','text','jsonb'],'count'),
     set_outfit_locks: transaction('set_outfit_locks',['uuid','uuid','integer','jsonb'],'boolean'),
     outfit_budget: transaction('outfit_budget',['uuid','text','text','bigint','integer','text','uuid[]'],'json'),
     enqueue_outfit_render: transaction('enqueue_outfit_render',['uuid','text','text','text','text','text','text','bigint','text','jsonb'],'uuid'),
