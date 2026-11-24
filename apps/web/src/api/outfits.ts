@@ -41,6 +41,8 @@ export interface OutfitSetDetail extends OutfitSet {
 }
 /** Answer of “buscar outra”: how many came back, how many became options, and why the others did not. */
 export interface OptionsFound { returned: number; added: number; otherPart: number; filtered: number; unsuitable: number }
+/** Everything a search found, by part of the look. */
+export interface FoundGroup { slot: OutfitSlotId; label: string; pieces: OutfitPiece[] }
 export type OutfitSearchStatus = "running" | "interrupted" | "succeeded" | "empty" | "failed" | "cancelled"
 export interface OutfitSearch {
   id: string
@@ -57,7 +59,7 @@ export interface OutfitSearch {
   report: {
     interpretedBy: "agent" | "rules_fallback"; plannedBy: "agent" | "rules_fallback"
     queries: { slot: string; query: string; outcome: string; returned: number; kept: number }[]
-    removed: number; filters: FilterReport; missingSlots: string[]; agentCalls: number; agentUsd: number | null
+    removed: number; filters: FilterReport; missingSlots: string[]; found: number; agentCalls: number; agentUsd: number | null
   } | null
 }
 export interface OutfitSearchItem { id: string; prompt: string; createdAt: string | null; status: OutfitSearchStatus; sets: number }
@@ -141,6 +143,10 @@ function parseFilters(raw: unknown): SearchFilters | null {
     maxTotalBrl: num(raw.maxTotalBrl), minRatingPercent: num(raw.minRatingPercent), minSales: num(raw.minSales),
   }
 }
+export const parseFound = (raw: unknown): FoundGroup[] => arr(obj(raw, "found").groups).filter(isObj).flatMap((g) => {
+  const slot = slotOf(g.slot)
+  return slot ? [{ slot, label: str(g.label) ?? slot, pieces: pieces(g.pieces) }] : []
+})
 export function parseOptions(raw: unknown): { set: OutfitSetDetail; found: OptionsFound } {
   const o = obj(raw, "options")
   const f = isObj(o.found) ? o.found : {}
@@ -165,7 +171,7 @@ export function parseOutfitSearch(raw: unknown): OutfitSearch {
       queries: arr(r.queries).filter(isObj).map((q) => ({ slot: str(q.slot) ?? "", query: str(q.query) ?? "", outcome: str(q.outcome) ?? "", returned: num(q.returned) ?? 0, kept: num(q.kept) ?? 0 })),
       removed: Object.entries(filtered).reduce<number>((a, [k, n]) => a + (k.startsWith("filter_") ? 0 : (num(n) ?? 0)), 0),
       filters: { price: num(filtered.filter_price) ?? 0, rating: num(filtered.filter_rating) ?? 0, ratingMissing: num(filtered.filter_rating_missing) ?? 0, sales: num(filtered.filter_sales) ?? 0, audience: num(filtered.filter_audience) ?? 0 },
-      missingSlots: strs(r.missingSlots), agentCalls: num(agent.calls) ?? 0, agentUsd: num(agent.estimatedUsd),
+      missingSlots: strs(r.missingSlots), found: num(r.found) ?? 0, agentCalls: num(agent.calls) ?? 0, agentUsd: num(agent.estimatedUsd),
     } : null,
   }
 }
@@ -219,6 +225,7 @@ export const outfitsApi = {
   startSearch: (prompt: string, filters: Partial<SearchFilters> | null, key: string) => send("/studio/outfit-searches", parseOutfitSearch, { prompt, ...(filters ? { filters } : {}) }, { key }),
   searches: () => read("/studio/outfit-searches", items(parseSearchItem)),
   search: (searchId: string, signal?: AbortSignal) => read(`/studio/outfit-searches/${id(searchId)}`, parseOutfitSearch, signal),
+  pieces: (searchId: string, signal?: AbortSignal) => read(`/studio/outfit-searches/${id(searchId)}/pieces`, parseFound, signal),
   cancelSearch: (searchId: string) => send(`/studio/outfit-searches/${id(searchId)}/cancel`, parseOutfitSearch),
   set: (setId: string, signal?: AbortSignal) => read(`/studio/outfit-sets/${id(setId)}`, parseOutfitSetDetail, signal),
   swap: (setId: string, input: { slot: OutfitSlotId; productId: string; variantId?: string | null; base: number }) => send(`/studio/outfit-sets/${id(setId)}/piece`, parseOutfitSetDetail, input, { timeoutMs: 60_000 }),

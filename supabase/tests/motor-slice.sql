@@ -24,7 +24,7 @@ create temporary table slice(k text primary key, v text) on commit drop;
 grant all on slice to stylai_api, stylai_ai_worker;
 
 do $$ begin
-  assert private.server_boundary_version()='20261124200000', 'boundary version not bumped';
+  assert private.server_boundary_version()='20261124210000', 'boundary version not bumped';
   assert not has_function_privilege('stylai_api','private.reserve_provider_call(uuid,bigint,text,text,text,text,text,bigint,text,text)','EXECUTE'), 'API can reserve spend';
   assert not has_function_privilege('stylai_ai_worker','private.enqueue_look_job(uuid,text,text,text,uuid,uuid,uuid)','EXECUTE'), 'worker can enqueue';
   assert not has_function_privilege('authenticated','private.read_look(uuid,uuid)','EXECUTE'), 'browser can read looks';

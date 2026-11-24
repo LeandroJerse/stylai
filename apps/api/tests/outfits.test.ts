@@ -112,6 +112,18 @@ describe("outfit search", () => {
       expect((await t.call("POST", "/v1/studio/outfit-searches", { prompt: PROMPT, filters: { maxPieceBrl: 2 } }, "a", "search-key-g")).statusCode).toBe(409)
     } finally { await t.app.close() }
   })
+  test("the search keeps at least 20 pieces per part when the store has them, and shows all of them", async () => {
+    const many = (category: string, name: string, from: number) => Array.from({ length: 50 }, (_, i) => item(from + i, category, `${name} modelo ${i}`, 5000 + i))
+    const t = await make({ store: (k) => /conjunto|terno/.test(k) ? [] : /cal[çc]a/.test(k) ? many("pants", "Calça social masculina", 1000) : many("shirts", "Camisa social masculina", 2000) })
+    try {
+      const { search } = await t.run()
+      const all = await t.call("GET", `/v1/studio/outfit-searches/${search.id}/pieces`)
+      const counts = Object.fromEntries(all.json().groups.map((g: { slot: string; pieces: unknown[] }) => [g.slot, g.pieces.length]))
+      expect(counts).toEqual({ lower: 24, upper: 24 })
+      expect(search.report.found).toBe(48)
+      expect((await t.call("GET", `/v1/studio/outfit-searches/${search.id}/pieces`, undefined, "b")).statusCode).toBe(404)
+    } finally { await t.app.close() }
+  })
   test("“buscar outra”: a real search for one part joins its swap options, with the same filters, and can be worn", async () => {
     const EXTRA = [item(51, "shirts", "Camisa polo masculina verde", 8000), item(52, "shirts", "Camisa polo feminina rosa", 8000), item(53, "shirts", "Camisa polo masculina cara", 90000), item(54, "pants", "Calça masculina bege", 8000), item(55, "shirts", "Pijama camisa masculina", 5000)]
     const t = await make({ store: (k) => /polo/.test(k) ? EXTRA : all(k) })

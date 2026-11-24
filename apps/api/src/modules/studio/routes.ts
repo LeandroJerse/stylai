@@ -38,6 +38,8 @@ export interface StudioDeps {
   /** Who picks pieces (P05): the AI agent (model) or deterministic rules. Shown as is, never "agent" when it is rules. */
   /** Autonomous outfits (/studio/outfit-*) are wired in this environment. */
   outfits?: boolean
+  /** Closet and Match are wired in this environment. */
+  closet?: boolean
   composer?: { mode: "agent" | "rules"; model: string | null }
   /** "stores" when Procurar queries a provider API (TikTok Shop, AliExpress); default curated catalog. */
   searchScope?: "curated_catalog" | "stores"
@@ -77,7 +79,7 @@ const snapshot = z.object({
   currency: z.string().optional(), garment_image_url: z.string().nullable().optional(), source_updated_at: z.string().nullable().optional(),
   link_verification: z.string().optional(), visual_fidelity: z.string().optional(), fixture: z.boolean().optional(), render_mode: z.string().optional(),
 }).passthrough()
-const versionRow = z.object({
+export const versionRow = z.object({
   id: uuid, look_id: uuid, version: z.number().int(), parent_version_id: uuid.nullable(), job_id: uuid,
   product_id: uuid, variant_id: uuid, created_at: z.string(), selection_snapshot: snapshot,
   image: z.object({ width: z.number().nullable(), height: z.number().nullable() }).nullable(),
@@ -170,7 +172,7 @@ export function presentPiece(s: ItemSnapshot, id: string, variantId: string | nu
   }
 }
 
-function presentLook(v: z.infer<typeof versionRow>, base: string, keys: SessionKeys, user: string) {
+export function presentLook(v: z.infer<typeof versionRow>, base: string, keys: SessionKeys, user: string) {
   const s = v.selection_snapshot
   const items = z.array(itemSnapshot).safeParse((s as { items?: unknown }).items)
   const multi = items.success && items.data.length > 1
@@ -396,15 +398,22 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
     return raw ? versionRow.parse(raw) : null
   }
 
+  /** Versions of this person kept in the Closet. */
+  async function savedIds(user: string): Promise<Set<string>> {
+    if (!deps.closet) return new Set()
+    return new Set(z.array(z.object({ version_id: uuid })).parse((await deps.db.call("list_saved_looks", user, 100)) ?? []).map((s) => s.version_id))
+  }
+
   app.get("/v1/studio/looks", async (request, reply) => {
     const user = await actor(request, reply); if (!user) return reply
     try {
       const list = z.array(z.object({ latest_version_id: uuid.nullable() })).parse((await deps.db.call("list_looks", user, 12)) ?? [])
       const items = []
+      const saved = await savedIds(user)
       for (const item of list) {
         if (!item.latest_version_id) continue
         const v = await version(user, item.latest_version_id)
-        if (v) items.push(presentLook(v, base, deps.keys, user))
+        if (v) items.push({ ...presentLook(v, base, deps.keys, user), saved: saved.has(v.id) })
       }
       return { items }
     } catch (error) { return dbFailure(reply, error) }
@@ -416,7 +425,7 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
     try {
       const v = await version(user, request.params.id)
       if (!v) return reply.code(404).send(apiError("not_found", "Look não encontrado."))
-      return presentLook(v, base, deps.keys, user)
+      return { ...presentLook(v, base, deps.keys, user), saved: (await savedIds(user)).has(v.id) }
     } catch (error) { return dbFailure(reply, error) }
   })
 
@@ -453,7 +462,7 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
     // What the engine really does today. The Estúdio keeps its layout and marks the rest as unavailable.
     capabilities: {
       mode: "single_piece_try_on", search: true, searchScope: deps.searchScope ?? "curated_catalog", dress: true, adjustments: false,
-      bodyPhotoRequired: true, closet: false, generation: deps.generationEnabled, edits: false, match: false, references: false, preferences: false,
+      bodyPhotoRequired: true, closet: deps.closet === true, generation: deps.generationEnabled, edits: false, match: deps.closet === true, references: false, preferences: false,
       // Not offered by this engine: the front sends no request for them (QA-010).
       measurements: false, plans: false, candidates: false, outfits: deps.outfits === true,
       // Rating and sales only exist where the store publishes them.

@@ -5,10 +5,11 @@ import { useQueryClient } from "@tanstack/react-query"
 import { api } from "../api/client"
 import { messageOf } from "../api/errors"
 import { keys, useMatchDeck } from "../api/queries"
+import type { Look } from "../api/types"
 import { useStore } from "../app/store"
 import { priceText } from "./pieces"
 import { ErrorState, Hint, LoadingState, Photo, useModal } from "./ui"
-import { lookTitle } from "../lib/titles"
+import { lookTitle, shortPieceName } from "../lib/titles"
 
 /** Horizontal distance (px) that confirms a decision on release. */
 const THRESHOLD = 96
@@ -33,11 +34,18 @@ const reducedMotion = (): boolean => window.matchMedia("(prefers-reduced-motion:
  * intent labels fade in with the distance; a confirmed card leaves in its direction while the
  * card behind grows into place, so the next one takes over without a remount or flash.
  */
-export function MatchDialog() {
+export function MatchDialog({ lookId }: { lookId?: string | null }) {
   const { draft, close, notify, go } = useStore()
   const qc = useQueryClient()
-  const deckQuery = useMatchDeck(draft.lookId)
-  const deck = deckQuery.data ?? []
+  const deckQuery = useMatchDeck(lookId === undefined ? draft.lookId : lookId)
+  // The deck of this visit does not change under the person's finger when the lists refresh.
+  const [deck, setDeck] = useState<Look[]>([])
+  const dealt = useRef(false)
+  useEffect(() => {
+    if (dealt.current || !deckQuery.data || deckQuery.isFetching) return
+    dealt.current = true
+    setDeck(deckQuery.data)
+  }, [deckQuery.data, deckQuery.isFetching])
   const [index, setIndex] = useState(0)
   const [history, setHistory] = useState<{ decisionId: string; lookId: string; decision: Decision }[]>([])
   const [undoing, setUndoing] = useState(false)
@@ -110,6 +118,7 @@ export function MatchDialog() {
           if (!mounted.current) return
           setHistory((h) => [...h, { decisionId: d.id, lookId, decision: action }])
           if (action === "save") void qc.invalidateQueries({ queryKey: keys.closet })
+          void qc.invalidateQueries({ queryKey: keys.looks })
           notify(action === "save" ? `${title} guardado com as peças` : `${title} passou`)
         })
         .catch((e: unknown) => {
@@ -235,7 +244,7 @@ export function MatchDialog() {
         </div>
 
         <div className="mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col px-4 pb-4 pt-3">
-          {deckQuery.isPending ? (
+          {deckQuery.isPending || (!dealt.current && deckQuery.isFetching) ? (
             <LoadingState label="Carregando looks…" className="m-auto" />
           ) : deckQuery.isError ? (
             <ErrorState error={deckQuery.error} onRetry={() => void deckQuery.refetch()} className="m-auto" />
@@ -288,7 +297,7 @@ export function MatchDialog() {
                               {l.pieces.map((p) => (
                                 <li key={p.product.id} className="flex min-w-0 justify-between gap-3 sa-caption">
                                   <span className="sa-truncate min-w-0">
-                                    {p.product.name}
+                                    {shortPieceName(p.product.name)}
                                     <span className="sa-muted"> · {p.role === "similar" ? "alternativa" : "peça do look"}</span>
                                   </span>
                                   <span className="sa-num flex-none font-semibold">{priceText(p.product)}</span>
@@ -303,23 +312,23 @@ export function MatchDialog() {
                 </div>
               </div>
               <div className="sa-matchactions mt-4">
-                <button type="button" className="sa-btn sa-btn-secondary sa-matchbtn" onClick={() => decide("pass")} aria-label={`Passar ${look.title}`} aria-disabled={leaving ? true : undefined}>
+                <button type="button" className="sa-btn sa-btn-secondary sa-matchbtn" onClick={() => decide("pass")} aria-label={`Passar ${lookTitle(look)}`} aria-disabled={leaving ? true : undefined}>
                   <X size={20} weight="bold" aria-hidden="true" /> Passar
                 </button>
-                <button type="button" className="sa-btn sa-btn-primary sa-matchbtn" onClick={() => decide("save")} aria-label={`Guardar ${look.title} e suas peças no Closet`} aria-disabled={leaving ? true : undefined}>
+                <button type="button" className="sa-btn sa-btn-primary sa-matchbtn" onClick={() => decide("save")} aria-label={`Guardar ${lookTitle(look)} e suas peças no Closet`} aria-disabled={leaving ? true : undefined}>
                   <Archive size={20} aria-hidden="true" /> Guardar
                 </button>
               </div>
               <button type="button" className="sa-btn-quiet sa-body-sm mx-auto mt-1 flex items-center gap-2" onClick={undo} aria-disabled={history.length === 0 || leaving || undoing ? true : undefined} aria-label="Desfazer última decisão">
                 <ArrowCounterClockwise size={18} aria-hidden="true" /> Desfazer
               </button>
-              <Hint className="mt-2">Deslizar não gera imagens nem gasta moedas. Guardar leva o look e as peças ao Closet. Setas ← → também decidem.</Hint>
+              <Hint className="mt-2">Deslizar não gera imagens nem gasta moedas. Guardar leva a imagem e as peças ao Closet. Setas ← → também decidem.</Hint>
             </>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
               <p className="sa-heading">{deck.length === 0 ? "Nenhum look para comparar" : "Fim dos looks desta sessão"}</p>
               <p className="sa-body-sm sa-muted max-w-xs sa-pretty">
-                {deck.length === 0 ? "Gere mais looks no Estúdio para compará-los aqui." : `Você guardou ${saved} de ${deck.length}. Novos cartões exigem novas gerações, que não acontecem ao deslizar.`}
+                {deck.length === 0 ? "Você já decidiu sobre todos os looks gerados. Gere outra imagem no Estúdio para continuar." : `Você guardou ${saved} de ${deck.length}. Novos cartões exigem novas gerações, que não acontecem ao deslizar.`}
               </p>
               <div className="mt-2 grid w-full max-w-xs gap-2">
                 <button

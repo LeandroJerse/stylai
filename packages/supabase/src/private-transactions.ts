@@ -2,7 +2,7 @@ import type { Json } from "./database.types.js"
 import type { DatabasePurpose } from "./private-config.js"
 
 /** Must match private.server_boundary_version() of the latest boundary migration. */
-export const privateBoundaryVersion = "20261124200000"
+export const privateBoundaryVersion = "20261124210000"
 
 // bigint inputs/outputs remain decimal text: never silently round money/fences.
 type Call<A extends unknown[], R> = { args: A; result: R }
@@ -40,6 +40,13 @@ export interface PrivateTransactions {
     list_outfit_searches: Call<[actor: string,limit: number],Json|null>
     read_outfit_set: Call<[actor: string,set: string],Json|null>
     save_outfit_set_revision: Call<[actor: string,set: string,base: number,origin: "swap"|"resuggest"|"refresh",pieces: Json,locked: Json,totalMinor: string|null],number>
+    set_saved_look: Call<[actor: string,version: string,saved: boolean],boolean>
+    decide_look: Call<[actor: string,version: string,decision: "save"|"pass"],string>
+    undo_look_decision: Call<[actor: string,decision: string],boolean>
+    list_match_deck: Call<[actor: string,first: string|null,limit: number],Json|null>
+    list_saved_looks: Call<[actor: string,limit: number],Json|null>
+    set_saved_piece: Call<[actor: string,key: string,snapshot: Json|null],boolean>
+    list_saved_pieces: Call<[actor: string],Json|null>
     add_outfit_options: Call<[actor: string,set: string,slot: string,pieces: Json],number>
     set_outfit_locks: Call<[actor: string,set: string,base: number,locked: Json],boolean>
     outfit_budget: Call<[actor: string,provider: string,model: string,reserveMicros: string,calls: number,pilot: string|null,products: string[]|null],Json|null>
@@ -170,6 +177,13 @@ export const privateOperations = {
     list_outfit_searches: transaction('list_outfit_searches',['uuid','integer'],'json'),
     read_outfit_set: transaction('read_outfit_set',['uuid','uuid'],'json'),
     save_outfit_set_revision: transaction('save_outfit_set_revision',['uuid','uuid','integer','text','jsonb','jsonb','bigint'],'count'),
+    set_saved_look: transaction('set_saved_look',['uuid','uuid','boolean'],'boolean'),
+    decide_look: transaction('decide_look',['uuid','uuid','text'],'uuid'),
+    undo_look_decision: transaction('undo_look_decision',['uuid','uuid'],'boolean'),
+    list_match_deck: transaction('list_match_deck',['uuid','uuid','integer'],'json'),
+    list_saved_looks: transaction('list_saved_looks',['uuid','integer'],'json'),
+    set_saved_piece: transaction('set_saved_piece',['uuid','text','jsonb'],'boolean'),
+    list_saved_pieces: transaction('list_saved_pieces',['uuid'],'json'),
     add_outfit_options: transaction('add_outfit_options',['uuid','uuid','text','jsonb'],'count'),
     set_outfit_locks: transaction('set_outfit_locks',['uuid','uuid','integer','jsonb'],'boolean'),
     outfit_budget: transaction('outfit_budget',['uuid','text','text','bigint','integer','text','uuid[]'],'json'),

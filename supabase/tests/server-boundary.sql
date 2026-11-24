@@ -30,7 +30,7 @@ set local role stylai_api;
 do $$
 declare job uuid;
 begin
-  assert private.server_boundary_version()='20261124200000', 'wrong boundary contract';
+  assert private.server_boundary_version()='20261124210000', 'wrong boundary contract';
   job := private.enqueue_ai_job('10000000-0000-4000-8000-000000000001','boundary-key',repeat('a',64),
     '20000000-0000-4000-8000-000000000001','test-tops','test-v1');
   assert private.cancel_ai_job('10000000-0000-4000-8000-000000000002',job)=false, 'foreign account cancelled job';

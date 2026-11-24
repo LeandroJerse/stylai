@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState } from "react"
 import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react"
-import { useLooks, useMatchDeck } from "../api/queries"
+import { useLooks, useMatchDeck, useStudioConfig } from "../api/queries"
 import type { Look } from "../api/types"
 import { useStore } from "../app/store"
 import { useReducedMotion } from "./ui"
@@ -21,12 +21,15 @@ export function useLookDeck(current: Look | null = null): DeckCard[] {
   const { draft } = useStore()
   const history = useLooks(true)
   // The suggestions follow the last search (the Acervo), so they do not change while browsing.
-  const suggestions = useMatchDeck(draft.acervoLookId ?? draft.lookId)
+  // Outfits engine: the match deck is the generated looks themselves, never extra suggestions.
+  const prepared = useStudioConfig().data?.capabilities.outfits !== true
+  const origin = draft.acervoLookId ?? draft.lookId
+  const suggestions = useMatchDeck(origin, prepared && origin !== null)
   const results = [...(history.data ?? [])]
   if (current && !results.some((l) => l.id === current.id)) results.unshift(current)
   const cards: DeckCard[] = results.map((look) => ({ key: look.id, kind: "result", look }))
   const seen = new Set(cards.map((c) => c.key))
-  for (const look of suggestions.data ?? []) {
+  for (const look of prepared ? (suggestions.data ?? []) : []) {
     if (seen.has(look.id)) continue
     seen.add(look.id)
     cards.push({ key: look.id, kind: "suggestion", look })

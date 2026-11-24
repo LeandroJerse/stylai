@@ -17,7 +17,9 @@ export const MAX_PANELS = 4
 /** Store queries of one search, complete outfits included. */
 export const MAX_SEARCH_QUERIES = 8
 /** Candidates kept per slot after ranking (stored pool) and sent to the model (window). */
-export const OUTFIT_POOL_PER_SLOT = 12
+export const OUTFIT_POOL_PER_SLOT = 24
+/** A part stops being searched once this many compatible pieces were found. */
+export const OUTFIT_TARGET_PER_SLOT = 20
 export const OUTFIT_WINDOW_PER_SLOT = 8
 const MAX_BUNDLES_BY_RULES = 2
 

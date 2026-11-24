@@ -14,7 +14,7 @@ import { ORIGIN_LABEL } from "../lib/looks"
 import { sumLookWith, withOffer } from "../lib/offers"
 import { PieceCard, PieceCardSkeletons, priceText, ROLE_LABEL } from "../components/pieces"
 import { EmptyState, ErrorState, Notice, Photo, Segmented, Sheet, Skeleton } from "../components/ui"
-import { lookTitle } from "../lib/titles"
+import { lookTitle, shortPieceName } from "../lib/titles"
 
 type View = "pecas" | "looks"
 
@@ -181,6 +181,8 @@ export function ClosetLookSheet({ lookId }: { lookId: string }) {
   const self: Overlay = { kind: "closetLook", lookId }
   const total = sumLookWith(look, offerChoice)
   const created = formatDay(look.createdAt)
+  // Generated images live 7 days unless kept in the Closet: taking an older one out deletes it.
+  const old = look.createdAt !== null && Date.now() - new Date(look.createdAt).getTime() > 7 * 86_400_000
 
   const remove = (): void => {
     if (toggle.isPending) return
@@ -189,6 +191,7 @@ export function ClosetLookSheet({ lookId }: { lookId: string }) {
       {
         onSuccess: () => {
           close()
+          if (old) { notify(`${lookTitle(look)} saiu do Closet e a imagem foi apagada. As peças favoritas continuam.`); return }
           notify(`${lookTitle(look)} saiu do Closet. As peças favoritas continuam.`, {
             label: "Desfazer",
             run: () => toggle.mutate({ lookId: look.id, save: true }, { onError: (e) => notify(messageOf(e)) }),
@@ -204,9 +207,12 @@ export function ClosetLookSheet({ lookId }: { lookId: string }) {
       title={lookTitle(look)}
       onClose={close}
       footer={
+        <div className="grid gap-2">
+        {old ? <p className="sa-caption sa-muted">Esta imagem tem mais de 7 dias. Ao remover do Closet, ela é apagada e não volta.</p> : null}
         <button type="button" className="sa-btn sa-btn-danger sa-btn-block" onClick={remove} aria-disabled={toggle.isPending || undefined}>
           <Trash size={18} aria-hidden="true" /> {toggle.isPending ? "Removendo…" : "Remover look do Closet"}
         </button>
+        </div>
       }
     >
       <div className="grid gap-5">
@@ -235,7 +241,7 @@ export function ClosetLookSheet({ lookId }: { lookId: string }) {
                     <Photo image={p.product.images[0] ?? null} alt="" className="h-full w-full" />
                   </div>
                   <span className="min-w-0 flex-1">
-                    <span className="sa-body-sm sa-truncate block font-semibold">{p.product.name}</span>
+                    <span className="sa-body-sm sa-truncate block font-semibold">{shortPieceName(p.product.name)}</span>
                     <span className="sa-caption sa-muted block">{withOffer(p.product, offerChoice[p.product.id]).partner.name}</span>
                     {look.origin !== "tryon" ? <span className="sa-caption sa-accent-text block">{ROLE_LABEL[p.role]}</span> : null}
                     {isStale(p.product) ? <span className="sa-caption sa-warning-text block">Dados de {formatDay(p.product.updatedAt)}</span> : null}

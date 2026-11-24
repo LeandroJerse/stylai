@@ -14,6 +14,12 @@ export const money = (m: Money | null): string => (m ? m.amount.toLocaleString("
 type Result = { ok: true } | { ok: false; message: string }
 type Run = (act: () => Promise<Result>) => void
 
+/** Rating and sales as the store publishes them, or null when it says nothing. */
+export const storeFacts = (p: OutfitPiece): string | null => {
+  if (p.storeRating === null && p.storeSales === null) return null
+  return [p.storeRating === null ? "Sem nota na loja" : `${p.storeRating.toLocaleString("pt-BR")}% de avaliações positivas`, p.storeSales === null ? null : `${p.storeSales} ${p.storeSales === 1 ? "venda recente" : "vendas recentes"}`].filter(Boolean).join(" · ")
+}
+
 export function StoreLink({ piece, label = false }: { piece: OutfitPiece; label?: boolean }) {
   const link = resolvePartnerLink(piece.product.links)
   if (link.kind === "none") return null
@@ -92,11 +98,7 @@ function PieceDetail({ id, set, piece, outfits, busy, run, onClose }: { id: stri
         <p className="sa-caption sa-muted">
           {piece.label} · {piece.product.partner.name}
         </p>
-        {piece.storeRating !== null || piece.storeSales !== null ? (
-          <p className="sa-caption sa-muted sa-num">
-            {[piece.storeRating === null ? "Sem nota na loja" : `${piece.storeRating.toLocaleString("pt-BR")}% de avaliações positivas`, piece.storeSales === null ? null : `${piece.storeSales} ${piece.storeSales === 1 ? "venda recente" : "vendas recentes"}`].filter(Boolean).join(" · ")}
-          </p>
-        ) : null}
+        {storeFacts(piece) ? <p className="sa-caption sa-muted sa-num">{storeFacts(piece)}</p> : null}
         {piece.reason ? <p className="sa-caption sa-muted">{piece.reason}</p> : null}
         {!piece.tryOn.ready && piece.tryOn.message ? <p className="sa-caption sa-error-text" data-testid="piece-blocked">{piece.tryOn.message}</p> : null}
       </div>

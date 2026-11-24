@@ -165,9 +165,10 @@ export const useCandidates = (lookId: string | null) => {
   const on = useCapability("candidates")
   return useQuery({ queryKey: keys.candidates(lookId ?? ""), queryFn: () => api.studio.candidates(lookId ?? ""), enabled: lookId !== null && on })
 }
-export const useMatchDeck = (lookId: string | null) => {
+/** Undecided generated looks; the one on screen (if any) comes first. */
+export const useMatchDeck = (lookId: string | null, enabled = true) => {
   const on = useCapability("match")
-  return useQuery({ queryKey: keys.matchDeck(lookId ?? ""), queryFn: () => api.studio.matchDeck(lookId ?? ""), enabled: lookId !== null && on, staleTime: Infinity })
+  return useQuery({ queryKey: keys.matchDeck(lookId ?? ""), queryFn: () => api.studio.matchDeck(lookId), enabled: on && enabled, staleTime: 0 })
 }
 
 export const isJobDone = (job: Job | undefined): boolean => !!job && ["succeeded", "failed", "no_results", "cancelled"].includes(job.status)

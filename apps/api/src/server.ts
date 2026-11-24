@@ -1,3 +1,4 @@
+import { createPieceResolver } from "./modules/closet/routes.js"
 import { resolve } from "node:path"
 import { readServiceConfig } from "@stylai/config"
 import { PHOTO_POLICY_VERSION, type CatalogSourceMode } from "@stylai/contracts"
@@ -136,17 +137,19 @@ const rateLimitPerMinute = Number(process.env.STYLAI_RATE_LIMIT_PER_MINUTE ?? 12
 if (!Number.isInteger(rateLimitPerMinute) || rateLimitPerMinute < 10 || rateLimitPerMinute > 5000) throw new Error("Invalid STYLAI_RATE_LIMIT_PER_MINUTE")
 const app = await buildApp({
   appOrigin: config.appOrigin, logger: true, rateLimitPerMinute, probeSupabase: () => probeFoundation(supabase),
-  ...(database ? { probePrivateDatabase: () => database.probe(), catalog: { db: database, publicBaseUrl, pilotOnly: pilotCatalogOnly, catalogMode, tiktokCache, aliexpressCatalog, ...(resolveActor ? { resolveActor } : {}) } } : {}),
+  ...(database ? { probePrivateDatabase: () => database.probe(), catalog: { db: database, publicBaseUrl, pilotOnly: pilotCatalogOnly, catalogMode, tiktokCache, aliexpressCatalog, ...(resolveActor ? { resolveActor } : {}),
+    ...(keys ? { ownedPiece: createPieceResolver({ db: database, keys, publicBaseUrl, aliexpressCatalog }) } : {}) } } : {}),
   ...(sessions && provider ? { auth: { provider, sessions, appOrigin: config.appOrigin, secureCookie: config.nodeEnv === "production" } } : {}),
   ...(database && resolveActor ? { privacy: {
     appOrigin: config.appOrigin, resolveActor,
     requestDeletion: (actor: string) => database.call("request_account_deletion", actor),
   } } : {}),
   ...(database && store && keys && resolveActor ? {
+    closet: { db: database, keys, resolveActor, publicBaseUrl, aliexpressCatalog },
     photos: { db: database, store, keys, resolveActor, photoPolicyVersion, publicBaseUrl, analyzer },
     studio: { db: database, keys, resolveActor, photoPolicyVersion, publicBaseUrl, generationEnabled: generationMode !== "disabled", generationMode, realProvider,
       searchScope: catalogMode === "tiktok_shop" || catalogMode === "aliexpress_affiliate" ? "stores" : "curated_catalog",
-      outfits: outfitSearch !== null,
+      outfits: outfitSearch !== null, closet: true,
       composer: { mode: composer ? "agent" : "rules", model: composer ? composerModel : null } },
     search: { db: database, resolveActor, publicBaseUrl, pilotOnly: pilotCatalogOnly, catalogMode, tiktokCache, aliexpressCatalog,
       agent: composer, interpretationCache, agentPrice: composerPrice,

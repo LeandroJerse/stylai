@@ -5,7 +5,7 @@
 import { useState } from "react"
 import { ArrowUpRight, Heart, Info, PenNib } from "@phosphor-icons/react"
 import { messageOf } from "../api/errors"
-import { useProduct, useStudioConfig, useToggleFavorite } from "../api/queries"
+import { useCloset, useProduct, useStudioConfig, useToggleFavorite } from "../api/queries"
 import type { PieceRole, Product } from "../api/types"
 import { useStore, type Overlay } from "../app/store"
 import { useAuth } from "../auth/AuthProvider"
@@ -15,6 +15,7 @@ import { StarRating } from "./controls"
 import { ErrorState, Hint, Notice, Photo, Sheet, Skeleton, useLongPress } from "./ui"
 import { OfferPrice, StoreTags, useOfferProduct } from "./offers"
 import { withOffer } from "../lib/offers"
+import { shortPieceName } from "../lib/titles"
 
 export const ROLE_LABEL: Record<PieceRole, string> = {
   look: "Peça do look",
@@ -106,13 +107,16 @@ export function FavButton({ product, onPhoto = false, size = 20 }: { product: Pr
   const { notify } = useStore()
   // Optimistic: the heart flips at once and settles on the server answer.
   const pending = toggle.isPending ? toggle.variables : undefined
-  const isFav = pending && pending.productId === product.id ? pending.save : product.favorite
+  const { status } = useAuth()
+  const closet = useCloset(status === "signed-in")
+  const kept = closet.data?.pieces.some((p) => p.product.id === product.id && p.via === "favorite") ?? product.favorite
+  const isFav = pending && pending.productId === product.id ? pending.save : kept
   const run = (): void =>
     requireAccount("Entre para guardar peças no Closet.", () =>
       toggle.mutate(
         { productId: product.id, save: !isFav },
         {
-          onSuccess: () => notify(isFav ? `${product.name} saiu do Closet` : `${product.name} favoritada no Closet`),
+          onSuccess: () => notify(isFav ? `${shortPieceName(product.name)} saiu do Closet` : `${shortPieceName(product.name)} guardada no Closet`),
           onError: (e) => notify(messageOf(e)),
         },
       ),

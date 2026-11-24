@@ -5,8 +5,9 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { CircleNotch } from "@phosphor-icons/react"
+import { CircleNotch, CoatHanger } from "@phosphor-icons/react"
 import type { OutfitQuote, OutfitSearch, OutfitSet } from "../../api/outfits"
+import { useCapability, useMatchDeck } from "../../api/queries"
 import { useStore, type StageView } from "../../app/store"
 import { outfitKeys, useOutfits, type Outfits } from "../../app/useOutfits"
 import { filterLabels, filterReportText, filtersToSend, FILTER_IDS } from "../../lib/filters"
@@ -14,6 +15,7 @@ import { plural } from "../../lib/format"
 import { EmptyState, ErrorState, LoadingState, Notice, useReducedMotion } from "../ui"
 import { ConfirmSheet, usd } from "./ConfirmSheet"
 import { OutfitCard } from "./OutfitCard"
+import { FoundPieces } from "./FoundPieces"
 import { isWorking, RenderCard } from "./RenderCard"
 
 const MAX_COMPARE = 4
@@ -165,7 +167,8 @@ function ImagesView({ outfits, onOpenSearch }: { outfits: Outfits; onOpenSearch:
 
 export function OutfitStage({ loose, recents, job }: { loose: ReactNode | null; recents: ReactNode; job: ReactNode }) {
   const outfits = useOutfits()
-  const { draft, setDraft } = useStore()
+  const { draft, setDraft, open } = useStore()
+  const match = useCapability("match")
   const reduced = useReducedMotion()
   const qc = useQueryClient()
   const ref = useRef<HTMLElement | null>(null)
@@ -175,10 +178,16 @@ export function OutfitStage({ loose, recents, job }: { loose: ReactNode | null; 
 
   const renders = outfits.renders.data ?? []
   const working = renders.some(isWorking)
+  const ready = renders.filter((r) => r.panels.some((p) => p.state === "ready")).length
+  const deck = useMatchDeck(null, ready > 0)
+  const undecided = deck.data?.length ?? 0
+  const search = outfits.search.data ?? null
+  const found = search && search.status !== "running" ? (search.report?.found ?? 0) : 0
+  useEffect(() => { if (ready) void qc.invalidateQueries({ queryKey: ["studio", "match"] }) }, [ready, qc])
   // After a reload in the middle of a generation, the generation is what the person came back for.
   const fallback: StageView = working ? "images" : "sets"
   const wanted = draft.stageView ?? fallback
-  const view: StageView = (wanted === "pieces" && !loose) || (wanted === "images" && !renders.length) ? "sets" : wanted
+  const view: StageView = (wanted === "pieces" && !loose && !found) || (wanted === "images" && !renders.length) ? "sets" : wanted
 
   // Bring the work area into sight when something was just asked (never while the person is only reading).
   const revealed = useRef(draft.stageNonce)
@@ -200,11 +209,12 @@ export function OutfitStage({ loose, recents, job }: { loose: ReactNode | null; 
   const tabs: { id: StageView; label: string; count: number | null; busy: boolean }[] = [
     { id: "sets", label: "Conjuntos", count: outfits.search.data?.sets.length || null, busy: status === "running" },
     ...(renders.length ? [{ id: "images" as const, label: "Imagens", count: renders.length, busy: working }] : []),
-    ...(loose ? [{ id: "pieces" as const, label: "Peças", count: null, busy: false }] : []),
+    ...(loose || found ? [{ id: "pieces" as const, label: "Peças", count: loose ? null : found, busy: false }] : []),
   ]
   return (
     <section ref={ref} id="conjuntos" tabIndex={-1} className="sa-work" aria-label="Conjuntos e imagens" data-testid="outfit-board" data-view={view}>
       {job}
+      <div className="flex flex-wrap items-center justify-between gap-3 empty:hidden">
       {tabs.length > 1 ? (
         <div className="sa-segmented sa-work-tabs" role="group" aria-label="O que mostrar">
           {tabs.map((t) => (
@@ -215,9 +225,15 @@ export function OutfitStage({ loose, recents, job }: { loose: ReactNode | null; 
           ))}
         </div>
       ) : null}
+      {match && ready > 0 ? (
+        <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm" onClick={() => open({ kind: "match", lookId: null })} data-testid="open-match" aria-label={undecided ? `Match: ${undecided} ${undecided === 1 ? "look para decidir" : "looks para decidir"}` : "Match"}>
+          <CoatHanger size={18} aria-hidden="true" /> Match{undecided ? <span className="sa-num sa-muted">{undecided}</span> : null}
+        </button>
+      ) : null}
+      </div>
       {view === "sets" ? <SetsView outfits={outfits} recents={recents} onDone={() => setDraft((d) => ({ stageView: "images", stageNonce: d.stageNonce + 1 }))} /> : null}
       {view === "images" ? <ImagesView outfits={outfits} onOpenSearch={(id) => { outfits.open(id); setDraft({ stageView: "sets" }) }} /> : null}
-      {view === "pieces" ? loose : null}
+      {view === "pieces" ? (loose ?? (search ? <FoundPieces key={search.id} outfits={outfits} searchId={search.id} /> : null)) : null}
     </section>
   )
 }

@@ -5,7 +5,7 @@
  */
 import { z } from "zod"
 import {
-  interpretCompositionRules, MAX_OUTFITS, outfitSlotOfCategory, OUTFIT_WINDOW_PER_SLOT, rankCandidates, searchPlan, selectOutfitsRules,
+  interpretCompositionRules, MAX_OUTFITS, outfitSlotOfCategory, OUTFIT_TARGET_PER_SLOT, rankCandidates, searchPlan, selectOutfitsRules,
   applyFiltersToIntent, normalizeText, storeQuery, NO_FILTERS, normalizeFilters, type OutfitFilters,
   type CompositionIntent, type LockedPieces, type OutfitCandidate, type OutfitPools, type OutfitSlot, type SlotId, type ValidOutfit,
 } from "@stylai/contracts"
@@ -125,7 +125,7 @@ export function createOutfitSearch(deps: OutfitSearchDeps) {
     } else {
       let stopped = false
       for (const [i, { slot, query }] of queries.entries()) {
-        const skip = stopped || ranked(slot).kept.length >= OUTFIT_WINDOW_PER_SLOT
+        const skip = stopped || ranked(slot).kept.length >= OUTFIT_TARGET_PER_SLOT
         if (skip || !deps.aliexpressCatalog) {
           logs.push({ slot, query, outcome: stopped || !deps.aliexpressCatalog ? "unavailable" : "skipped", returned: 0, kept: 0, fromCache: false, code: deps.aliexpressCatalog ? null : "source_not_configured" })
           if (!deps.aliexpressCatalog) unavailable++

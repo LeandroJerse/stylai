@@ -147,7 +147,7 @@ set local role stylai_ai_worker;
 do $$
 declare j1 uuid; declare j2 uuid; declare f bigint; declare f2 bigint; declare c uuid; declare asset uuid; declare loaded jsonb;
 begin
-  assert private.server_boundary_version()='20261124200000', 'boundary version';
+  assert private.server_boundary_version()='20261124210000', 'boundary version';
   j1 := private.next_ai_job(); f := private.claim_ai_job(j1);
   loaded := private.load_ai_job(j1,f);
   assert loaded->'items'->0->>'canonical_id'='aliexpress:1002' and loaded->'items'->0->>'affiliate_url'='https://s.click.aliexpress.com/e/b', 'commerce link not bound to its panel';
@@ -260,12 +260,72 @@ begin
   assert v->>'comparison_state'='ready' and v->'panels'->0->>'version_id' is not null and v->'panels'->1->>'version_id' is not null, 'individual results lost';
   assert private.read_comparison_asset(a,r)->>'object_key' like a::text||'/%' and private.read_comparison_asset(b,r) is null, 'comparison asset isolation';
   assert jsonb_array_length(private.list_outfit_renders(a,10))=1 and jsonb_array_length(private.list_outfit_renders(b,10))=0, 'render history isolation';
+  -- Match and Closet: a saved version keeps its image and its pieces; a decision is one per version, undoable, owner only.
+  perform set_config('t.ver1',v->'panels'->0->>'version_id',true); perform set_config('t.ver2',v->'panels'->1->>'version_id',true);
   -- Later choice of another saved set: new individual render, previous results untouched.
   r2 := private.enqueue_outfit_render(a,'render-key-9',repeat('9',64),'dev-v1','individual','segmind','flux-3-klein-image-edit',20000,null,jsonb_build_array(current_setting('t.two')::jsonb->1));
   assert private.read_outfit_render(a,r2)->>'mode'='individual' and private.read_outfit_render(a,r)->>'comparison_state'='ready', 'history overwritten';
   assert private.cancel_outfit_render(a,r2)=1, 'queued panel not cancelled';
   -- Separate statement: a stable read inside the same one would still see the old snapshot.
   assert private.read_outfit_render(a,r2)->'panels'->0->'job'->>'status'='cancelled', 'queued panel not cancelled';
+end $$;
+
+do $$
+declare a uuid := '80000000-0000-4000-8000-00000000000a'; declare b uuid := '80000000-0000-4000-8000-00000000000b';
+declare v1 uuid := current_setting('t.ver1')::uuid; declare v2 uuid := current_setting('t.ver2')::uuid; declare d1 uuid; declare d2 uuid;
+begin
+  assert jsonb_array_length(private.list_match_deck(a,v2,30))=2 and private.list_match_deck(a,v2,30)->>0=v2::text, 'deck without the generated looks, or not starting at the asked one';
+  assert private.list_match_deck(b,null,30)='[]'::jsonb, 'foreign deck';
+  d1 := private.decide_look(a,v1,'save'); d2 := private.decide_look(a,v2,'pass');
+  assert private.decide_look(a,v1,'save')=d1, 'double tap became another decision';
+  perform set_config('t.d1',d1::text,true); perform set_config('t.d2',d2::text,true);
+  begin perform private.decide_look(b,v1,'save'); raise exception 'foreign decision accepted'; exception when insufficient_privilege then null; end;
+  begin perform private.decide_look(a,v1,'love'); raise exception 'unknown decision accepted'; exception when check_violation then null; end;
+  begin perform private.set_saved_look(b,v1,true); raise exception 'foreign save accepted'; exception when insufficient_privilege then null; end;
+end $$;
+do $$
+declare a uuid := '80000000-0000-4000-8000-00000000000a';
+begin
+  assert private.list_match_deck(a,null,30)='[]'::jsonb, 'decided looks stayed in the deck';
+  assert jsonb_array_length(private.list_saved_looks(a,10))=1 and private.list_saved_looks(a,10)->0->>'version_id'=current_setting('t.ver1'), 'match did not save the look';
+  assert private.list_saved_looks('80000000-0000-4000-8000-00000000000b',10)='[]'::jsonb, 'foreign closet';
+end $$;
+reset role;
+do $$ begin
+  assert (select a.expires_at is null from private.assets a join private.look_versions v on v.asset_id=a.id where v.id=current_setting('t.ver1')::uuid), 'saved image would expire';
+  assert (select a.expires_at is not null from private.assets a join private.look_versions v on v.asset_id=a.id where v.id=current_setting('t.ver2')::uuid), 'passed image kept';
+  assert (select count(*) from private.saved_look_products where user_id='80000000-0000-4000-8000-00000000000a')>=1, 'pieces not saved';
+end $$;
+set local role stylai_api;
+do $$
+declare a uuid := '80000000-0000-4000-8000-00000000000a';
+begin
+  assert not private.undo_look_decision('80000000-0000-4000-8000-00000000000b',current_setting('t.d1')::uuid), 'foreign undo';
+  assert private.undo_look_decision(a,current_setting('t.d1')::uuid) and not private.undo_look_decision(a,current_setting('t.d1')::uuid), 'undo not once';
+end $$;
+do $$
+declare a uuid := '80000000-0000-4000-8000-00000000000a';
+begin
+  assert private.list_saved_looks(a,10)='[]'::jsonb and private.list_match_deck(a,null,30)->>0=current_setting('t.ver1'), 'undo did not take the look out';
+  -- Saved by hand first: a later match decision and its undo never remove it.
+  perform private.set_saved_look(a,current_setting('t.ver1')::uuid,true);
+  perform set_config('t.d1',private.decide_look(a,current_setting('t.ver1')::uuid,'save')::text,true);
+  perform private.undo_look_decision(a,current_setting('t.d1')::uuid);
+end $$;
+do $$
+declare a uuid := '80000000-0000-4000-8000-00000000000a'; declare b uuid := '80000000-0000-4000-8000-00000000000b';
+begin
+  assert jsonb_array_length(private.list_saved_looks(a,10))=1, 'undo removed a look saved by hand';
+  perform private.set_saved_look(a,current_setting('t.ver1')::uuid,false);
+  assert private.set_saved_piece(a,'aliexpress:1','{"id":"aliexpress:1","name":"Camisa"}') and private.set_saved_piece(a,'aliexpress:1','{"id":"aliexpress:1","name":"Camisa"}'), 'piece not saved';
+  begin perform private.set_saved_piece(a,'aliexpress:2',jsonb_build_object('x',repeat('y',9000))); raise exception 'huge snapshot accepted'; exception when check_violation then null; end;
+end $$;
+do $$
+declare a uuid := '80000000-0000-4000-8000-00000000000a'; declare b uuid := '80000000-0000-4000-8000-00000000000b';
+begin
+  assert private.list_saved_looks(a,10)='[]'::jsonb, 'look not removed';
+  assert jsonb_array_length(private.list_saved_pieces(a))=1 and private.list_saved_pieces(b)='[]'::jsonb, 'pieces isolation';
+  assert not private.set_saved_piece(a,'aliexpress:1',null), 'piece removal';
 end $$;
 
 -- ---------------------------------------------------------------- pilot gate stays closed for policy references by default

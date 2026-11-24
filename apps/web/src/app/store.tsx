@@ -19,7 +19,7 @@ export type Overlay =
   /** Full-screen look: image, title and description, with arrows through the generated looks. */
   | { kind: "lookViewer"; lookId: string }
   | { kind: "edit" }
-  | { kind: "match" }
+  | { kind: "match"; lookId?: string | null }
   | { kind: "acervo" }
   | { kind: "preferencePicker" }
   | { kind: "preferenceEditor" }

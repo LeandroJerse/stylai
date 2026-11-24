@@ -181,7 +181,7 @@ export const api = {
     looks: () => get("/studio/looks", parseLooks, { auth: "required", query: { limit: 12 } }),
     look: (id: string) => get(`/studio/looks/${encodeURIComponent(id)}`, parseLook, { auth: "required" }),
     candidates: (lookId: string) => get(`/studio/looks/${encodeURIComponent(lookId)}/candidates`, parseCandidates, { auth: "required" }),
-    matchDeck: (lookId: string) => get("/studio/match/deck", parseLooks, { auth: "required", query: { lookId } }),
+    matchDeck: (lookId: string | null) => get("/studio/match/deck", parseLooks, { auth: "required", query: { lookId: lookId ?? undefined } }),
     decide: (lookId: string, decision: "save" | "pass") => http.request<unknown>("/studio/match/decisions", { method: "POST", body: { lookId, decision }, auth: "required" }).then(parseDecision),
     undoDecision: (decisionId: string) => http.request<null>(`/studio/match/decisions/${encodeURIComponent(decisionId)}`, { method: "DELETE", auth: "required" }),
   },

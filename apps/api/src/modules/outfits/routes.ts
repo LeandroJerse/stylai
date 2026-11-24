@@ -125,6 +125,7 @@ export async function registerOutfitRoutes(app: FastifyInstance, deps: OutfitRou
         climate: plan.intent.climate ?? null, budget: plan.intent.budgetTotalBrl,
         queries: plan.queries.map((q) => ({ slot: OUTFIT_SLOT_LABEL[q.slot], query: q.query, outcome: q.outcome, returned: q.returned, kept: q.kept })),
         filtered: plan.rejected, missingSlots: plan.missingSlots.map((s) => SLOT_LABEL[s as SlotId] ?? s),
+        found: Object.values(plan.pools).reduce((a, l) => a + (l?.length ?? 0), 0),
         agent: { calls: plan.agent.calls, estimatedUsd: plan.agent.costMicros === null ? null : Number(plan.agent.costMicros) / 1_000_000 }, notes: plan.notes,
       } : null,
     }
@@ -178,6 +179,17 @@ export async function registerOutfitRoutes(app: FastifyInstance, deps: OutfitRou
     const user = await actor(request, reply); if (!user) return reply
     if (!uuid.safeParse(request.params.id).success) return notFound(reply, "Pedido")
     try { return (await readSearch(user, request.params.id)) ?? notFound(reply, "Pedido") } catch (error) { return failure(request, reply, error) }
+  })
+  // Everything the search found and could use, by part: what the outfits were made from, and what can replace it.
+  app.get<{ Params: { id: string } }>("/v1/studio/outfit-searches/:id/pieces", async (request, reply) => {
+    const user = await actor(request, reply); if (!user) return reply
+    try {
+      const raw = uuid.safeParse(request.params.id).success ? await deps.db.call("read_outfit_search", user, request.params.id) : null
+      if (!raw) return notFound(reply, "Pedido")
+      const plan = planSchema.safeParse(searchRow.parse(raw).plan)
+      const pools = plan.success ? plan.data.pools : {}
+      return { groups: OUTFIT_SLOTS.filter((slot) => pools[slot]?.length).map((slot) => ({ slot, label: OUTFIT_SLOT_LABEL[slot], pieces: pools[slot]!.map((p) => presentPieceCard(p, deps.publicBaseUrl)) })) }
+    } catch (error) { return failure(request, reply, error) }
   })
   app.post<{ Params: { id: string } }>("/v1/studio/outfit-searches/:id/cancel", async (request, reply) => {
     const user = await actor(request, reply); if (!user) return reply

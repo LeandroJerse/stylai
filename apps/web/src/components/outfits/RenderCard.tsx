@@ -3,8 +3,10 @@
  * When the comparison is ready the separate images stay one tap away.
  */
 import { useState } from "react"
-import { CaretDown, CircleNotch, CornersOut } from "@phosphor-icons/react"
+import { Archive, CaretDown, CircleNotch, CornersOut } from "@phosphor-icons/react"
 import type { OutfitPanel, OutfitRender } from "../../api/outfits"
+import { messageOf } from "../../api/errors"
+import { useCapability, useCloset, useToggleSavedLook } from "../../api/queries"
 import { useStore } from "../../app/store"
 import type { Outfits } from "../../app/useOutfits"
 import { shortPieceName } from "../../lib/titles"
@@ -40,6 +42,26 @@ function ShopList({ panel }: { panel: OutfitPanel }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+/** Keeps the image (it would expire in 7 days) and its pieces in the Closet. */
+function SaveLook({ lookId }: { lookId: string }) {
+  const on = useCapability("closet")
+  const closet = useCloset(true)
+  const toggle = useToggleSavedLook()
+  const { notify, go } = useStore()
+  if (!on) return null
+  const saved = closet.data?.looks.some((l) => l.id === lookId) ?? false
+  const run = (): void => {
+    if (toggle.isPending) return
+    if (saved) { go("closet"); return }
+    toggle.mutate({ lookId, save: true }, { onSuccess: () => notify("Imagem e peças guardadas no Closet", { label: "Ver Closet", run: () => go("closet") }), onError: (e) => notify(messageOf(e)) })
+  }
+  return (
+    <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm justify-self-start" aria-disabled={toggle.isPending || undefined} onClick={run} data-testid="render-save" data-saved={saved || undefined}>
+      <Archive size={16} weight={saved ? "fill" : "regular"} aria-hidden="true" /> {toggle.isPending ? "Guardando…" : saved ? "Ver no Closet" : "Guardar look"}
+    </button>
   )
 }
 
@@ -93,6 +115,7 @@ function Panel({ panel, busy, single, retry, openSearch }: { panel: OutfitPanel;
         ) : null}
         {panel.retryBlockedReason ? <p className="sa-caption sa-muted">{panel.retryBlockedReason}</p> : null}
         {single ? <ShopList panel={panel} /> : null}
+        {panel.lookId && panel.state === "ready" ? <SaveLook lookId={panel.lookId} /> : null}
         {openSearch ? (
           <button type="button" className="sa-btn-quiet sa-caption justify-self-start" onClick={openSearch}>
             Ver os conjuntos desta busca
@@ -155,7 +178,7 @@ export function RenderCard({ render, outfits, expanded, onToggle, onOpenSearch }
           {render.comparison?.error ? <Notice tone="warning">{render.comparison.error}</Notice> : null}
           {image && kept.every((p) => p.state === "ready") ? (
             <>
-              {kept.some((p) => p.pieces.length) ? (
+              {kept.some((p) => p.pieces.length || p.lookId) ? (
                 <div className="sa-render-shops">
                   {kept.map((p) => (
                     <div key={p.panel} className="grid content-start gap-2">
@@ -163,6 +186,7 @@ export function RenderCard({ render, outfits, expanded, onToggle, onOpenSearch }
                         {p.panel} · {p.title}
                       </p>
                       <ShopList panel={p} />
+                      {p.lookId ? <SaveLook lookId={p.lookId} /> : null}
                     </div>
                   ))}
                 </div>

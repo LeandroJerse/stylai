@@ -16,6 +16,7 @@ export const outfitKeys = {
   searches: ["outfits", "searches"] as const,
   search: (id: string) => ["outfits", "search", id] as const,
   set: (id: string) => ["outfits", "set", id] as const,
+  pieces: (searchId: string) => ["outfits", "pieces", searchId] as const,
   renders: ["outfits", "renders"] as const,
 }
 const active = (r: OutfitRender) => r.status === "running" || r.status === "assembling"
@@ -88,6 +89,7 @@ export function useOutfits() {
       try {
         const r = await outfitsApi.options(s.id, { slot, query })
         qc.setQueryData(outfitKeys.set(s.id), r.set)
+        void qc.invalidateQueries({ queryKey: outfitKeys.pieces(s.searchId) })
         return { ok: true, found: r.found }
       } catch (e) {
         return { ok: false, message: messageOf(e) }

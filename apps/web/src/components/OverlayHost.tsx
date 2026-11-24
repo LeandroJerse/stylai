@@ -43,7 +43,7 @@ export function OverlayHost() {
     case "edit":
       return later(<EditSheet />)
     case "match":
-      return later(<MatchDialog />)
+      return later(<MatchDialog lookId={overlay.lookId} />)
     case "acervo":
       return later(<AcervoSheet />)
     case "preferencePicker":

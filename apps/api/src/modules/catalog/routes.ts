@@ -20,7 +20,7 @@ import {
 } from "@stylai/commerce"
 import { PrivateDatabaseError, type PrivateDatabase } from "@stylai/supabase"
 
-const productRow = z.object({
+export const productRow = z.object({
   id: z.string().uuid(), name: z.string(), price_minor: z.number().int().nullable(), currency: z.string(),
   availability: z.enum(["available", "partial", "unavailable", "unknown"]), source_updated_at: z.string().nullable(),
   product_url: z.string().nullable(), fixture: z.boolean(), created_at: z.string(),
@@ -152,6 +152,8 @@ export async function registerCatalogRoutes(
     aliexpressCatalog?: AliExpressCatalogService | null
     /** Optional actor: AliExpress cached items are listed only to the person who searched them. */
     resolveActor?: (request: FastifyRequest) => Promise<string | null>
+    /** A piece the person already has (Closet, looks, recent outfits) whose listing left the active cache. */
+    ownedPiece?: (user: string, id: string) => Promise<Record<string, unknown> | null>
   },
 ) {
   const viewerOf = async (request: FastifyRequest) => (deps.resolveActor ? await deps.resolveActor(request).catch(() => null) : null)
@@ -207,7 +209,12 @@ export async function registerCatalogRoutes(
     if (catalogMode === "aliexpress_affiliate") {
       if (!deps.aliexpressCatalog) return aliexpressUnavailable(reply)
       const found = /^(aliexpress:)?\d{1,20}$/.test(request.params.id) ? await deps.aliexpressCatalog.findFresh(request.params.id) : null
-      if (!found) return reply.code(404).send(apiError("not_found", "Peça não encontrada no cache ativo do AliExpress. Faça a busca de novo."))
+      if (!found) {
+        const viewer = deps.ownedPiece ? await viewerOf(request) : null
+        const owned = viewer ? await deps.ownedPiece!(viewer, request.params.id).catch(() => null) : null
+        if (owned) return owned
+        return reply.code(404).send(apiError("not_found", "Peça não encontrada no cache ativo do AliExpress. Faça a busca de novo."))
+      }
       return presentAliExpressProduct(found)
     }
     if (catalogMode === "tiktok_shop") {

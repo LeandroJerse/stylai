@@ -45,7 +45,7 @@ export const piece = (base, slot, name, price, over = {}) => ({
 export function finishRender(r, base) {
   r.status = "succeeded"
   r.canCancel = false
-  r.panels.forEach((p, i) => { p.state = "ready"; p.stateLabel = "Pronta"; p.image = { url: `${base}/v1/mock/img/${i + 2}`, width: 600, height: 800, alt: p.title } })
+  r.panels.forEach((p, i) => { p.state = "ready"; p.stateLabel = "Pronta"; p.lookId = `look-${i + 1}`; p.image = { url: `${base}/v1/mock/img/${i + 2}`, width: 600, height: 800, alt: p.title } })
   if (r.comparison) r.comparison = { state: "ready", image: { url: `${base}/v1/mock/img/3`, width: 600, height: 800, alt: "Comparativo" }, error: null }
 }
 const panelOf = (i, title, setId = `set-${i + 1}`) => ({ panel: i + 1, setId, searchId: "search-1", title, state: i ? "queued" : "running", stateLabel: i ? "Na fila" : "Gerando", image: null, lookId: null, pieces: [], error: null, attempts: 1, canRetry: false, retryNeedsChargeAcceptance: false, retryBlockedReason: null })
@@ -73,6 +73,7 @@ export function createState(base, opts = {}) {
     return { id: `look-${i}`, title: names.join(" + "), note: null, image: { url: `${base}/v1/mock/img/${i}`, width: 600, height: 800, alt: "Prévia" }, pieces, prompt: null, origin: "generate", version: 1, parentId: null, createdAt: "2026-11-23T12:00:00Z", candidatesCount: 0, saved: false, simulated: false, lineageId: `lin-${i}` }
   }
   return {
+    saved: new Set(), hearts: new Set(), decided: new Map(),
     base, sets: [set(1), set(2), set(3, { kind: "bundle", missing: ["Parte de baixo"], pieces: [piece(base, "set", LONG.set, 119.9, { id: "s3" })] })],
     looks: Array.from({ length: opts.looks ?? 8 }, (_, i) => look(i + 1)), renders: opts.renders ?? [], searches: opts.searches ?? [], calls: [],
     polls: 0, runningPolls: opts.runningPolls ?? 2, searchStatus: opts.searchStatus ?? null, finalStatus: opts.finalStatus ?? "succeeded", stuck: false, lastSearch: null, balance: opts.balance ?? 40, renderPolls: 0, quoteReady: opts.quoteReady ?? true, config: opts.config ?? {},
@@ -83,7 +84,7 @@ export function createState(base, opts = {}) {
         id: "search-1", prompt: this.lastSearch?.prompt ?? "me vista com roupas de verão", filters: this.lastSearch?.filters ?? null, source: "aliexpress", status: this.searchStatus ?? "succeeded", createdAt: "2026-11-24T18:08:22Z",
         stage: { id: running ? "search" : "done", label: running ? "Buscando peças na loja" : "Pronto", detail: { done: this.polls, total: 4 } }, selection: running || empty ? null : { method: "agent", model: "claude-haiku" },
         message: empty ? "Nenhuma combinação da loja atende a este pedido. Tente outras cores ou um orçamento maior." : null, sets: running || empty ? [] : this.sets,
-        report: running ? null : { interpretedBy: "agent", plannedBy: "agent", queries: [{ slot: "Parte de cima", query: "camiseta leve", outcome: "ok", returned: 50, kept: 12 }, { slot: "Parte de baixo", query: "short", outcome: "filtered_out", returned: 49, kept: 0 }], filtered: { style: 9, ...(this.lastSearch?.filters ? { filter_price: 8, filter_rating_missing: 4 } : {}) }, missingSlots: ["Parte de baixo"], agent: { calls: 3, estimatedUsd: 0.0012 } },
+        report: running ? null : { interpretedBy: "agent", plannedBy: "agent", queries: [{ slot: "Parte de cima", query: "camiseta leve", outcome: "ok", returned: 50, kept: 12 }, { slot: "Parte de baixo", query: "short", outcome: "filtered_out", returned: 49, kept: 0 }], filtered: { style: 9, ...(this.lastSearch?.filters ? { filter_price: 8, filter_rating_missing: 4 } : {}) }, missingSlots: ["Parte de baixo"], found: 48, agent: { calls: 3, estimatedUsd: 0.0012 } },
       }
     },
   }
@@ -111,7 +112,7 @@ export async function mockApi(page, state) {
         costs: { generate: 10, edit: null, tryOn: 10 }, unit: { singular: "moeda", plural: "moedas" }, quotaStatus: "provisional", plans: [], costGaps: [], generationMode: "real",
         realProvider: { provider: "Segmind", model: "flux-3-klein-image-edit", callsPerGeneration: 1, estimatedUsdPerCall: 0.01287, maxUsdPerCall: 0.02 }, maxReferences: 0, maxChosenPieces: 1, maxPromptLength: 500,
         budget: { min: 0, max: 0, step: 1, currency: "BRL" }, acceptedImageTypes: ["image/jpeg"], maxImageBytes: 1, minImageHeight: 1, sizes: {}, photoPolicyVersion: "2026-11-24-inline",
-        capabilities: { mode: "single_piece_try_on", search: true, searchScope: "stores", dress: true, adjustments: false, bodyPhotoRequired: true, closet: false, generation: true, edits: false, match: false, references: false, preferences: false, measurements: false, plans: false, candidates: false, outfits: true, outfitFilters: ["audience", "price", "total", "rating", "sales"], composer: { mode: "agent", model: "claude-haiku" }, ...state.config },
+        capabilities: { mode: "single_piece_try_on", search: true, searchScope: "stores", dress: true, adjustments: false, bodyPhotoRequired: true, closet: true, generation: true, edits: false, match: true, references: false, preferences: false, measurements: false, plans: false, candidates: false, outfits: true, outfitFilters: ["audience", "price", "total", "rating", "sales"], composer: { mode: "agent", model: "claude-haiku" }, ...state.config },
       })
     }
     if (path === "/studio/looks") return json({ items: state.looks })
@@ -127,6 +128,15 @@ export async function mockApi(page, state) {
       state.searches = [{ id: "search-1", prompt: state.lastSearch.prompt, createdAt: "2026-11-24T18:08:22Z", status: "running", sets: 0 }, ...state.searches.filter((s) => s.id !== "search-1")]
       return json(state.doc(), 202)
     }
+    m = path.match(/^\/studio\/outfit-searches\/([^/]+)\/pieces$/)
+    if (m) return json({ groups: ["lower", "upper"].map((slot) => ({ slot, label: SLOT[slot], pieces: Array.from({ length: 24 }, (_, i) => piece(base, slot, `${LONG[slot]} ${i}`, 40 + i, { id: `found-${slot}-${i}` })) })) })
+    if (path === "/closet") return json({ looks: state.looks.filter((l) => state.saved.has(l.id)).map((l) => ({ ...l, saved: true })), pieces: [...state.looks.filter((l) => state.saved.has(l.id)).flatMap((l) => l.pieces.map((p) => ({ product: p.product, savedAt: "2026-11-24T10:00:00Z", via: "look" }))), ...[...state.hearts].map((id) => ({ product: piece(base, "upper", LONG.upper, 50, { id }).product, savedAt: "2026-11-24T10:00:00Z", via: "favorite" }))] })
+    m = path.match(/^\/closet\/(looks|pieces)\/(.+)$/)
+    if (m) { const target = m[1] === "looks" ? state.saved : state.hearts; method === "PUT" ? target.add(decodeURIComponent(m[2])) : target.delete(decodeURIComponent(m[2])); return route.fulfill({ status: 204 }) }
+    if (path === "/studio/match/deck") { const first = url.searchParams.get("lookId"); return json({ items: state.looks.filter((l) => !state.decided.has(l.id) && !state.saved.has(l.id)).sort((a, b) => Number(b.id === first) - Number(a.id === first)) }) }
+    if (path === "/studio/match/decisions") { const b = body(); state.decided.set(b.lookId, b.decision); if (b.decision === "save") state.saved.add(b.lookId); return json({ id: `d-${b.lookId}`, lookId: b.lookId, decision: b.decision }) }
+    m = path.match(/^\/studio\/match\/decisions\/d-(.+)$/)
+    if (m) { state.decided.delete(m[1]); state.saved.delete(m[1]); return route.fulfill({ status: 204 }) }
     if (path === "/studio/outfit-searches") return json({ items: state.searches })
     m = path.match(/^\/studio\/outfit-searches\/([^/]+)(\/cancel)?$/)
     if (m) {
@@ -148,6 +158,8 @@ export async function mockApi(page, state) {
       if (m[2] === "piece") {
         const b = body()
         const picked = options(s.pieces.find((p) => p.slot === b.slot)).find((p) => p.product.id === b.productId)
+        const loose = b.productId.startsWith("found-") ? piece(base, b.slot, `${LONG[b.slot]} x`, 44, { id: b.productId }) : null
+        if (loose) s.pieces = s.pieces.map((p) => (p.slot === b.slot ? loose : p))
         if (picked) s.pieces = s.pieces.map((p) => (p.slot === b.slot ? picked : p))
       }
       if (m[2]) s.revision += 1
