@@ -116,3 +116,13 @@ Cobertura conferida contra as seções da especificação. Revisão visual por m
 - Termo de foto: trocar `dev-v1` por `2026-11-24-inline` na API, na tela de Perfil, na demo e nos testes (Task 8).
 - Simulador: `createSegmindOutfitClient` tem URL fixa; aceitar base loopback com custo 0 (Task 7).
 - Editar arquivos com as ferramentas de edição: o shell desta máquina consome barras invertidas em heredocs.
+
+## Checkpoint 2 — pausa em 2026-11-24 (substitui o anterior)
+
+- Concluídas: Tasks 1 a 8 e parte da 9. Commits locais até `eb8cc87` mais o deste registro; sem push.
+- **Retomar por `bun run test:motor`**: falha com 'failed' no lugar de 'succeeded'. Comparar com a base a672a3a antes de corrigir (pode ser anterior à branch). Suspeitas a conferir, não confirmadas: `claim`/`load_ai_job`, orçamento ou fronteira nova.
+- Faltam na Task 9: `docs/API-CONTRACT.md` e README/instruções com as rotas `outfit-*`; revisão final da branch inteira (por mim, sem subagente, salvo pedido); auditoria de segredos; subir `start-pilot.mjs` e conferir a URL http://localhost:5198; proposta de cota para validação real.
+- Migração 20261124100000 já aplicada: qualquer mudança de banco agora é migração NOVA.
+- Cota mínima a propor (não aplicada): individual 1 + comparativo de 2 = 3 tentativas; com margem de uma nova tentativa, 4 (total do piloto 15). FLUX reserva US$ 0,02 e custa US$ 0,01287 por imagem. Exige também `--policy-references=on` e a licença/termos que hoje estão desativados.
+- Subir em simulação com busca real: `node scripts/start-pilot.mjs --catalog=aliexpress_affiliate`.
+- Heredoc do shell consome barras invertidas (regex e quebras de linha): usar Write/Edit.
