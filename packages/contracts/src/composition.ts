@@ -49,6 +49,8 @@ export interface CompositionIntent {
   avoid: string[]
   /** P13: requested aesthetic as short descriptors ("estilo italiano", "elegante"). A look, never a claimed origin. */
   style?: string[]
+  /** Weather the request implies ("roupas de frio", "verão"); null when not stated. */
+  climate?: "frio" | "calor" | null
 }
 
 /** Dress replaces top + bottom; at most one item per slot and MAX_COMPOSITION_ITEMS overall. */
@@ -89,6 +91,9 @@ const STYLE_WORDS: Record<string, string> = {
   esportivo: "esportivo", esportiva: "esportivo",
 }
 const FORMAL_STYLES = new Set(["estilo italiano", "elegante", "social", "clássico", "sofisticado", "chique"])
+/** Weather words -> climate. Generic slots then get a garment worn in that weather (rules only). */
+const COLD = /\b(frio|friozinho|inverno|gelad[oa]|neve|polar)\b/, HOT = /\b(calor|verao|tropical|praia)\b/
+const COLD_HINT: Partial<Record<SlotId, { noun?: string; qualifier?: string }>> = { upper: { noun: "suéter" }, outer: { noun: "casaco" } }
 const FORMAL_HINT: Partial<Record<SlotId, { noun?: string; qualifier?: string }>> = { upper: { qualifier: "social" }, lower: { qualifier: "alfaiataria" }, outer: { noun: "blazer" } }
 /** Origin claims are never searched for: a listing's origin is the seller's unverified statement. "made in X" drops X too. */
 const stripOriginClaims = (tokens: string[]): string[] => {
@@ -150,7 +155,8 @@ export function interpretCompositionRules(text: string): CompositionIntent {
     slot, required: true, color: f.color,
     query: [GARMENT_DISPLAY[f.noun] ?? f.noun, ...(audience ? [audienceWord(audience, f.noun)] : []), ...f.qualifiers].join(" "),
   }))
-  if (!slots.length && words.some(isOutfitWord)) slots = [{ slot: "upper", required: true }, { slot: "lower", required: true }]
+  const climate = COLD.test(t) ? "frio" as const : HOT.test(t) ? "calor" as const : null
+  if (!slots.length && words.some(isOutfitWord)) slots = [{ slot: "upper", required: true }, { slot: "lower", required: true }, ...(climate === "frio" ? [{ slot: "outer" as const, required: true }] : [])]
   const budget = /(?:ate|max(?:imo)?|abaixo de|menos de|orcamento de)\s*(?:r\$)?\s*(\d{1,6}(?:[.,]\d{1,2})?)/.exec(t)
   const colors = [...new Set(words.map(colorOf).filter((c): c is string => c !== null))]
   const occasion = OCCASIONS.exec(t)?.[1] ?? null
@@ -160,7 +166,7 @@ export function interpretCompositionRules(text: string): CompositionIntent {
   const terms = [...new Set(words.filter((w) => w.length > 3 && !known.has(w) && !/^\d/.test(w)))].slice(0, 8)
   const style = [...new Set(words.map((w) => STYLE_WORDS[w]).filter((x): x is string => Boolean(x)))].slice(0, 3)
   return {
-    audience, style,
+    audience, style, climate,
     slots: normalizeSlots(slots.length ? slots : [{ slot: "upper", required: true }]),
     colors, terms, occasion, budgetTotalBrl: budget ? Number(budget[1]!.replace(",", ".")) : null,
     budgetMode: budget ? "require" : "prefer", avoid,
@@ -184,7 +190,7 @@ export function buildSlotQuery(intent: CompositionIntent, slot: SlotId): string 
   const req = intent.slots.find((s) => s.slot === slot)
   const sanitized = sanitizeSlotQuery(req?.query, slot)
   if (sanitized) return sanitized
-  const hint = (intent.style ?? []).some((x) => FORMAL_STYLES.has(x)) ? FORMAL_HINT[slot] : undefined
+  const hint = (intent.climate === "frio" ? COLD_HINT[slot] : undefined) ?? ((intent.style ?? []).some((x) => FORMAL_STYLES.has(x)) ? FORMAL_HINT[slot] : undefined)
   const display = hint?.noun ?? SLOT_SEARCH_TERMS[slot]
   const noun = normalizeText(display)
   const audience = intent.audience ?? null

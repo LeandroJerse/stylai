@@ -61,17 +61,26 @@ function mapCategory(raw: AliExpressProductRaw): { id: string; label: string } {
   // A bundle is not a standalone garment: keep it discoverable, but never assign its full price/image to one slot.
   const upper = /\b(camisas?|shirts?|blusas?|tops?|blouses?|blazers?|jaquetas?|jackets?|casacos?|coats?|coletes?|vests?)\b/.test(title)
   const lower = /\b(calças?|calcas?|pants|trousers?|shorts?|bermudas?|saias?|skirts?)\b/.test(title)
-  if (upper && lower && /\b(conjuntos?|sets?|two[ -]piece|2[ -]piece|duas pe[çc]as)\b/.test(title)) {
+  const bundleWord = /\b(conjuntos?|sets?|two[ -]piece|2[ -]piece|duas pe[çc]as)\b/.test(title)
+  const knit = /(su[ée]ter|tric[ôo]|moletom|agasalho|sweater|cardigan)/.test(title)
+  // Sold as a set without naming both garments: only clothing sets, never homeware, jewellery, underwear or sleepwear.
+  const clothing = /(masculin|feminin|\bmoda\b|men's clothing|women's clothing|alfaiataria)/.test(text)
+  const notOutfit = /(lingerie|calcinha|cueca|suti[ãa]|pijama|panela|joia|j[óo]ias|colar|brinco|len[çc]ol|infantil|ferramenta)/.test(title)
+  const pieceCount = /\b(conjuntos?|sets?)\b/.test(title) && /\b([23]|duas|tr[êe]s)\s*(pe[çc]as|pcs|piece)/.test(title)
+  const suit = /\bternos?\b/.test(title) && !/(cal[çc]as? (de|do) terno|blazer (de|do) terno|colete (de|do) terno)/.test(title)
+  if (!notOutfit && ((bundleWord && lower && (upper || knit)) || (pieceCount && clothing) || (suit && clothing))) {
     return { id: "outfit_sets", label: "Conjuntos (múltiplas peças)" }
   }
+  if (notOutfit) return { id: "uncategorized", label: raw.secondLevelCategoryName ?? "Categoria não mapeada" }
   // English "dress shirt" is a shirt, not a dress.
   if (/\bdress shirts?\b/.test(title)) return { id: "shirts", label: "Camisas" }
   if (/\b(vestido|dress)/.test(text)) return { id: "dresses", label: "Vestidos" }
-  if (/\b(jaqueta|blazer|casaco|jacket|coat)/.test(text)) return { id: "jackets", label: "Jaquetas" }
+  if (/\b(jaqueta|blazer|casaco|jacket|coat|sobretudo|parka|cardigan|corta-vento)/.test(text)) return { id: "jackets", label: "Jaquetas" }
   if (/\b(calça|calca|jeans|pants|trouser)/.test(text)) return { id: "pants", label: "Calças" }
   if (/\b(saia|short|bermuda|skirt)/.test(text)) return { id: "bottoms", label: "Saias e shorts" }
   if (/\b(camisa|shirt)\b/.test(text)) return { id: "shirts", label: "Camisas" }
-  if (/\b(blusa|regata|cropped|top|camiseta|t-shirt|blouse)/.test(text)) return { id: "tops", label: "Blusas" }
+  if (/(su[ée]ter|sweater|tric[ôo]|pul[ôo]ver|moletom)/.test(title)) return { id: "tops", label: "Blusas" }
+  if (/\b(blusa|regata|cropped|top|camiseta|t-shirt|blouse|polo)/.test(text)) return { id: "tops", label: "Blusas" }
   return { id: "uncategorized", label: raw.secondLevelCategoryName ?? "Categoria não mapeada" }
 }
 
