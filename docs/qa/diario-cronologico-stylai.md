@@ -423,3 +423,12 @@ Criado prompt de implementação baseado em Superpowers e nos módulos existente
 - Dados locais criados pelos testes: contas *@example.com no Supabase local, referências AliExpress registradas pela política e imagens sintéticas. Uma chamada simulada que o primeiro E2E deixou aberta foi conferida como falha de custo 0.
 - NÃO validado: agentes Haiku reais e imagem real do FLUX neste fluxo (só cliente falso e simulador); fidelidade visual e identidade não medidas.
 - Nada foi enviado ao repositório remoto.
+
+### E24 — 2026-11-24 — fluxo autônomo: tarefa 9 concluída
+- `test:motor`: a falha era anterior à branch (script de 2026-11-21; exigência de piloto no motor desde 13d58e1, 2026-11-23). O teste usava dublê de provedor em modo real sem piloto; passou a modo simulado. Passa.
+- Revisão final feita pelo próprio autor, sem subagente (mais fraca que uma revisão independente). Conferido: exclusão de conta cobre as tabelas novas por cascata e recusa enquanto houver geração ativa; consulta periódica da tela reduzida para caber no limite de requisições; aviso de moedas e nova chamada ao refazer um painel.
+- Validação: `bun run check` exit 0 (408 testes), `test:motor`, `test:db`, `test:db:private`, E2E conjuntos simulado 49/49, E2E com AliExpress real e imagens simuladas 55/55, E2E oficial 109/109, demo e web.
+- Auditoria de segredos: 5 valores dos .env locais comparados com os arquivos versionados, o diff desde a672a3a e os logs; zero ocorrências. Os segredos guardados em DPAPI não entraram nessa comparação.
+- Leitura (sem escrita) do piloto: 11/11, saldo US$ 1,264272; uma cotação real de 2 imagens é recusada por pilot_attempts e pilot_items, como esperado.
+- Aplicação local no ar em http://localhost:5198, simulação com busca AliExpress real e seleção por regras. Telemetria dessa execução vai ao Langfuse, como o launcher já fazia.
+- Proposta de cota em docs/operations/fluxo-conjuntos.md, NÃO aplicada. Não validado: Haiku real e FLUX real neste fluxo.

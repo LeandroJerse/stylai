@@ -126,3 +126,8 @@ Cobertura conferida contra as seções da especificação. Revisão visual por m
 - Cota mínima a propor (não aplicada): individual 1 + comparativo de 2 = 3 tentativas; com margem de uma nova tentativa, 4 (total do piloto 15). FLUX reserva US$ 0,02 e custa US$ 0,01287 por imagem. Exige também `--policy-references=on` e a licença/termos que hoje estão desativados.
 - Subir em simulação com busca real: `node scripts/start-pilot.mjs --catalog=aliexpress_affiliate`.
 - Heredoc do shell consome barras invertidas (regex e quebras de linha): usar Write/Edit.
+
+## Checkpoint 3 — 2026-11-24
+
+- Tasks 1 a 9 concluídas sem chamada paga. Falta, por decisão de Leandro: autorizar a cota da validação real (docs/operations/fluxo-conjuntos.md) e enviar a branch.
+- Pontos menores adiados: botão "Como esta busca foi feita" não mostra o motivo por anúncio removido; a seleção por regras usa títulos genéricos ("Combinação sugerida 1").
