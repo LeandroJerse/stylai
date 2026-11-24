@@ -13,7 +13,7 @@ const at = (s: number) => setSystemTime(new Date(Date.UTC(2026, 10, 17, 12, 0, s
 beforeEach(() => { at(0); configureDemo({ contract: "tryon", catalog: "synthetic" }); resetDemo() })
 
 function ready() {
-  request("POST", "/privacy/consents", { version: "dev-v1", purpose: "body_photo_try_on" })
+  request("POST", "/privacy/consents", { version: "2026-11-24-inline", purpose: "body_photo_try_on" })
   request("PUT", "/me/body-photos/front", { sizeBytes: 100, mime: "image/jpeg", localUrl: "blob:http://localhost/front", analysis: pose("front_a12") })
 }
 const firstProduct = () => parsePage(request("GET", "/catalog/products").body, parseProduct).items.find((p) => p.tryOnReady)!
@@ -57,7 +57,7 @@ test("config advertises the single-piece try-on, like the real API", () => {
   expect(config.costs).toEqual({ generate: 10, edit: null, tryOn: 10 })
   expect(config.plans.map((p) => [p.id, p.coinsPerPeriod])).toEqual([["free", 30], ["paid", 120]])
   expect(config.generationMode).toBe("simulated")
-  expect(config.photoPolicyVersion).toBe("dev-v1")
+  expect(config.photoPolicyVersion).toBe("2026-11-24-inline")
 })
 
 test("photo needs consent first; products carry variant ids and the test flag", () => {
@@ -132,7 +132,7 @@ test("search comes before generation and only searches the catalog", () => {
 })
 
 test("the selected photo is shown from the local file and deleting it blocks generation", () => {
-  request("POST", "/privacy/consents", { version: "dev-v1", purpose: "body_photo_try_on" })
+  request("POST", "/privacy/consents", { version: "2026-11-24-inline", purpose: "body_photo_try_on" })
   expect(request("PUT", "/me/body-photos/front", { sizeBytes: 100, mime: "image/gif", localUrl: "blob:x" }).status).toBe(422)
   expect(request("PUT", "/me/body-photos/front", { sizeBytes: 13 * 1024 * 1024, mime: "image/jpeg", localUrl: "blob:x" }).status).toBe(413)
   request("PUT", "/me/body-photos/front", { sizeBytes: 100, mime: "image/jpeg", localUrl: "blob:http://localhost/minha-foto", analysis: pose("front_a13") })
@@ -164,7 +164,7 @@ test("coins: paid plan starts at 120, free plan at 30, and the balance never res
 })
 
 test("three photo slots: each validated, replaced and deleted on its own; a failed candidate keeps the approved photo", () => {
-  request("POST", "/privacy/consents", { version: "dev-v1", purpose: "body_photo_try_on" })
+  request("POST", "/privacy/consents", { version: "2026-11-24-inline", purpose: "body_photo_try_on" })
   request("PUT", "/me/body-photos/front", { sizeBytes: 100, mime: "image/jpeg", localUrl: "blob:http://localhost/front", analysis: pose("front_a12") })
   request("PUT", "/me/body-photos/side", { sizeBytes: 100, mime: "image/jpeg", localUrl: "blob:http://localhost/side", analysis: pose("tq_a08") })
   request("PUT", "/me/body-photos/profile", { sizeBytes: 100, mime: "image/jpeg", localUrl: "blob:http://localhost/profile", analysis: pose("profile_t01") })
@@ -194,7 +194,7 @@ test("three photo slots: each validated, replaced and deleted on its own; a fail
 })
 
 test("a front photo cut at the knees serves tops but not trousers", () => {
-  request("POST", "/privacy/consents", { version: "dev-v1", purpose: "body_photo_try_on" })
+  request("POST", "/privacy/consents", { version: "2026-11-24-inline", purpose: "body_photo_try_on" })
   request("PUT", "/me/body-photos/front", { sizeBytes: 100, mime: "image/jpeg", localUrl: "blob:http://localhost/knees", analysis: pose("front_t34") })
   const items = parsePage(request("GET", "/catalog/products").body, parseProduct).items
   const pants = items.find((p) => p.category?.id === "pants" && p.tryOnReady)!

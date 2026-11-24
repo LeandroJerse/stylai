@@ -4,6 +4,8 @@
  * versions and history all come from the server (useStudio, api/queries.ts).
  */
 import { CompositionPanel } from "../components/CompositionPanel"
+import { OutfitBoard } from "../components/outfits/OutfitBoard"
+import { useOutfits } from "../app/useOutfits"
 import { useEffect, useId, useRef, useState } from "react"
 import type { ChangeEvent, ReactNode } from "react"
 import { useMutation, useQuery } from "@tanstack/react-query"
@@ -345,11 +347,42 @@ function PreferenceRow() {
 
 const ACTION_LABEL: Record<StudioMode, string> = { procurar: "Procurar e vestir", vestir: "Vestir peças" }
 
+/** Procurar with outfits: coordinated sets first; loose pieces stay one tap away. Neither generates. */
+function OutfitSearchRow({ onSearch }: { onSearch: () => void }) {
+  const outfits = useOutfits()
+  const { draft, notify } = useStore()
+  const reduced = useReducedMotion()
+  const { studio } = outfits
+  const running = outfits.search.data?.status === "running"
+  const busy = outfits.starting || studio.searching || running
+  const start = async (): Promise<void> => {
+    const r = await outfits.start(draft.prompt)
+    if (!r.ok) notify(r.message)
+    else document.getElementById("conjuntos")?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" })
+  }
+  return (
+    <div className="sa-cta-dock">
+      <button type="button" className="sa-btn sa-btn-primary sa-btn-block" aria-disabled={busy || undefined} onClick={() => !busy && void start()} data-testid="outfit-search-button">
+        {outfits.starting || running ? <><CircleNotch size={18} className="sa-spin" aria-hidden="true" /> Montando conjuntos…</> : <><MagnifyingGlass size={18} aria-hidden="true" /> Montar conjuntos</>}
+      </button>
+      <button type="button" className="sa-btn sa-btn-secondary sa-btn-block mt-2" aria-disabled={busy || undefined} onClick={() => !busy && onSearch()} data-testid="search-button">
+        {studio.searching ? <><CircleNotch size={18} className="sa-spin" aria-hidden="true" /> Buscando…</> : <>Buscar peças avulsas</>}
+      </button>
+      <p className="sa-caption sa-muted mt-2">
+        {studio.caps?.searchScope === "curated_catalog" ? "Busca no catálogo selecionado pelo StylAI (não é uma busca ao vivo nas lojas). " : "Busca real na loja. "}
+        {studio.caps?.composer.mode === "agent" ? `Seleção pelo agente (${studio.caps.composer.model ?? "IA"}). ` : "Seleção por regras. "}
+        Buscar não gera imagem e não gasta moedas. Você confirma os conjuntos e o custo antes de gerar.
+      </p>
+    </div>
+  )
+}
+
 /** Procurar: single-piece search, or a full outfit composed by the agent. Neither generates. */
 function SearchRow({ onSearch }: { onSearch: () => void }) {
   const studio = useStudio()
   const { draft, notify } = useStore()
   const busy = studio.searching || studio.composing
+  if (studio.caps?.outfits) return <OutfitSearchRow onSearch={onSearch} />
   return (
     <div className="sa-cta-dock">
       <button type="button" className="sa-btn sa-btn-primary sa-btn-block" aria-disabled={busy || undefined} onClick={() => !busy && onSearch()} data-testid="search-button">
@@ -1535,6 +1568,7 @@ export function StudioScreen() {
           ) : null}
         </div>
       </div>
+      <OutfitBoard />
     </div>
   )
 }

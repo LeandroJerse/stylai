@@ -216,3 +216,6 @@ export function analyzerFailure(requested: PhotoAngle, version = `unavailable+${
 export const CATEGORY_GROUP: Record<string, "upper" | "lower" | "dress"> = {
   tops: "upper", jackets: "upper", shirts: "upper", bottoms: "lower", pants: "lower", dresses: "dress",
 }
+
+/** Version of the photo term shown in Perfil. A new text needs a new version: everyone accepts it again. */
+export const PHOTO_POLICY_VERSION = "2026-11-24-inline"

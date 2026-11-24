@@ -148,7 +148,7 @@ export const demoContract = (): typeof contract => contract
 
 /* ---------------------------------------------------------------- official try-on contract */
 
-const POLICY = "dev-v1"
+const POLICY = "2026-11-24-inline"
 interface DemoPhoto { id: string; angle: PhotoAngle; at: number; url: string | null; validation: PhotoValidation }
 const T = {
   /** Moedas: the demo starts on the paid plan (120); "Testar cenários" switches to the free plan (30). */

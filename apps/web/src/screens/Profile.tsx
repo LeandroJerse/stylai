@@ -19,12 +19,8 @@ import { api } from "../api/client"
 import { isApiError } from "../api/errors"
 import { keys } from "../api/queries"
 import { normalizePhoto } from "../lib/photo"
+import { CONSENT_TEXT, CONSENT_VERSION } from "../lib/consent"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-
-/** Consent copy for policy "dev-v1". Describes today's technical behaviour; retention is not a final rule. */
-const CONSENT_VERSION = "dev-v1"
-const CONSENT_TEXT =
-  "Autorizo o StylAI a guardar minha foto de forma privada e a enviar um link temporário dela ao provedor de prova virtual somente para gerar as prévias que eu pedir. Nesta fase de testes a foto expira em até 7 dias (regra provisória) e pode ser apagada por mim a qualquer momento."
 
 /* ------------------------------------------------------------------ body photos */
 

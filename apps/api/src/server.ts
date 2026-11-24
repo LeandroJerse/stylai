@@ -1,6 +1,6 @@
 import { resolve } from "node:path"
 import { readServiceConfig } from "@stylai/config"
-import type { CatalogSourceMode } from "@stylai/contracts"
+import { PHOTO_POLICY_VERSION, type CatalogSourceMode } from "@stylai/contracts"
 import { createAliExpressAffiliateClient, createAliExpressCatalogService, createTikTokCatalogCache, createTikTokCreatorClient } from "@stylai/commerce"
 import { VERTEX_OUTFIT_MODEL, VERTEX_OUTFIT_RESERVE, segmindOutfitProfile, createAnthropicComposer, createAnthropicOutfitAgents, createInterpretationCache, createReferenceDownloader, DEFAULT_COMPOSER_MODEL, FAL_FASHN_MODEL, findPrice } from "@stylai/ai"
 import { buildApp } from "./app.js"
@@ -33,7 +33,7 @@ const provider = supabase ? createSupabaseAuthProvider(supabase) : null
 const sessions = database && provider && keys ? createSessionService({ db: database, provider, keys }) : null
 const resolveActor = sessions ? async (request: Parameters<typeof sessions.resolve>[0]) => (await sessions.resolve(request))?.userId ?? null : null
 const publicBaseUrl = process.env.API_PUBLIC_BASE_URL ?? `http://${config.host}:${config.apiPort}/v1`
-const photoPolicyVersion = process.env.STYLAI_PHOTO_POLICY_VERSION ?? "dev-v1"
+const photoPolicyVersion = process.env.STYLAI_PHOTO_POLICY_VERSION ?? PHOTO_POLICY_VERSION
 // Local pose analyzer (tools/pose-validator). Absent = photos end as "não foi possível validar".
 const analyzer = createPoseAnalyzer(process.env.STYLAI_POSE_ANALYZER_URL?.trim() || undefined)
 const modeEnv = process.env.STYLAI_GENERATION_MODE?.trim()
@@ -146,6 +146,7 @@ const app = await buildApp({
     photos: { db: database, store, keys, resolveActor, photoPolicyVersion, publicBaseUrl, analyzer },
     studio: { db: database, keys, resolveActor, photoPolicyVersion, publicBaseUrl, generationEnabled: generationMode !== "disabled", generationMode, realProvider,
       searchScope: catalogMode === "tiktok_shop" || catalogMode === "aliexpress_affiliate" ? "stores" : "curated_catalog",
+      outfits: outfitSearch !== null,
       composer: { mode: composer ? "agent" : "rules", model: composer ? composerModel : null } },
     search: { db: database, resolveActor, publicBaseUrl, pilotOnly: pilotCatalogOnly, catalogMode, tiktokCache, aliexpressCatalog,
       agent: composer, interpretationCache, agentPrice: composerPrice,

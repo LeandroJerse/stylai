@@ -48,21 +48,21 @@ type Obj = Record<string, unknown>
 const bad = (what: string): ApiError => new ApiError({ status: 200, code: "bad_response", message: `${defaultMessage("bad_response")} (${what})` })
 
 export const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v)
-const obj = (v: unknown, what: string): Obj => {
+export const obj = (v: unknown, what: string): Obj => {
   if (!isObj(v)) throw bad(what)
   return v
 }
-const str = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v : null)
-const reqStr = (v: unknown, what: string): string => {
+export const str = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v : null)
+export const reqStr = (v: unknown, what: string): string => {
   const s = str(v)
   if (s === null) throw bad(what)
   return s
 }
-const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null)
-const bool = (v: unknown, fallback = false): boolean => (typeof v === "boolean" ? v : fallback)
-const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
-const strs = (v: unknown): string[] => arr(v).map(str).filter((s): s is string => s !== null)
-const oneOf = <T extends string>(v: unknown, options: readonly T[], fallback: T): T => (typeof v === "string" && (options as readonly string[]).includes(v) ? (v as T) : fallback)
+export const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null)
+export const bool = (v: unknown, fallback = false): boolean => (typeof v === "boolean" ? v : fallback)
+export const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
+export const strs = (v: unknown): string[] => arr(v).map(str).filter((s): s is string => s !== null)
+export const oneOf = <T extends string>(v: unknown, options: readonly T[], fallback: T): T => (typeof v === "string" && (options as readonly string[]).includes(v) ? (v as T) : fallback)
 const oneOfOrNull = <T extends string>(v: unknown, options: readonly T[]): T | null => (typeof v === "string" && (options as readonly string[]).includes(v) ? (v as T) : null)
 
 /** Absolute http(s) URL without credentials, else null. */
@@ -100,7 +100,7 @@ export function parseImage(raw: unknown): ImageAsset | null {
 
 const images = (v: unknown): ImageAsset[] => arr(v).map(parseImage).filter((i): i is ImageAsset => i !== null)
 
-function money(raw: unknown): Money | null {
+export function money(raw: unknown): Money | null {
   if (!isObj(raw)) return null
   const amount = num(raw.amount)
   if (amount === null || amount < 0) return null
@@ -425,7 +425,7 @@ export function parseSearchResult(raw: unknown): SearchResult {
 
 /** Missing capabilities = the historical full contract (everything on). */
 function capabilities(raw: unknown): StudioCapabilities {
-  if (!isObj(raw)) return { mode: "full", dress: true, adjustments: true, bodyPhotoRequired: false, closet: true, searchScope: "stores", generation: true, edits: true, match: true, references: true, preferences: true, search: true, measurements: true, plans: true, candidates: true, composer: { mode: "rules", model: null } }
+  if (!isObj(raw)) return { mode: "full", dress: true, adjustments: true, bodyPhotoRequired: false, closet: true, searchScope: "stores", generation: true, edits: true, match: true, references: true, preferences: true, search: true, measurements: true, plans: true, candidates: true, outfits: false, composer: { mode: "rules", model: null } }
   const flag = (v: unknown) => v === true
   return {
     mode: raw.mode === "single_piece_try_on" ? "single_piece_try_on" : "full",
@@ -435,7 +435,7 @@ function capabilities(raw: unknown): StudioCapabilities {
     generation: flag(raw.generation), edits: flag(raw.edits), match: flag(raw.match),
     references: flag(raw.references), preferences: flag(raw.preferences), search: flag(raw.search),
     // Declared capabilities fail closed: a flag the server does not send is off.
-    measurements: flag(raw.measurements), plans: flag(raw.plans), candidates: flag(raw.candidates),
+    measurements: flag(raw.measurements), plans: flag(raw.plans), candidates: flag(raw.candidates), outfits: flag(raw.outfits),
     composer: isObj(raw.composer) && raw.composer.mode === "agent" ? { mode: "agent", model: str(raw.composer.model) } : { mode: "rules", model: null },
   }
 }

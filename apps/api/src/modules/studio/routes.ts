@@ -36,6 +36,8 @@ export interface StudioDeps {
    */
   generationMode?: "simulated" | "real" | "disabled"
   /** Who picks pieces (P05): the AI agent (model) or deterministic rules. Shown as is, never "agent" when it is rules. */
+  /** Autonomous outfits (/studio/outfit-*) are wired in this environment. */
+  outfits?: boolean
   composer?: { mode: "agent" | "rules"; model: string | null }
   /** "stores" when Procurar queries a provider API (TikTok Shop, AliExpress); default curated catalog. */
   searchScope?: "curated_catalog" | "stores"
@@ -453,7 +455,7 @@ export async function registerStudioRoutes(app: FastifyInstance, deps: StudioDep
       mode: "single_piece_try_on", search: true, searchScope: deps.searchScope ?? "curated_catalog", dress: true, adjustments: false,
       bodyPhotoRequired: true, closet: false, generation: deps.generationEnabled, edits: false, match: false, references: false, preferences: false,
       // Not offered by this engine: the front sends no request for them (QA-010).
-      measurements: false, plans: false, candidates: false,
+      measurements: false, plans: false, candidates: false, outfits: deps.outfits === true,
       composer: deps.composer ?? { mode: "rules", model: null },
     },
     photoPolicyVersion: deps.photoPolicyVersion,

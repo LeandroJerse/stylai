@@ -313,6 +313,8 @@ export interface StudioCapabilities {
   plans: boolean
   /** Search pool of a generated look (GET /studio/looks/:id/candidates). */
   candidates: boolean
+  /** Coordinated outfits: durable search, swaps and image batches (/studio/outfit-*). */
+  outfits: boolean
 }
 
 /** Capabilities that are on/off flags (not the mode/scope strings). */

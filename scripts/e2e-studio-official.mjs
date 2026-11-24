@@ -269,7 +269,7 @@ try {
   }
   const uploadNoConsent = await upload(new Blob([syntheticPng(480, 800, [90, 140, 90])], { type: "image/png" }))
   t.check(uploadNoConsent.status === 403 && (await uploadNoConsent.json()).error.code === "consent_required", "API: upload sem consentimento recusado com mensagem clara")
-  await asB("/privacy/consents", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: "dev-v1", purpose: "body_photo_try_on" }) })
+  await asB("/privacy/consents", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: "2026-11-24-inline", purpose: "body_photo_try_on" }) })
   const noPhoto = await generate(`b-nophoto-${run}`)
   t.check(noPhoto.status === 409 && (await noPhoto.json()).error.code === "photo_required", "API: sem foto válida, geração recusada (409 photo_required)")
   const gif = await upload(new Blob([Buffer.from("GIF89a\x01\x00\x01\x00")], { type: "image/gif" }), "x.gif")

@@ -70,6 +70,8 @@ export interface StudioDraft {
   variantChoice: Record<string, string>
   /** Last search step result (Procurar on the curated catalog); selection happens on top of it. */
   searchResult: SearchResult | null
+  /** Outfit search open on the board (null = the last one; the search itself lives on the server). */
+  outfitSearchId: string | null
   /** Outfit proposed by the composer (durable on the server; reopened by id). */
   composition: Composition | null
 }
@@ -81,7 +83,7 @@ export function showLookPatch(d: StudioDraft, look: { id: string; origin?: strin
   return { lookId: look.id, acervoLookId: look.id, acervoSelection: [] }
 }
 
-export const EMPTY_DRAFT: StudioDraft = { mode: "procurar", prompt: "", chosen: [], references: [], preferenceId: null, sessionRules: null, composerOpen: true, lookId: null, jobId: null, acervoLookId: null, acervoSelection: [], variantChoice: {}, searchResult: null, composition: null }
+export const EMPTY_DRAFT: StudioDraft = { mode: "procurar", prompt: "", chosen: [], references: [], preferenceId: null, sessionRules: null, composerOpen: true, lookId: null, jobId: null, outfitSearchId: null, acervoLookId: null, acervoSelection: [], variantChoice: {}, searchResult: null, composition: null }
 
 interface Store {
   route: Route
