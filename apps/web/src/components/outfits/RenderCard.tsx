@@ -41,6 +41,7 @@ function Panel({ panel, busy, retry, openSearch }: { panel: OutfitPanel; busy: b
       {panel.canRetry ? (
         <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm justify-self-start" disabled={busy || (panel.retryNeedsChargeAcceptance && !accept)} onClick={() => retry(accept)} data-testid="render-retry">Gerar o que falta</button>
       ) : null}
+      {panel.canRetry ? <p className="sa-caption sa-muted">Refazer usa 10 moedas e uma nova chamada de geração, só para este painel.</p> : null}
       {panel.retryBlockedReason ? <p className="sa-caption sa-muted">{panel.retryBlockedReason}</p> : null}
       {openSearch ? <button type="button" className="sa-btn-quiet sa-caption justify-self-start" onClick={openSearch}>Ver os conjuntos desta busca</button> : null}
     </li>

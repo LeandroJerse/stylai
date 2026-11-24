@@ -149,7 +149,8 @@ try {
     if (look.statusCode !== 200) return look
     return app.inject(new URL(look.json().image.url as string).pathname + new URL(look.json().image.url as string).search)
   }
-  const engineConfig = { ...defaultEngineConfig, environment: "test" as const, pseudonymKey, pollIntervalMs: 5, pollTimeoutMs: 2000 }
+  // The provider is a test double: simulated mode needs no operator pilot (real mode refuses to start without one).
+  const engineConfig = { ...defaultEngineConfig, environment: "test" as const, simulatedProvider: true, pseudonymKey, pollIntervalMs: 5, pollTimeoutMs: 2000 }
   const engine = createEngine({ db: workerDb, store, segmind, config: engineConfig, sleep: async () => undefined })
   const post = (key: string, body: unknown) => app.inject({ method: "POST", url: "/v1/studio/generations", headers: { "idempotency-key": key }, payload: body as Record<string, unknown> })
 

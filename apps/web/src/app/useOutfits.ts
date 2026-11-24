@@ -30,11 +30,11 @@ export function useOutfits() {
   const searchId = draft.outfitSearchId ?? searches.data?.[0]?.id ?? null
   const search = useQuery({
     queryKey: outfitKeys.search(searchId ?? ""), queryFn: ({ signal }) => outfitsApi.search(searchId!, signal), enabled: enabled && searchId !== null,
-    refetchInterval: (q) => (q.state.data?.status === "running" ? 1200 : false),
+    refetchInterval: (q) => (q.state.data?.status === "running" ? 2000 : false),
   })
   const renders = useQuery({
     queryKey: outfitKeys.renders, queryFn: ({ signal }) => outfitsApi.renders(signal), enabled,
-    refetchInterval: (q) => (q.state.data?.some(active) ? 2000 : false),
+    refetchInterval: (q) => (q.state.data?.some(active) ? 3000 : false),
   })
 
   const putSet = (detail: OutfitSetDetail) => {

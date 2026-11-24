@@ -237,3 +237,26 @@ Implementado em `apps/api` e espelhado no adaptador da demo (`apps/web/demo/demo
 | `GET /v1/catalog/source` | Origem do catálogo e capacidades (`TEST_CATALOG_CAPABILITIES`). |
 | `GET /v1/catalog/test-images/*` | Ilustrações próprias do catálogo de teste. |
 | Produtos | `stockConfirmed: false`, `priceKind` (`test_price` no catálogo de teste). |
+
+## Atualização 2026-11-24 — conjuntos coordenados
+
+Só quando `capabilities.outfits` for `true` em `GET /v1/studio/config`. Tudo exige sessão; recurso de outra conta responde 404.
+
+| Rota | Comportamento |
+| --- | --- |
+| `POST /v1/studio/outfit-searches` `{prompt}` + `Idempotency-Key` | 202 e a busca segue no servidor; repetição da mesma chave devolve 200 com a mesma busca. `409 search_in_progress`, `429 search_limit`. Não gera nem gasta moedas. |
+| `GET /v1/studio/outfit-searches` e `/:id` | Histórico; etapa real (`stage`), conjuntos, relatório e mensagem. `status`: `running`, `interrupted`, `succeeded`, `empty`, `failed`, `cancelled`. |
+| `POST /v1/studio/outfit-searches/:id/cancel` | Cancela a busca. |
+| `GET /v1/studio/outfit-sets/:id` | Conjunto, alternativas por parte e versões. |
+| `POST /v1/studio/outfit-sets/:id/piece` `{slot, productId, variantId?, base}` | Troca só entre opções já encontradas. `409 piece_blocked` mantém a peça anterior. |
+| `POST /v1/studio/outfit-sets/:id/locks` `{locked, base}` | Guarda travas sem criar versão. |
+| `POST /v1/studio/outfit-sets/:id/suggest` `{locked, base}` | Outra combinação sem nova busca. `409 no_alternative`. |
+| `POST /v1/studio/outfit-sets/:id/restore` `{revision, base}` | Cria versão nova com o conteúdo de uma anterior. |
+| `POST /v1/studio/outfit-renders/quote` `{mode, sets}` | `individual` (1) ou `comparison` (2 a 4): confere preço, imagem, direitos, foto, moedas e orçamento. Mudança da loja vira versão `refresh`. `confirmation` só existe sem bloqueios. |
+| `POST /v1/studio/outfit-renders` `{mode, sets, confirmation}` + `Idempotency-Key` | 202; o lote inteiro é reservado antes da primeira imagem. `409 quote_changed`, `409 budget_insufficient`, `402 insufficient_tokens`. |
+| `GET /v1/studio/outfit-renders` e `/:id` | Estado por painel, comparativo e ações permitidas. |
+| `POST /v1/studio/outfit-renders/:id/retry` `{panel, acceptCharge?}` | Só o painel que falhou. `409 needs_reconciliation`, `409 second_charge`, `409 photo_replaced`, `409 provider_changed`. |
+| `POST /v1/studio/outfit-renders/:id/finalize` e `/cancel` | Monta com os prontos (mínimo 2); cancela só o que não começou. |
+| `GET /v1/media/comparisons/:id?u&e&s` | Imagem do comparativo por link assinado e curto. |
+
+`base` é a versão que a pessoa viu: se outra aba mudou o conjunto, a resposta é `409 stale_revision`. Termo de foto: `2026-11-24-inline`.
