@@ -451,3 +451,4 @@ Criado prompt de implementação baseado em Superpowers e nos módulos existente
 - Defeitos de seleção vistos nos dados: público misturado, manga longa e Natal em pedido de verão, nenhuma parte de baixo aproveitada.
 - O E2E 55/55 não pegou nada disso. Tudo anotado em docs/superpowers/plans/2026-11-24-estudio-limpeza-e-filtros.md. Nenhum código alterado; worktree stylai-motor-ui (branch feat/studio-ui-cleanup) criado e limpo.
 - Nenhuma imagem real gerada: piloto 11 de 15. Aplicação deixada no ar em modo real.
+- Segunda captura de Leandro (E27): busca avulsa devolveu 1 camisa de time, bloqueada para prova, com custo e aviso repetidos. Conferido no código: a busca avulsa não usa o preparo automático de referência. Detalhes e decisão pendente no mesmo plano.

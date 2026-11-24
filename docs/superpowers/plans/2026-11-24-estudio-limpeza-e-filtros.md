@@ -54,3 +54,19 @@ Skill usada: `impeccable` (polish), modo Operate. Preservar a identidade atual (
 - Aplicação deixada no ar em modo REAL com Haiku: http://localhost:5198. Piloto 11 de 15 (4 gerações livres), nenhuma imagem real gerada neste fluxo ainda. Termo `2026-11-24-inline` já aceito pela conta do piloto.
 - Licença local expira em 2026-11-25 00:00 UTC (21:00 de Brasília); depois valem as 3 gerações grátis do dia. Haiku: 18 chamadas no dia, teto 25; o contador zera no mesmo horário.
 - Ordem sugerida: (1) reproduzir e corrigir o "nada retornou"; (2) títulos curtos; (3) composer e layout; (4) filtros; (5) qualidade da seleção; (6) E2E e só então a validação real das 4 gerações.
+
+## Segunda captura de Leandro (painel "Peças encontradas", modo real)
+
+O que aparece: "1 produto"; "2026_27 Camisa de Futebol Colete La Coruña..." a R$ 25,89, Shop1105895109 Store; "Sem imagem liberada para prova"; "Escolha uma peça / Limpar"; botão cinza "Vestir 0 peças · 10 moedas"; "Saldo 40 moedas · cobra só quando a imagem fica pronta"; "Modo IA real: cada geração faz 1 chamada paga ao Segmind (flux-3-klein-image-edit), estimada em US$ 0,01 (teto US$ 0,02)"; em vermelho "Esta peça não tem imagem liberada para a prova virtual."
+
+É o resultado de "Buscar peças avulsas", outro caminho, que não passa pelos conjuntos.
+
+Defeitos a tratar:
+- **Busca avulsa não usa o preparo automático de imagem.** Só os conjuntos usam (`modules/outfits/references.ts`); `presentAliExpressProduct` deixa `tryOnReady: false` salvo autorização manual. Toda peça avulsa do AliExpress aparece bloqueada, mesmo com a política e o piloto liberando. Conferido no código.
+- **Resultado ruim:** uma única peça, e uma camisa de time. Falta ver o pedido enviado, as consultas e os filtros dessa busca (não lidos ainda); a tela também não explica por que só veio 1.
+- **Possível relação com "nada retornou":** este painel aparece ANTES dos conjuntos na página. Confirmar com Leandro se ele tocou em "Montar conjuntos", em "Buscar peças avulsas" ou nos dois. A busca de conjuntos existe no banco e terminou com 3.
+- **Custo fora de hora:** valor em moedas, saldo e modelo do provador aparecem sem nenhuma peça escolhida; o bloqueio é dito duas vezes (no cartão e em vermelho no rodapé).
+- **Controles:** botão "Vestir 0 peças" sem sentido; o círculo de seleção fica ativo sobre peça que não pode ser vestida; cartão único com metade do painel vazia; "1 produto" sem dizer de quantos.
+- **Moedas:** 40 = 4 gerações, coerente com a licença até 21:00.
+
+Decidir ao retomar: unir os dois caminhos (avulsas como alternativa dentro dos conjuntos) ou manter os dois, com a busca avulsa usando o mesmo preparo, filtros e relatório. Recomendação: um caminho só, com "peças avulsas" como troca dentro do conjunto.
