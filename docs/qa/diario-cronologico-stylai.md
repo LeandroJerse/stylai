@@ -398,3 +398,6 @@ Validação E19: bun run check concluído com sucesso (lint, tipos, testes, buil
 - Auditoria pré-commit: 572 arquivos examinados, comparação contra seis segredos locais conhecidos e padrões de credenciais, sem achados. Valores nunca exibidos. Credencial DPAPI e imagens privadas continuam ignoradas pelo Git.
 - Nenhuma geração adicional ou alteração de credenciais. Envio restrito à branch feat/motor-first-slice; integração BFL/fallback automático permanece pendente.
 - Validação pré-commit concluída: bun run check aprovado, 311 testes passaram e zero falhas; lint, tipos, build e smoke aprovados.
+
+### E21 — 2026-11-24 — handoff para Claude, fluxo autônomo
+Criado prompt de implementação baseado em Superpowers e nos módulos existentes: docs/superpowers/plans/2026-11-24-prompt-claude-fluxo-autonomo.md. Inclui busca, múltiplos conjuntos persistidos, preparação automática de referências, geração individual/comparativa, limites e critérios E2E. Painéis com gerações independentes são proposta técnica a validar; código não implementado nesta etapa. Nenhuma chamada paga nem envio automático ao Claude.
