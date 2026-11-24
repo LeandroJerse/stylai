@@ -174,12 +174,18 @@ export function interpretCompositionRules(text: string): CompositionIntent {
 }
 
 /** Hard sanitization of any query (agent or rules): letters only, <= 6 words, must name this slot's garment. */
-function sanitizeSlotQuery(raw: string | null | undefined, slot: SlotId): string | null {
+export function sanitizeSlotQuery(raw: string | null | undefined, slot: SlotId): string | null {
   if (!raw) return null
   const tokens = stripOriginClaims(raw.split(/\s+/).filter((w) => /^[\p{L}-]{2,20}$/u.test(w)).map((w) => w.toLowerCase())).slice(0, 6)
   if (tokens.some((w) => { const g = garmentSlot(normalizeText(w)); return g && g.slot !== slot })) return null
   if (!tokens.some((w) => garmentSlot(normalizeText(w))?.slot === slot)) return null
   return tokens.join(" ")
+}
+
+/** A query for one listing sold as a complete outfit: must say so, letters only, no origin claims. */
+export function sanitizeBundleQuery(raw: string): string | null {
+  const tokens = stripOriginClaims(raw.split(/\s+/).filter((w) => /^[\p{L}-]{2,20}$/u.test(w)).map((w) => w.toLowerCase())).slice(0, 6)
+  return tokens.length >= 2 && tokens.some((w) => /^(conjuntos?|ternos?)$/.test(normalizeText(w))) ? tokens.join(" ") : null
 }
 
 /**

@@ -38,7 +38,7 @@ describe("AI composer", () => {
     expect(usages).toEqual([{ inputTokens: 30, outputTokens: 350 }, { inputTokens: 0, outputTokens: 0 }])
   })
   test("interprets into normalized slots with a total budget", async () => {
-    const { composer, seen } = fake([{ parsed_output: { audience: null, style: [], slots: [{ slot: "upper", required: true, query: null, color: "preto" }, { slot: "lower", required: true, query: null, color: null }, { slot: "dress", required: false, query: "vestido preto", color: "preto" }], occasion: "trabalho", budget_total_brl: 400, budget_mode: "require", avoid: [] } }])
+    const { composer, seen } = fake([{ parsed_output: { audience: null, style: [], slots: [{ slot: "upper", required: true, query: null, color: "preto" }, { slot: "lower", required: true, query: null, color: null }, { slot: "dress", required: false, query: "vestido preto", color: "preto" }], occasion: "trabalho", budget_total_brl: 400, budget_mode: "require", avoid: [], climate: null } }])
     const out = await composer.interpret("look preto de alfaiataria para o trabalho até 400")
     // dress removes top + bottom per contract normalization
     expect(out.intent.slots.map((s) => s.slot)).toEqual(["dress"])
@@ -97,7 +97,7 @@ describe("specialized agents (Haiku, minimal context)", () => {
   test("defaults to Haiku with a small output ceiling per role; interpreter sees only the request", async () => {
     const { DEFAULT_COMPOSER_MODEL, AGENT_PROMPTS } = await import("../src/index")
     expect(DEFAULT_COMPOSER_MODEL).toBe("claude-haiku-5-5")
-    const { seen, client } = spy([{ audience: "masculino", style: [], slots: [{ slot: "upper", required: true, query: "camisa masculina linho branca", color: "branco" }], occasion: null, budget_total_brl: null, budget_mode: "prefer", avoid: [] }])
+    const { seen, client } = spy([{ audience: "masculino", style: [], slots: [{ slot: "upper", required: true, query: "camisa masculina linho branca", color: "branco" }], occasion: null, budget_total_brl: null, budget_mode: "prefer", avoid: [], climate: null }])
     const composer = createComposer({ client })
     const out = await composer.interpret("camisa masculina de linho branca")
     expect(seen[0]!.model).toBe("claude-haiku-5-5")
@@ -129,7 +129,7 @@ describe("interpretation cache", () => {
     let calls = 0
     let clock = 0
     const agent = { model: "claude-haiku-5-5", select: async () => { throw new Error("unused") },
-      interpret: async () => { calls++; return { intent: { slots: [{ slot: "upper" as const, required: true }], colors: [], terms: [], occasion: null, budgetTotalBrl: null, budgetMode: "prefer" as const, avoid: [] }, usage: { inputTokens: 200, outputTokens: 40 }, requestId: null, promptVersion: "v" } } }
+      interpret: async () => { calls++; return { intent: { slots: [{ slot: "upper" as const, required: true }], colors: [], terms: [], occasion: null, budgetTotalBrl: null, budgetMode: "prefer" as const, avoid: [], climate: null }, usage: { inputTokens: 200, outputTokens: 40 }, requestId: null, promptVersion: "v" } } }
     const cache = createInterpretationCache({ ttlMs: 60_000, maxEntries: 2, now: () => clock })
     const a = await cache.interpret(agent, "Camisa  Branca")
     const b = await cache.interpret(agent, "camisa branca")
@@ -185,12 +185,12 @@ describe("interpretation cache: quota only on miss, single-flight", () => {
 describe("style travels interpreter -> selector (P13)", () => {
   test("interpreter returns style; selector plan carries it; prompts forbid origin claims", async () => {
     const { composer, seen } = fake([
-      { parsed_output: { audience: null, style: ["estilo italiano", "elegante"], slots: [{ slot: "upper", required: true, query: "camisa social", color: null }, { slot: "lower", required: true, query: "calça alfaiataria", color: null }], occasion: "jantar", budget_total_brl: null, budget_mode: "prefer", avoid: [] } },
+      { parsed_output: { audience: null, style: ["estilo italiano", "elegante"], slots: [{ slot: "upper", required: true, query: "camisa social", color: null }, { slot: "lower", required: true, query: "calça alfaiataria", color: null }], occasion: "jantar", budget_total_brl: null, budget_mode: "prefer", avoid: [], climate: null } },
       { parsed_output: { choices: [] } },
     ])
     const out = await composer.interpret("Me vista com roupas em estilo italiano elegante para um jantar")
     expect(out.intent.style).toEqual(["estilo italiano", "elegante"])
-    expect(out.promptVersion).toBe("interpret/2026-11-23.2")
+    expect(out.promptVersion).toBe("interpret/2026-11-24.1")
     expect(String(seen[0]!.system)).toMatch(/style/)
     expect(String(seen[0]!.system)).toMatch(/never.*origin|origin.*never/i)
     await composer.select(out.intent, { upper: [cand("u1", "upper", 100, "Camisa social")], lower: [cand("l1", "lower", 100, "Calça alfaiataria")] }, {})

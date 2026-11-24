@@ -7,6 +7,7 @@ export * from "./fal.js"
 export * from "./interpreter.js"
 export * from "./agent-prompts.js"
 export * from "./composer.js"
+export * from "./outfit-agents.js"
 export * from "./telemetry.js"
 
 /** Garment categories the try-on provider can render in this slice (config-driven). */

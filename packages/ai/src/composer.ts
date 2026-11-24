@@ -26,6 +26,7 @@ const intentOut = z.object({
   budget_total_brl: z.number().nonnegative().max(100000).nullable(),
   budget_mode: z.enum(["require", "prefer"]),
   avoid: z.array(z.string().max(30)).max(5),
+  climate: z.enum(["frio", "calor"]).nullable(),
 })
 const selectionOut = z.object({
   choices: z.array(z.object({ slot: slotEnum, product_id: z.string().max(120).nullable(), reason: z.string().max(80) })).max(4),
@@ -77,6 +78,7 @@ export function createComposer(options: { client: MessagesClient; model?: string
       const slots = normalizeSlots(data.slots.map((s) => ({ slot: s.slot as SlotId, required: s.required, query: s.query, color: s.color })))
       const intent: CompositionIntent = {
         audience: data.audience,
+        climate: data.climate,
         style: data.style.map((x) => x.trim().toLowerCase()).filter(Boolean),
         slots,
         colors: [...new Set(slots.map((s) => s.color).filter((c): c is string => Boolean(c)))],
