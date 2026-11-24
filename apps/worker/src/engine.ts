@@ -334,7 +334,7 @@ export function createEngine(deps: EngineDeps) {
     const timer = setInterval(()=>{heartbeat=heartbeat.then(()=>renew(job.id,fence)).catch(()=>{leaseFailed=true})},20_000)
     let relay: PhotoRelayLease | null = null
     try {
-    if(provider === "segmind") {
+    if(provider === "segmind" && !profile?.inlineInputs) {
       person.url = await store.signedUrl("body-photos",job.photo.object_key,config.photoUrlTtlSeconds) ?? undefined
       if(!person.url || !publiclyFetchable(person.url)) {
         if(!deps.photoRelay) throw new JobFailure("photo_not_reachable_by_provider")

@@ -37,3 +37,19 @@ for(const [model,thinking,cost] of [['nano-banana-2-lite','high',42000n],['nano-
   expect(result.computedMicros).toBe(cost)
  })
 }
+
+test('Flux Klein uses inline references without a relay, native fields, and one fixed-price call',async()=>{
+ let calls=0
+ const person={bytes:png,mime:'image/png'}
+ const client=createSegmindOutfitClient({apiKey:'test',model:'flux-3-klein-image-edit',fetch:async(url,init)=>{
+  calls++;expect(String(url)).toBe('https://api.segmind.com/v1/flux-3-klein-image-edit')
+  const body=JSON.parse(String(init?.body))
+  expect(body).toMatchObject({resolution:'1k',aspect_ratio:'3:4',steps:16,output_format:'png',safety_tolerance:2})
+  expect(body.images).toEqual([png,png,png].map(b=>Buffer.from(b).toString('base64')))
+  expect(body.image_urls).toBeUndefined();expect(body.output_resolution).toBeUndefined()
+  return new Response(png,{headers:{'content-type':'image/png'}})
+ }})
+ const result=await client.generate({person,garments})
+ expect(calls).toBe(1);expect(result.kind).toBe('completed')
+ if(result.kind==='completed')expect(result.computedMicros).toBe(12870n)
+})

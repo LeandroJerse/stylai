@@ -60,3 +60,11 @@ test("Vertex mode requires project and isolated credential, sends public config 
  expect(planPilotRuntime({argv,rootEnv}).ok).toBe(false)
  expect(planPilotRuntime({argv:argv.filter(a=>!a.startsWith("--google-project")),rootEnv:{VERTEX_API_KEY:"v"}}).ok).toBe(false)
 })
+
+test("real default selects FLUX consistently while simulation stays local", () => {
+  const plan = planPilotRuntime({ argv: ["--real", "--pilot=existing-pilot"], rootEnv })
+  expect(plan.ok).toBe(true)
+  expect(plan.api.SEGMIND_MODEL).toBe("flux-3-klein-image-edit")
+  expect(plan.worker.SEGMIND_MODEL).toBe("flux-3-klein-image-edit")
+  expect(planPilotRuntime({ argv: [], rootEnv }).api.SEGMIND_MODEL).toBe("try-on-diffusion")
+})

@@ -20,9 +20,9 @@ export function planPilotRuntime({ argv, rootEnv }) {
   const googleConfig = provider === "gemini" ? {STYLAI_GOOGLE_BACKEND:googleBackend,...(vertex?{GOOGLE_CLOUD_PROJECT:googleProject}: {})} : {}
   if (!["segmind", "gemini"].includes(provider)) errors.push("unknown provider")
   if (provider === "gemini" && !real) errors.push("Gemini native requires --real; no native simulator is configured")
-  const segmindModel = value("segmind-model") ?? "try-on-diffusion"
-  if(!["try-on-diffusion","nano-banana-pro","nano-banana-2-lite","nano-banana-2.1"].includes(segmindModel)) errors.push("unknown Segmind model")
-  if(segmindModel !== "try-on-diffusion" && !real) errors.push("Nano Banana Pro requires --real")
+  const segmindModel = value("segmind-model") ?? (real ? "flux-3-klein-image-edit" : "try-on-diffusion")
+  if(!["try-on-diffusion","nano-banana-pro","nano-banana-2-lite","nano-banana-2.1","flux-3-klein-image-edit"].includes(segmindModel)) errors.push("unknown Segmind model")
+  if(segmindModel !== "try-on-diffusion" && !real) errors.push("Joint outfit models require --real")
   const pilot = value("pilot")
   const relay = value("relay")
   const catalog = value("catalog") ?? "curated_pilot"

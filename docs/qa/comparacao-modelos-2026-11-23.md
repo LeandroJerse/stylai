@@ -41,3 +41,16 @@ Uma geração adicional explicitamente autorizada pelo app confirmou o endpoint 
 Prévia aproveitável: identidade reconhecível, roupas coerentes, relógio no mesmo lado. Enquadramento, pose e proporções do corpo foram alterados; não declarar fidelidade perfeita. Recomendação provisória atual: Vertex direto para aproveitar faturamento Cloud existente e dispensar túnel de foto; manter Segmind como alternativa explícita, sem fallback pago automático.
 
 Job e4eaec30-57fd-44e3-913d-44c44569592b; imagem privada test-results/pilot-2026-11-23/italian-vertex-look.png. Total piloto US$0,669215, 8/8 tentativas e zero reserva. Nenhuma recarga. Geração comprovada; débito em crédito promocional ou manual ainda não conciliado na fatura. Código: 308 testes/zero falhas, check completo aprovado.
+
+## Atualização — FLUX 3 Klein via Segmind, 2026-11-23
+Teste de uma imagem autorizado pelo usuário, feito pelo app: autenticação, composição persistida selecionada por Haiku, mesmas duas peças AliExpress e foto original, snapshots/gates, fila, worker, provedor e armazenamento privado. Busca não repetida para manter referências constantes. Imagens enviadas inline, sem túnel.
+
+| Opção | Saída | Custo calculado | Chamada | Resultado visual |
+|---|---|---:|---:|---|
+| Vertex Nano Banana 2.1 | 896x1200 | US$0,039053 | 11,452s | Preservou lado do relógio; mudou pose/proporções |
+| Segmind FLUX 3 Klein | 880x1184 | US$0,01287 | 24,774s | Visual convincente, mas mudou relógio de lado e desenho |
+
+Klein economizou ~67% nesta amostra. Não é o preço US$0,009 de fal/BFL: usamos Segmind já configurado, cuja tabela é US$0,01287 em 1k. Não há garantia de fidelidade de SKU. Preview ilustrativo aproveitável, porém falha no requisito de preservar acessórios. Manter Vertex como padrão provisório; não inferir desempenho geral de uma imagem.
+
+Configuração: flux-3-klein-image-edit, resolution=1k, aspect_ratio=3:4, steps=16, safety_tolerance=2, PNG, três referências inline. Job 4f9c5c36-138d-4bd3-8c2b-178d699ae5e6. Imagem privada em test-results/pilot-2026-11-23/italian-flux3-klein-look.png. Teto US$2, acumulado US$0,682085, 9/9 tentativas e zero reserva. 310 testes/zero falhas; check completo passou.
+Fonte: https://www.segmind.com/models/flux-3-klein-image-edit/pricing

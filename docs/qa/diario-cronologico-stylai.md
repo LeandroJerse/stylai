@@ -365,3 +365,36 @@ Os artefatos em `test-results/` são locais/ignorados pelo Git. O diário preser
 - Check completo novo: 308 testes passaram, zero falhas; lint, typecheck, build e smoke aprovados. git diff --check sem erros.
 - Auditoria local de 699 conteúdos (arquivos e objetos dos commits pendentes): nenhum padrão de credencial ou valor das 5 credenciais locais comparadas encontrado. Comparação adicional com chave Vertex DPAPI executada sem exibir valor.
 - .env, .data/ (incluindo DPAPI), fotos e test-results permanecem ignorados. Somente código, testes, planos e documentação serão versionados; nenhum artefato privado de geração será enviado.
+
+### E17 — 2026-11-23, teste autorizado FLUX 3 Klein
+- Pedido: testar qualidade do FLUX 3 econômico. Uma geração adicional, mesmas foto/composição italiana/duas peças, teto acumulado US$2. Sem recarga ou repetição automática.
+- Não há credencial fal/BFL configurada. Segmind existente oferece flux-3-klein-image-edit por US$0,01287 em 1K; fal/BFL anunciavam US$0,009. São provedores/preços distintos.
+- Design: adicionar perfil ao adaptador conjunto Segmind existente, com images inline em base64 (documentado), resolution 1k, 16 steps, safety_tolerance 2, reserva US$0,02. Manter fila, snapshots, direitos/foto, orçamento e ledger do app. Nenhum túnel para esse perfil. Vertex continua alternativa previamente validada.
+- Teste RED: modelo não suportado; após implementação GREEN. Teste de engine cobre reserva única US$0,02 e foto inline sem URL pública. Documentação oficial: https://www.segmind.com/models/flux-3-klein-image-edit/api e /pricing.
+- Check completo: 310 testes passaram/zero falhas, lint/typecheck/build/smoke passaram. Revisão independente sem findings importantes. Piloto ampliado somente 8→9 para a chamada solicitada, gasto anterior US$0,669215 e teto US$2 preservados. Job 4f9c5c36-138d-4bd3-8c2b-178d699ae5e6 enfileirado via API (202), sem nova busca para manter referências constantes.
+- Resultado: succeeded, PNG 880x1184, 24774 ms, custo calculado pela tabela US$0,01287 (não reconciliado na fatura). 67,04% abaixo do Vertex US$0,039053, porém ~2,16x o tempo nessa amostra. Acumulado US$0,682085, 9/9 tentativas, reserva zero; licença sandbox revogada.
+- Avaliação: boa aparência geral, rosto reconhecível e camisa/calça coerentes. Falha visível: relógio trocado de pulso e desenho; pose/proporções alteradas. Aproveitável como ilustração, reprovado para preservação estrita de acessórios. Não substituir o padrão com base nessa única amostra; runtime Vertex restaurado após teste.
+- Artefatos privados: test-results/pilot-2026-11-23/italian-flux3-klein-generation.json e italian-flux3-klein-look.png. Nenhum segredo/foto versionado, nenhuma recarga ou chamada extra. Código do perfil disponível para testes futuros; alterações desta rodada ainda locais.
+
+### E18 — 2026-11-24, comparação de inverno pelo ciclo real
+- Usuário pediu busca nova por roupas de frio, mostrar ciclo do prompt e comparar FLUX/Nano sem resultados anteriores como referência. Executadas exatamente duas novas gerações, mesmas quatro entradas: original + três produtos comerciais recém-buscados.
+- Haiku5.5 interpretou, API AliExpress buscou sem cache (50/49/50 retornados), Haiku selecionou calça forrada/pelúcia, suéter cinza e jaqueta preta: R$449,55. Busca inicial US$0,000829; atualização após autorização das referências, com escolhas travadas, US$0,000377.
+- Imagens aprovadas segundo autorização AliExpress já fornecida; manifesto local registrado por ferramenta de operador, sem SKU/estoque inventados. Composição inicial ef35b085-9ce5-4893-9727-c2215577c5b4; composição autorizada 5597454d-4bcd-4386-8be0-c4ad10303504. Etapa de registro ainda manual.
+- Piloto 9→11 tentativas conforme pedido explícito de duas imagens, teto US$2 preservado. FLUX succeeded US$0,01287/28,157s; Nano succeeded US$0,040773/17,876s. Imagens US$0,053643; rodada com Haiku US$0,054849. Acumulado geração US$0,735728, 11/11, reserva zero; licença sandbox revogada, runtime Vertex mantido.
+- Avaliação: ambas prévias ilustrativas aproveitáveis. FLUX escondeu relógio sob manga; Nano preservou relógio, mas inventou detalhes de gola. Ambos alteram pose/caimento. Calça de lazer pouco coerente com casual elegante é falha do seletor, não corrigida manualmente para maquiar comparação. Ausente busca dedicada por conjunto completo.
+- Relatório e prompt exato: docs/qa/comparacao-inverno-2026-11-24.md. Comparativo privado HTML e imagens em test-results/pilot-2026-11-23/. Nenhum segredo ou foto adicionado ao Git; sem recarga. Falhas encaminhadas ao documento de correções Claude para próxima execução disponível.
+
+## E19 — 2026-11-24 — FLUX padrão e escolha de provedores
+
+Decisão de Leandro: usar FLUX 3 Klein por padrão, consumindo os créditos Segmind existentes. A chave Black Forest Labs será obtida posteriormente; mais testes visuais ficam para depois.
+
+Aplicado: launcher real, worker e estimativa da API adotam `flux-3-klein-image-edit` por padrão. Simulador mantém `try-on-diffusion`; overrides explícitos continuam disponíveis. Sem alteração de .env ou credenciais; sem nova geração ou aumento do piloto.
+
+BFL: endpoint oficial confirmado em https://api.bfl.ai/openapi.json (`/v1/flux-3-image-klein`). É viável usar BFL principal e Segmind secundário. A integração BFL e o fallback automático ainda não estão implementados/validados; dependem da próxima etapa. Implementar submissão e polling BFL, contabilização separada por tentativa e fallback somente diante de falha comprovadamente anterior à aceitação. Timeout ou resultado desconhecido exige reconciliação, sem reenviar automaticamente. Recusa de segurança não deve acionar outro provedor. Manter os mesmos inputs originais e referências dos produtos, orçamento global e teto por tentativa.
+Validação E19: bun run check concluído com sucesso (lint, tipos, testes, build e smoke). Runtime reiniciado com SEGMIND_MODEL=flux-3-klein-image-edit em API e worker. Nenhuma imagem adicional gerada.
+
+### E20 — 2026-11-24 — preparação de commit/push solicitada
+- Revisados código FLUX/Segmind, defaults, testes e documentação das comparações, incluindo este diário.
+- Auditoria pré-commit: 572 arquivos examinados, comparação contra seis segredos locais conhecidos e padrões de credenciais, sem achados. Valores nunca exibidos. Credencial DPAPI e imagens privadas continuam ignoradas pelo Git.
+- Nenhuma geração adicional ou alteração de credenciais. Envio restrito à branch feat/motor-first-slice; integração BFL/fallback automático permanece pendente.
+- Validação pré-commit concluída: bun run check aprovado, 311 testes passaram e zero falhas; lint, tipos, build e smoke aprovados.

@@ -119,3 +119,10 @@ Get-Content <arquivo-credenciais-local>.json | node test-results/pilot-2026-11-2
 Atenção à prontidão: a API ativa (iniciada antes de P12/P13) **não** tem o contrato `style`. Sem reiniciar API/worker
 após integrar este commit, o pedido natural ainda perde o estilo (M1_style_preserved falharia por causa do runtime, não do
 código). Não há migration nova em P12/P13.
+
+## Pendências novas — teste de inverno 2026-11-24
+- Busca não priorizou conjunto completo apesar de pedido explícito; executou só três consultas por slot. Implementar caminho de conjunto com fallback coordenado preservando orçamento/contexto.
+- Seletor textual aceitou calça de pelúcia/lazer com jaqueta de couro para casual elegante. Acrescentar regras de ocasião/material e revisão visual sob orçamento, sem alegar que título prova tecido/qualidade.
+- Novas imagens AliExpress exigem manifesto manual mesmo com autorização do operador existente. Projetar registro auditável limitado à política autorizada, sem liberar catálogo globalmente nem inventar SKU/estoque.
+- Fidelidade da geração: FLUX ocultou relógio sob manga; Nano introduziu detalhes na gola. Registrar requisito e critério visual; não prometer preservação perfeita por prompt.
+- Evidência: docs/qa/comparacao-inverno-2026-11-24.md, incluindo prompt exato, chamadas, custos e avaliação. Correções ainda pendentes; não executadas nesta comparação.

@@ -107,7 +107,7 @@ export function readWorkerConfig(env: Record<string, string | undefined>, cwd = 
     gemini: { apiKey: env.GEMINI_API_KEY?.trim() || null },
     segmind: {
       apiKey: segmindApiKey,
-      model: env.SEGMIND_MODEL?.trim() || "try-on-diffusion",
+      model: env.SEGMIND_MODEL?.trim() || (segmindSimulated ? "try-on-diffusion" : "flux-3-klein-image-edit"),
       baseUrl: base.origin,
       simulated: segmindSimulated,
     },

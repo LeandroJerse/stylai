@@ -62,7 +62,8 @@ const tiktokCache = tiktokClient ? createTikTokCatalogCache({ client: tiktokClie
 // Shown before a paid call. Estimate: mean public inference ~8.06 s x US$ 0.0072/GPU-s; reserve per call = worker ceiling.
 const nativeGemini = process.env.STYLAI_TRYON_PROVIDER === "gemini"
 const vertexGemini = nativeGemini && process.env.STYLAI_GOOGLE_BACKEND === "vertex"
-const outfitProfile = process.env.STYLAI_TRYON_PROVIDER === "segmind" ? segmindOutfitProfile(process.env.SEGMIND_MODEL??"") : null
+const segmindModel = process.env.SEGMIND_MODEL?.trim() || (generationMode === "real" ? "flux-3-klein-image-edit" : "try-on-diffusion")
+const outfitProfile = (process.env.STYLAI_TRYON_PROVIDER?.trim() || "segmind") === "segmind" ? segmindOutfitProfile(segmindModel) : null
 const segmindOutfit = Boolean(outfitProfile)
 const realProvider = segmindOutfit ? {provider:"Segmind",model:outfitProfile!.model,callsPerGeneration:1,estimatedUsdPerCall:Number(outfitProfile!.priceMicros)/1e6,maxUsdPerCall:Number(outfitProfile!.reserveMicros)/1e6} : vertexGemini ? {provider:"Google Cloud Vertex",model:VERTEX_OUTFIT_MODEL,callsPerGeneration:1,estimatedUsdPerCall:0.04,maxUsdPerCall:Number(VERTEX_OUTFIT_RESERVE)/1e6} : nativeGemini ? {provider:"Google Gemini",model:"gemini-3-pro-image",callsPerGeneration:1,estimatedUsdPerCall:0.15,maxUsdPerCall:0.35} : { provider: "Segmind", model: "try-on-diffusion", callsPerGeneration: 1, estimatedUsdPerCall: 0.06, maxUsdPerCall: 0.5 }
 

@@ -14,7 +14,7 @@ const piece = (n: number, slot: "lower" | "upper", category: string) => ({
   slot, position: n,
 })
 
-function harness(opts: { segmindOutfit?: boolean; nativeGate?: () => Promise<void>; largePhoto?: boolean; gemini?: boolean; revokeAtDispatch?: number; imageReferences?: boolean; failLayer?: number; revokeSnapshot?: number; changedSnapshot?: number; beginFalse?: boolean; bytesOutput?: boolean; budget?: { ok: boolean; limiting: string[] } | "unavailable" } = {}) {
+function harness(opts: { segmindOutfit?: boolean; segmindModel?: string; nativeGate?: () => Promise<void>; largePhoto?: boolean; gemini?: boolean; revokeAtDispatch?: number; imageReferences?: boolean; failLayer?: number; revokeSnapshot?: number; changedSnapshot?: number; beginFalse?: boolean; bytesOutput?: boolean; budget?: { ok: boolean; limiting: string[] } | "unavailable" } = {}) {
   const budgetChecks: unknown[][] = []
   const stored: string[] = []
   const removed: string[] = []
@@ -72,7 +72,7 @@ function harness(opts: { segmindOutfit?: boolean; nativeGate?: () => Promise<voi
   const nativeInputs: unknown[] = []
   const gemini = { model: "gemini-3-pro-image", garment: async () => ({ bytes: TINY_PNG, mime: "image/png" }), generate: async (input: unknown) => { nativeInputs.push(input); await opts.nativeGate?.(); return { kind: "completed", bytes: TINY_PNG, requestId: "native-response", computedMicros: 140000n, usage: { input_tokens: 1000 } } } }
   const engine = createEngine({
-    db, store, segmind: null, fal, segmindOutfit: opts.segmindOutfit ? {...gemini,model:"nano-banana-pro"} as unknown as import("@stylai/ai").SegmindOutfitClient : null, gemini: opts.gemini ? gemini as unknown as import("@stylai/ai").GeminiOutfitClient : null,
+    db, store, segmind: null, fal, segmindOutfit: opts.segmindOutfit ? {...gemini,model:opts.segmindModel??"nano-banana-pro"} as unknown as import("@stylai/ai").SegmindOutfitClient : null, gemini: opts.gemini ? gemini as unknown as import("@stylai/ai").GeminiOutfitClient : null,
     config: { ...defaultEngineConfig, provider: opts.segmindOutfit ? "segmind" : opts.gemini ? "gemini" : "fal", environment: "development", pseudonymKey: "k".repeat(32), simulatedProvider: false, pilotId: "stylai-first-real-tryon-pilot" },
     sleep: async () => {},
   })
@@ -203,4 +203,14 @@ test("Segmind Pro reserves one Segmind attempt for both garments with signed ori
  expect(h.budgetChecks[0]!.slice(2,5)).toEqual(["segmind",1,"200000"])
  expect(h.ops.filter(x=>x==="reserve_provider_call")).toHaveLength(1)
  expect(h.selections[0]).toMatchObject({render_plan:"joint_outfit_unverified"})
+})
+
+test('Flux joint rendering reserves 2 cents and never exposes the original through a signed URL',async()=>{
+ const h=harness({segmindOutfit:true,segmindModel:'flux-3-klein-image-edit',imageReferences:true})
+ expect((await h.engine.processJob(JOB)).status).toBe('succeeded')
+ expect(h.nativeInputs).toHaveLength(1)
+ expect(h.nativeInputs[0]).toMatchObject({person:{bytes:TINY_PNG}})
+ expect((h.nativeInputs[0] as {person:{url?:string}}).person.url).toBeUndefined()
+ expect(h.budgetChecks[0]!.slice(2,5)).toEqual(['segmind',1,'20000'])
+ expect(h.ops.filter(x=>x==='reserve_pilot_dispatch')).toHaveLength(1)
 })
