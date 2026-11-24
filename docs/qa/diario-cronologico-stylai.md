@@ -432,3 +432,11 @@ Criado prompt de implementação baseado em Superpowers e nos módulos existente
 - Leitura (sem escrita) do piloto: 11/11, saldo US$ 1,264272; uma cotação real de 2 imagens é recusada por pilot_attempts e pilot_items, como esperado.
 - Aplicação local no ar em http://localhost:5198, simulação com busca AliExpress real e seleção por regras. Telemetria dessa execução vai ao Langfuse, como o launcher já fazia.
 - Proposta de cota em docs/operations/fluxo-conjuntos.md, NÃO aplicada. Não validado: Haiku real e FLUX real neste fluxo.
+
+### E25 — 2026-11-24 — cota real autorizada por Leandro e branch enviada
+- Autorização em conversa ("esta autorizado, continue, e pode enviar a branch"). Branch feat/motor-first-slice enviada sem force: a672a3a..81f38c1.
+- Aplicado por pilot.ts authorize --commit: tentativas 11 -> 15, limite total mantido em US$ 2,00, allow_policy_references ligado. Backup antes: backups-locais/pre-cota-20261124.dump.
+- Licença = plano sandbox local da conta do piloto. Necessária porque a conta já usou 8 gerações hoje (grátis = 3). Reativada só até 2026-11-25 00:00 UTC, sem pagamento externo (merchant_ref local-outfit-validation-20261124): sobram 4 gerações. Expira sozinha.
+- Leitura depois: cotação de 4 chamadas ok, nenhum limite bloqueando, saldo do piloto US$ 1,264272.
+- Aplicação reiniciada em modo REAL (FLUX 3 Klein/Segmind, AliExpress real, seleção por regras). Haiku não ligado: o custo dele estava fora da cota apresentada.
+- Nenhuma imagem gerada ainda: depende de Leandro entrar, aceitar o termo 2026-11-24-inline (a conta só tem dev-v1) e confirmar na tela. O agente não aceita termo nem entra na conta por outra pessoa.

@@ -35,11 +35,11 @@ node --import tsx scripts/pilot.ts revoke-source aliexpress --note="motivo"     
 node --import tsx scripts/pilot.ts revoke-source aliexpress --note="motivo" --commit   # aplica
 ```
 
-## Cota para validação real (proposta, NÃO aplicada)
+## Cota para validação real (autorizada e aplicada em 2026-11-24, ver diário E25)
 
 | Item | Valor |
 | --- | --- |
-| Piloto hoje | 11 de 11 tentativas, limite total US$ 2,00, `allow_policy_references` desligado |
+| Piloto | 11 de 15 tentativas usadas, limite total US$ 2,00, `allow_policy_references` ligado |
 | Individual + comparativo de 2, mais 1 margem | 4 gerações (total do piloto 15) |
 | Custo estimado FLUX | 4 × US$ 0,01287 = US$ 0,0515 |
 | Reserva máxima | 4 × US$ 0,02 = US$ 0,08 (cabe no limite atual; manter US$ 2,00) |
@@ -48,7 +48,9 @@ node --import tsx scripts/pilot.ts revoke-source aliexpress --note="motivo" --co
 node --import tsx scripts/pilot.ts authorize stylai-first-real-tryon-pilot --attempts=15 --limit-usd=2 --policy-references=on --note="quem autorizou e por quê"
 ```
 
-Sem `--commit` nada muda. Antes de aplicar: confirmar os termos de uso da Segmind e reativar a licença do operador, que está desativada. A chave e o piloto continuam pelos mecanismos existentes (`start-pilot.mjs --real --pilot=...`).
+Sem `--commit` nada muda. Licença: plano sandbox local da conta do piloto, ativo só até 2026-11-25 00:00 UTC.
+
+Subir em modo real: `node scripts/start-pilot.mjs --real --pilot=stylai-first-real-tryon-pilot --catalog=aliexpress_affiliate` (acrescentar `--composer --composer-calls-per-day=10` liga o Haiku, cobrado à parte). Para fechar: `pilot.ts authorize ... --policy-references=off --commit` ou `pilot.ts pause`.
 
 ## Testes
 
