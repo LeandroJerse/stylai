@@ -444,3 +444,10 @@ Criado prompt de implementação baseado em Superpowers e nos módulos existente
 ### E26 — 2026-11-24 — Haiku ligado na validação real, autorizado por Leandro
 - Aplicação reiniciada em modo real com claude-haiku-5-5. Combinado: até 10 chamadas novas. O contador do dia já tinha 15 (anteriores ao fluxo), então o teto passado ao launcher foi 25. O contador zera às 00:00 UTC; depois disso o teto volta a valer 25 no dia.
 - Nenhuma chamada Haiku ou Segmind feita pelo agente; dependem do uso na tela.
+
+### E27 — 2026-11-24 — primeiro teste real de Leandro: defeitos relatados e pausa
+- Leandro aceitou o termo novo e buscou "me vista com roupas de verão" em modo real. Relato: "cliquei em montar conjunto, mas nada retornou". No servidor a busca terminou com 3 conjuntos em 28 s (Haiku real, 3 chamadas, US$ 0,00119 calculado); a tela não os deixou visíveis. Causa provável por leitura do código, ainda não reproduzida.
+- Também relatou: filtros de valor e nota ausentes, tela suja e títulos gigantes nos looks recentes. Os filtros já não existiam neste modo desde 2026-11-21 (API sem preferências).
+- Defeitos de seleção vistos nos dados: público misturado, manga longa e Natal em pedido de verão, nenhuma parte de baixo aproveitada.
+- O E2E 55/55 não pegou nada disso. Tudo anotado em docs/superpowers/plans/2026-11-24-estudio-limpeza-e-filtros.md. Nenhum código alterado; worktree stylai-motor-ui (branch feat/studio-ui-cleanup) criado e limpo.
+- Nenhuma imagem real gerada: piloto 11 de 15. Aplicação deixada no ar em modo real.
