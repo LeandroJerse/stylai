@@ -109,17 +109,24 @@ const failureMessages: Record<string, string> = {
   selection_changed: "Uma peça mudou (preço, título ou link) desde o pedido; monte o look de novo.",
   budget_insufficient_for_layers: "O orçamento disponível não cobre todas as camadas deste look; nada foi enviado ao provador. Gere com menos peças ou aguarde o operador.",
   budget_check_unavailable: "Não conseguimos conferir o orçamento antes de gerar; nada foi enviado ao provador.",
+  garment_download_failed: "Não conseguimos baixar a imagem de uma peça; nada foi enviado ao provador.",
+  garment_image_changed: "A imagem de uma peça mudou depois da conferência; nada foi enviado ao provador.",
+  outfit_input_invalid: "As imagens deste conjunto são grandes demais para o provador; nada foi enviado.",
   intermediate_output_invalid: "Uma etapa intermediária da composição devolveu imagem inválida.",
   intermediate_not_reachable_by_provider: "Uma etapa intermediária não pôde ser enviada ao provador neste ambiente.",
 }
-const FRAMING_MESSAGE = "Sua foto de frente aprovada não mostra o corpo inteiro: ela serve só para peças de cima. Para calças, saias e vestidos, envie no Perfil uma foto de corpo inteiro."
+export const FRAMING_MESSAGE = "Sua foto de frente aprovada não mostra o corpo inteiro: ela serve só para peças de cima. Para calças, saias e vestidos, envie no Perfil uma foto de corpo inteiro."
 const steps: Record<string, string> = { queued: "Na fila", running: "Vestindo as peças escolhidas" }
 
-function presentJob(row: z.infer<typeof jobRow>) {
-  const base = failureMessages[row.failure_code ?? ""]
-    ?? (row.failure_code?.startsWith("provider_rejected") ? "O provador recusou o pedido."
-      : row.failure_code?.startsWith("provider_failed_layer_") ? `O provador falhou na camada ${row.failure_code.slice(-1)} da composição; nenhuma versão foi criada.`
+export function failureMessage(code: string | null): string {
+  return failureMessages[code ?? ""]
+    ?? (code?.startsWith("provider_rejected") || code?.startsWith("segmind_http_") || code?.startsWith("gemini_http_") ? "O provador recusou o pedido."
+      : code?.startsWith("provider_failed_layer_") ? `O provador falhou na camada ${code.slice(-1)} da composição; nenhuma versão foi criada.`
       : "Não foi possível gerar o look.")
+}
+
+function presentJob(row: z.infer<typeof jobRow>) {
+  const base = failureMessage(row.failure_code)
   return {
     id: row.id,
     kind: row.parent_version_id ? "tryon" : "generate",

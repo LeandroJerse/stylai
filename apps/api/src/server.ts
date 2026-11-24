@@ -2,7 +2,7 @@ import { resolve } from "node:path"
 import { readServiceConfig } from "@stylai/config"
 import type { CatalogSourceMode } from "@stylai/contracts"
 import { createAliExpressAffiliateClient, createAliExpressCatalogService, createTikTokCatalogCache, createTikTokCreatorClient } from "@stylai/commerce"
-import { VERTEX_OUTFIT_MODEL, VERTEX_OUTFIT_RESERVE, segmindOutfitProfile, createAnthropicComposer, createInterpretationCache, DEFAULT_COMPOSER_MODEL, FAL_FASHN_MODEL, findPrice } from "@stylai/ai"
+import { VERTEX_OUTFIT_MODEL, VERTEX_OUTFIT_RESERVE, segmindOutfitProfile, createAnthropicComposer, createAnthropicOutfitAgents, createInterpretationCache, createReferenceDownloader, DEFAULT_COMPOSER_MODEL, FAL_FASHN_MODEL, findPrice } from "@stylai/ai"
 import { buildApp } from "./app.js"
 import {
   readSupabaseConfig, probeFoundation, readPrivateDatabaseConfig, createPrivateDatabase, createLocalObjectStore, createSupabaseObjectStore, createAdminClient, defaultLocalStoreDir,
@@ -11,6 +11,9 @@ import { createSupabaseAuthProvider } from "./modules/auth/provider.js"
 import { readSessionKeys } from "./modules/auth/session-crypto.js"
 import { createSessionService } from "./modules/auth/session-service.js"
 import { createPoseAnalyzer } from "./modules/photos/pose-analyzer.js"
+import { listLocalCatalog } from "./modules/catalog/routes.js"
+import { createReferencePreparer } from "./modules/outfits/references.js"
+import { createOutfitSearch, type OutfitSourceKind } from "./modules/outfits/search.js"
 import { createTikTokConnection } from "./modules/integrations/tiktok/connection.js"
 
 const config = readServiceConfig(process.env)
@@ -111,6 +114,24 @@ const reservePerLayerMicros = segmindOutfit ? outfitProfile!.reserveMicros : ver
   ? (process.env.FAL_RESERVE_USD_MICROS?.trim() || "75000") : (process.env.SEGMIND_RESERVE_USD_MICROS?.trim() || "500000"))
 const renderPrice = findPrice("fal", FAL_FASHN_MODEL)
 
+// Autonomous outfits: the curated catalog or real AliExpress search (the TikTok source is not supported by this flow).
+const acquireAgentCall = async () => Boolean(database && await database.call("take_provider_call_slot", "anthropic", composerCallsPerMinute)
+  && await database.call("take_provider_daily_slot", "anthropic", composerCallsPerDay))
+const outfitSource: OutfitSourceKind | null = catalogMode === "tiktok_shop" ? null : catalogMode === "aliexpress_affiliate" ? "aliexpress_affiliate" : "curated"
+const outfitSearch = database && store && outfitSource ? createOutfitSearch({
+  db: database, source: outfitSource, aliexpressCatalog, listCatalog: () => listLocalCatalog(database, catalogMode),
+  composer, interpretationCache, agents: composerEnabled ? createAnthropicOutfitAgents({ apiKey: process.env.ANTHROPIC_API_KEY!.trim(), model: composerModel }) : null,
+  acquireAgentCall, agentPrice: composerPrice,
+  preparer: createReferencePreparer({ db: database, store, download: createReferenceDownloader({ hosts: ["alicdn.com", "aliexpress-media.com"] }) }),
+  log: (event) => app.log.warn(event, "outfit search fallback"),
+}) : null
+// Batches run on the one-call-per-outfit models of Segmind (FLUX 3 Klein by default); simulated = loopback, free.
+const outfitRender = generationMode !== "disabled" && outfitProfile ? {
+  mode: generationMode, provider: "segmind", providerLabel: "Segmind", model: outfitProfile.model, reserveMicros: outfitProfile.reserveMicros, priceMicros: outfitProfile.priceMicros,
+  pilotId: generationMode === "real" ? process.env.STYLAI_PILOT_ID?.trim() || null : null,
+} : null
+if (outfitRender?.mode === "real" && !outfitRender.pilotId) console.warn("STYLAI_PILOT_ID is not set for the API: real outfit batches are disabled.")
+
 const rateLimitPerMinute = Number(process.env.STYLAI_RATE_LIMIT_PER_MINUTE ?? 120)
 if (!Number.isInteger(rateLimitPerMinute) || rateLimitPerMinute < 10 || rateLimitPerMinute > 5000) throw new Error("Invalid STYLAI_RATE_LIMIT_PER_MINUTE")
 const app = await buildApp({
@@ -135,6 +156,11 @@ const app = await buildApp({
         && await database.call("take_provider_daily_slot", "anthropic", composerCallsPerDay),
       renderPricePerLayerMicros: renderPrice?.kind === "per_image" ? renderPrice.perImageMicros : 75_000n,
       composerPrice },
+    ...(outfitSearch && outfitSource ? {
+      outfits: { db: database, resolveActor, publicBaseUrl, source: outfitSource, model: composer ? composerModel : null, search: outfitSearch },
+      outfitRenders: { db: database, store, keys, resolveActor, publicBaseUrl, photoPolicyVersion, search: outfitSearch, aliexpressCatalog,
+        render: outfitRender && (outfitRender.mode === "simulated" || outfitRender.pilotId) ? outfitRender : null },
+    } : {}),
   } : {}),
   tiktok: { appKey: tiktokAppKey, appSecret: tiktokAppSecret, hasCreatorToken: Boolean(tiktokCreatorToken), tokenAvailable: async () => Boolean(await getTikTokToken()),
     ...(tiktokConnection && resolveActor ? {

@@ -16,6 +16,7 @@ import { registerTikTokIntegrationRoutes, type TikTokRouteDeps } from "./modules
 import { registerCompositionRoutes, type CompositionDeps } from "./modules/studio/compositions.js"
 import { registerAliExpressIntegrationRoutes, type AliExpressRouteDeps } from "./modules/integrations/aliexpress/routes.js"
 import type { PrivateDatabase } from "@stylai/supabase"
+import { registerOutfitRenderRoutes, type OutfitRenderDeps } from "./modules/outfits/renders.js"
 import { registerOutfitRoutes, type OutfitRouteDeps } from "./modules/outfits/routes.js"
 import { registerPrivacyRoutes, type PrivacyDeps } from "./modules/privacy/routes.js"
 
@@ -32,6 +33,7 @@ export interface AppDependencies {
   search?: SearchDeps
   compositions?: CompositionDeps
   outfits?: OutfitRouteDeps
+  outfitRenders?: OutfitRenderDeps
   tiktok?: TikTokRouteDeps
   aliexpress?: AliExpressRouteDeps
   privacy?: PrivacyDeps
@@ -76,6 +78,7 @@ export async function buildApp(deps: AppDependencies) {
   if (deps.search) await registerSearchRoutes(app, deps.search, parseCatalogPage)
   if (deps.compositions) await registerCompositionRoutes(app, deps.compositions)
   if (deps.outfits) await registerOutfitRoutes(app, deps.outfits)
+  if (deps.outfitRenders) await registerOutfitRenderRoutes(app, deps.outfitRenders)
   if (deps.photos) await registerPhotoRoutes(app, deps.photos)
   if (deps.studio) await registerStudioRoutes(app, deps.studio)
   if (deps.tiktok) await registerTikTokIntegrationRoutes(app, deps.tiktok)

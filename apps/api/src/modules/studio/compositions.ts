@@ -18,7 +18,7 @@ import type { Composer, InterpretationCache } from "@stylai/ai"
 import { ComposerResponseError } from "@stylai/ai"
 import type { PrivateDatabase } from "@stylai/supabase"
 import { PrivateDatabaseError } from "@stylai/supabase"
-import { parseCatalogPage, presentAliExpressProduct, presentProduct, type CatalogRow } from "../catalog/routes.js"
+import { listLocalCatalog, parseCatalogPage, presentAliExpressProduct, presentProduct, type CatalogRow } from "../catalog/routes.js"
 
 const uuid = z.string().uuid()
 const slotId = z.enum(["upper", "lower", "dress", "outer"])
@@ -64,15 +64,7 @@ export async function registerCompositionRoutes(app: FastifyInstance, deps: Comp
   const base = deps.publicBaseUrl ?? ""
   const source = deps.catalogMode === "aliexpress_affiliate" ? "aliexpress_affiliate" : deps.catalogMode === "tiktok_shop" ? "tiktok_shop" : "curated"
 
-  const listLocal = deps.listCatalog ?? (async () => {
-    const rows: CatalogRow[] = []
-    for (let offset = 0; offset < 480; offset += 48) {
-      const page = parseCatalogPage(await deps.db.call("list_catalog_products", 48, offset, null))
-      rows.push(...page.items)
-      if (page.items.length < 48 || rows.length >= page.total) break
-    }
-    return deps.catalogMode === "curated_pilot" ? rows.filter((r) => !r.fixture && r.partner?.name === PILOT_SELLER_NAME) : rows
-  })
+  const listLocal = deps.listCatalog ?? (() => listLocalCatalog(deps.db, deps.catalogMode))
 
   const relevance = (intent: CompositionIntent, name: string) => {
     const n = normalizeText(name)

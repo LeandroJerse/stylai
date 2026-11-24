@@ -33,6 +33,17 @@ export type CatalogRow = z.infer<typeof productRow>
 const pageRow = z.object({ total: z.number().int(), items: z.array(productRow) })
 export const parseCatalogPage = (raw: unknown) => pageRow.parse(raw)
 
+/** The whole reviewed local catalog of this mode (bounded). */
+export async function listLocalCatalog(db: PrivateDatabase<"api">, mode: CatalogSourceMode): Promise<CatalogRow[]> {
+  const rows: CatalogRow[] = []
+  for (let offset = 0; offset < 480; offset += 48) {
+    const page = parseCatalogPage(await db.call("list_catalog_products", 48, offset, null))
+    rows.push(...page.items)
+    if (page.items.length < 48 || rows.length >= page.total) break
+  }
+  return mode === "curated_pilot" ? rows.filter((r) => !r.fixture && r.partner?.name === PILOT_SELLER_NAME) : rows
+}
+
 /** Test-catalog images are stored under a reserved host and served by this API for display. */
 export function displayImageUrl(url: string, publicBaseUrl: string): string {
   return isTestImageUrl(url) ? `${publicBaseUrl.replace(/\/+$/, "")}/catalog/test-images/${url.slice(TEST_IMAGE_ORIGIN.length)}` : url

@@ -54,7 +54,8 @@ export function openTokens(keys: SessionKeys, sealed: string, version: string): 
 export const newCookieValue = (): string => b64(randomBytes(32))
 export const cookieHash = (value: string): string => createHash("sha256").update(value, "utf8").digest("hex")
 
-export type MediaKind = "look" | "photo"
+export type MediaKind = "look" | "photo" | "comparison"
+const MEDIA_PATH: Record<MediaKind, string> = { look: "looks", photo: "photos", comparison: "comparisons" }
 
 function mediaSignature(keys: SessionKeys, kind: MediaKind, id: string, user: string, exp: number): string {
   return createHmac("sha256", keys.mediaKey).update(`${kind}\n${id}\n${user}\n${exp}`).digest("base64url")
@@ -68,7 +69,7 @@ export function signMediaUrl(base: string, keys: SessionKeys, kind: MediaKind, i
   const bucket = 300
   const exp = Math.ceil((Math.floor(nowMs / 1000) + ttlSeconds) / bucket) * bucket
   const params = new URLSearchParams({ u: user, e: String(exp), s: mediaSignature(keys, kind, id, user, exp) })
-  return `${base}/media/${kind === "look" ? "looks" : "photos"}/${id}?${params.toString()}`
+  return `${base}/media/${MEDIA_PATH[kind]}/${id}?${params.toString()}`
 }
 
 export function verifyMediaSignature(keys: SessionKeys, kind: MediaKind, id: string, user: string, exp: number, signature: string, nowMs = Date.now()): boolean {

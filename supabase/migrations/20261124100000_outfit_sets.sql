@@ -793,7 +793,7 @@ end $$;
 
 create function private.read_outfit_render(p_user uuid,p_id uuid) returns jsonb
 language sql stable security definer set search_path='' as $$
-  select jsonb_build_object('id',r.id,'mode',r.mode,'provider',r.provider,'model',r.model,'reserve_usd_micros',r.reserve_usd_micros,'created_at',r.created_at,
+  select jsonb_build_object('id',r.id,'request_key',r.request_key,'mode',r.mode,'provider',r.provider,'model',r.model,'reserve_usd_micros',r.reserve_usd_micros,'created_at',r.created_at,
     'comparison_state',r.comparison_state,'comparison_error',r.comparison_error,'comparison_layout',r.comparison_layout,
     'comparison',(select jsonb_build_object('width',a.width,'height',a.height) from private.assets a where a.id=r.comparison_asset_id and a.state='ready' and (a.expires_at is null or a.expires_at>clock_timestamp())),
     'photo_current',r.photo_id=(select a.id from private.assets a where a.user_id=r.user_id and a.kind='body_photo' and a.body_angle='front' and a.state='ready' and a.validation_status='approved' and a.expires_at>clock_timestamp() order by a.created_at desc,a.id limit 1),
