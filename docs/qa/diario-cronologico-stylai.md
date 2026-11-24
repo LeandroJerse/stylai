@@ -499,3 +499,6 @@ Criado prompt de implementação baseado em Superpowers e nos módulos existente
 - Conferido com dado real: a imagem das 17:46 baixada pelo histórico tem o mesmo tamanho da guardada (1.708.024 bytes, 880x1184). A recuperação completa foi provada em teste de banco; nenhum caso real ocorreu ainda.
 - Migração 20261124230000 no banco local, com backup.
 - PRIVACIDADE, em aberto: as imagens geradas ficam no Segmind em endereço que abre sem login (conferido: 4 de 4, HTTP 200 sem chave) e, pela documentação, sem prazo para apagar. O termo atual fala da foto enviada, não da imagem gerada guardada pelo provedor.
+
+### E34 — 2026-11-24 — Rascunhos de privacidade (nada publicado, nada enviado)
+- A pedido de Leandro: proposta de termo da foto (`docs/legal/2026-11-24-termo-foto-proposta.md`) e mensagem ao Segmind (`docs/legal/2026-11-24-segmind-mensagem-suporte.md`). O termo em vigor não mudou; a mensagem não foi enviada.
