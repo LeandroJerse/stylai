@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseLook, parseProduct, parseStudioConfig } from "../src/api/parse"
+import { parseFacets, parseLook, parseProduct, parseStudioConfig } from "../src/api/parse"
 import { rankOffers, sumLookWith, withOffer } from "../src/lib/offers"
 
 const product = (over: Record<string, unknown> = {}) => ({
@@ -19,6 +19,24 @@ const offers = [
 ]
 
 describe("parseProduct offers", () => {
+  test("retains a valid expiry from the affiliate offer and accepts older responses without it", () => {
+    const offerExpiresAt = "2026-11-25T18:30:00.000Z"
+    expect(parseProduct(product({ offerExpiresAt })).offerExpiresAt).toBe(offerExpiresAt)
+    expect(parseProduct(product()).offerExpiresAt).toBeNull()
+  })
+  test("parses only valid published collections, and accepts old facet responses", () => {
+    const collections = [{ id: "linho", label: "Linho", count: 4 }, { label: "Inválida" }]
+    expect(parseFacets({ collections }).collections).toEqual([{ id: "linho", label: "Linho", count: 4 }])
+    expect(parseFacets({}).collections).toEqual([])
+  })
+  test("an expired offer exposes neither old prices nor links, even when changing its store", () => {
+    const p = parseProduct(product({ offers, offerExpiresAt: "2000-01-01T00:00:00Z" }))
+    const selected = withOffer(p, "oeste")
+    expect(selected.partner.name).toBe("Vitrine Oeste")
+    expect(selected.price).toBeNull()
+    expect(selected.links).toEqual({ affiliateUrl: null, productUrl: null })
+    expect(rankOffers(p).every((o) => o.price === null && o.links.affiliateUrl === null && o.links.productUrl === null)).toBe(true)
+  })
   test("own store first, then one offer per other store", () => {
     const p = parseProduct(product({ offers: [...offers, offers[0], { partner: { id: "aurora" }, price: { amount: 1 } }, { price: { amount: 5 } }, "junk"] }))
     expect(p.offers.map((o) => o.partner.id)).toEqual(["aurora", "sul", "oeste", "linho"])

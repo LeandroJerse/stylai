@@ -38,6 +38,17 @@ async function verifyConcurrency() {
   console.log("Multi-session PostgreSQL checks passed: request idempotency and shared procurement funding.")
 }
 let started = false
+async function verifyAffiliateConcurrency() {
+  const claim = "select coalesce(private.claim_affiliate_collection('concurrent-collection',600)->>'token','not_claimed')"
+  const results = await Promise.all([
+    session(`set role stylai_catalog_worker; ${claim}; select pg_sleep(0.3)`),
+    session(`set role stylai_catalog_worker; ${claim}`),
+  ])
+  const claims = results.map((result) => result.stdout.trim())
+  assert.equal(claims.filter((token) => /^[0-9a-f-]{36}$/.test(token)).length, 1, "two workers leased the same collection")
+  assert.equal(claims.filter((token) => token === "not_claimed").length, 1)
+  console.log("Concurrent PostgreSQL checkout gave one worker the affiliate collection.")
+}
 // Two accounts ask for a two-panel batch at the same time; the shared daily budget fits only one whole batch.
 // And one account double-clicks from two connections: one batch.
 async function verifyOutfitConcurrency() {
@@ -113,12 +124,13 @@ try {
   const migrations = readdirSync(resolve(root, "supabase/migrations"))
     .filter((file) => /^\d{14}_.+\.sql$/.test(file)).sort()
     .map((file) => `supabase/migrations/${file}`)
-  const files = ["supabase/tests/bootstrap-postgres.sql", ...migrations, "supabase/tests/foundation.sql", "supabase/tests/domain.sql", "supabase/tests/commerce.sql", "supabase/tests/server-boundary.sql", "supabase/tests/motor-slice.sql", "supabase/tests/studio-journey.sql", "supabase/tests/composition.sql", "supabase/tests/source-references.sql", "supabase/tests/layer-budget.sql", "supabase/tests/outfits.sql", "supabase/tests/pilot-budget.sql", "supabase/tests/privacy-completion.sql", "supabase/tests/concurrency-fixtures.sql", "supabase/tests/pilot-budget.sql"]
+  const files = ["supabase/tests/bootstrap-postgres.sql", ...migrations, "supabase/tests/affiliate-catalog.sql", "supabase/tests/foundation.sql", "supabase/tests/domain.sql", "supabase/tests/commerce.sql", "supabase/tests/server-boundary.sql", "supabase/tests/motor-slice.sql", "supabase/tests/studio-journey.sql", "supabase/tests/composition.sql", "supabase/tests/source-references.sql", "supabase/tests/layer-budget.sql", "supabase/tests/outfits.sql", "supabase/tests/pilot-budget.sql", "supabase/tests/privacy-completion.sql", "supabase/tests/concurrency-fixtures.sql", "supabase/tests/pilot-budget.sql"]
   const input = files.map((file) => readFileSync(resolve(root,file), "utf8")).join("\n")
   const test = docker(["exec", "-i", name, "psql", "-U", "postgres", "-d", "stylai_test", "-v", "ON_ERROR_STOP=1"], { input })
   if (test.status !== 0) throw new Error("Migration/RLS assertion failed:\n" + test.stderr)
   console.log(test.stdout.split("\n").filter((line) => line.includes("assertions passed")).join("\n"))
   await verifyConcurrency()
+  await verifyAffiliateConcurrency()
   await verifyOutfitConcurrency()
   await verifyPrivacyRecovery()
   console.log("Real PostgreSQL 17 role, RLS and transaction tests passed using Auth/Storage compatibility fixtures.")

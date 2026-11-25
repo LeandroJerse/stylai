@@ -39,6 +39,7 @@
       "dependencies": {
         "@mediapipe/tasks-vision": "1.2.3",
         "@phosphor-icons/react": "2.1.10",
+        "@stylai/contracts": "workspace:*",
         "@tanstack/react-query": "5.62.7",
         "react": "19.3.1",
         "react-dom": "19.3.1",
@@ -59,6 +60,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@stylai/ai": "workspace:*",
+        "@stylai/commerce": "workspace:*",
         "@stylai/config": "workspace:*",
         "@stylai/contracts": "workspace:*",
         "@stylai/supabase": "workspace:*",

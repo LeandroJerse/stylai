@@ -9,6 +9,7 @@ import { setTimeout as delay } from "node:timers/promises"
 import { createPrivateDatabase, PrivateDatabaseError } from "../packages/supabase/src/private-database.js"
 import { readPrivateDatabaseConfig, privateDatabaseRoles, type DatabasePurpose } from "../packages/supabase/src/private-config.js"
 import { buildApp } from "../apps/api/src/app.js"
+import { verifyAffiliateCatalogFlow } from "./test-affiliate-catalog-flow.js"
 
 const root = process.cwd()
 const name = `stylai-boundary-test-${randomUUID().slice(0,8)}`
@@ -53,9 +54,18 @@ try {
   }
   const api=createPrivateDatabase(config('api')); clients.push(api)
   const worker=createPrivateDatabase(config('ai_worker')); clients.push(worker)
+  const catalogWorker=createPrivateDatabase(config('catalog_worker')); clients.push(catalogWorker)
   const payments=createPrivateDatabase(config('payments')); clients.push(payments)
   const procurement=createPrivateDatabase(config('procurement')); clients.push(procurement)
-  for(const client of [api,worker,payments,procurement]) assert.equal(await client.probe(),'ready')
+  for(const client of [api,worker,catalogWorker,payments,procurement]) assert.equal(await client.probe(),'ready')
+  const catalogClaim=await catalogWorker.call('claim_affiliate_collection','driver-fixture',600)
+  assert.match(catalogClaim?.token ?? '',/^[0-9a-f-]{36}$/)
+  assert.equal(await catalogWorker.call('claim_affiliate_collection','driver-fixture',600),null)
+  assert.equal(await catalogWorker.call('retry_affiliate_collection','driver-fixture',catalogClaim!.token,new Date(Date.now()+300_000).toISOString()),true)
+  assert.deepEqual(await api.call('list_affiliate_offers',{limit:1}),{items:[],nextCursor:null,total:0})
+  const untypedCatalogWorker=catalogWorker as unknown as {call(name:string,...values:unknown[]):Promise<unknown>}
+  assert.equal((await rejected(untypedCatalogWorker.call('read_affiliate_offer','aliexpress:100'))).outcome,'not_dispatched')
+  await verifyAffiliateCatalogFlow(api, catalogWorker)
   assert.equal(await worker.call('claim_ai_job',randomUUID()),null)
   const args=[a,"quote'; select pg_sleep(30); --",'a'.repeat(64),photo,'test-tops','test-v1','blusa',null,null] as const
   const job=await api.call('enqueue_ai_job',...args)
@@ -174,7 +184,7 @@ try {
     for(const socket of sockets)socket.destroy()
     await new Promise<void>((done,fail)=>proxy.close(error=>error?fail(error):done()))
   }
-  console.log('Real Node/PostgreSQL boundary passed: all four role logins, owned/replayed calls, foreign denial, fencing, financial separation, readiness, role/ACL revocation, backend termination and committed-write response loss without automatic retries.')
+  console.log('Real Node/PostgreSQL boundary passed: five role logins, restricted affiliate catalog calls, owned/replayed calls, foreign denial, fencing, financial separation, readiness, role/ACL revocation, backend termination and committed-write response loss without automatic retries.')
 } catch(error) {
   // Tests can include secret-bearing connection errors; never print their raw form.
   console.error(error instanceof assert.AssertionError ? `Boundary assertion failed: ${error.message}` : 'Private boundary integration failed; no hosted database was touched.')

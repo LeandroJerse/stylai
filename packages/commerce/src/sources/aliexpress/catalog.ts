@@ -47,15 +47,16 @@ export function safeAliExpressUrl(raw: string | null, hostSuffixes: string[]): s
   try {
     const url = new URL(raw)
     const allowed = hostSuffixes.some((suffix) => url.hostname === suffix || url.hostname.endsWith(`.${suffix}`))
-    return url.protocol === "https:" && allowed && !url.username && !url.password ? url.toString() : null
+    return url.protocol === "https:" && allowed && !url.port && !url.username && !url.password ? url.toString() : null
   } catch { return null }
 }
 
 /** Plain product page without query/hash: provider tracking/pricing parameters (e.g. pdp_npi) are not ours to forward. */
-function canonicalProductUrl(raw: string | null): string | null {
+function canonicalProductUrl(raw: string | null, externalProductId: string): string | null {
   const safe = safeAliExpressUrl(raw, ["aliexpress.com", "aliexpress.us"])
   if (!safe) return null
   const url = new URL(safe)
+  if (url.pathname.match(/\/(?:item|i)\/(\d{1,20})\.html$/)?.[1] !== externalProductId) return null
   return `${url.origin}${url.pathname}`
 }
 
@@ -137,7 +138,7 @@ export function normalizeAliExpressProduct(raw: AliExpressProductRaw, observedAt
       priceMinor,
       currency: "BRL",
       priceObservedAt: priceMinor !== null ? observedAtIso : null,
-      productUrl: canonicalProductUrl(raw.detailUrl),
+      productUrl: canonicalProductUrl(raw.detailUrl, raw.productId),
       // Never adopt product.query's promotion_link: tracked links only come from link.generate (search.ts).
       affiliateUrl: null,
       image,
@@ -162,17 +163,24 @@ export interface AliExpressCatalogPage {
 }
 
 export class AliExpressCatalogError extends Error {
-  constructor(readonly kind: AliExpressErrorKind, readonly code: string | null) { super(`aliexpress_${kind}`) }
+  constructor(
+    readonly kind: AliExpressErrorKind,
+    readonly code: string | null,
+    readonly providerMessage?: string | null,
+  ) { super(`aliexpress_${kind}`) }
 }
 
 /** Keyword-bound connector; the cursor is the next page number. Failures throw, never fall back to fixtures. */
-export function createAliExpressCatalogConnector(options: { client: AliExpressAffiliateClient; keywords: string; pageSize?: number; now?: () => Date }) {
+export function createAliExpressCatalogConnector(options: { client: AliExpressAffiliateClient; keywords: string; categoryIds?: string[]; pageSize?: number; now?: () => Date }) {
   const now = options.now ?? (() => new Date())
   async function page(cursor: string | null): Promise<AliExpressCatalogPage> {
     const pageNo = cursor === null ? 1 : Number(cursor)
     if (!Number.isSafeInteger(pageNo) || pageNo < 1) throw new AliExpressCatalogError("invalid_response", "invalid_cursor")
-    const result = await options.client.queryProducts({ keywords: options.keywords, pageNo, pageSize: options.pageSize ?? 20 })
-    if (!result.ok) throw new AliExpressCatalogError(result.kind, result.code)
+    const result = await options.client.queryProducts({
+      keywords: options.keywords, pageNo, pageSize: options.pageSize ?? 20,
+      ...(options.categoryIds ? { categoryIds: options.categoryIds } : {}),
+    })
+    if (!result.ok) throw new AliExpressCatalogError(result.kind, result.code, result.message)
     const observedAt = now().toISOString()
     const seen = new Set<string>()
     const items: NormalizedAliExpressCatalogItem[] = []

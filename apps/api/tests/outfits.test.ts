@@ -16,13 +16,16 @@ const uuid = (n: number) => `31000000-0000-4000-8000-${String(n).padStart(12, "0
 const ready = (i: Pick<ReferenceItem, "externalProductId" | "image">): PreparedReference =>
   ({ status: "ready", reference: { productId: uuid(Number(i.externalProductId)), variantId: uuid(900 + Number(i.externalProductId)), imageUrl: i.image, sha256: "a".repeat(64) } })
 
-async function make(opts: { store?: Parameters<typeof fakeStore>[0]; blocked?: Record<string, string>; agents?: OutfitAgents; composer?: Composer; acquire?: () => Promise<boolean>; noStore?: boolean; gate?: Promise<void> } = {}) {
+async function make(opts: { store?: Parameters<typeof fakeStore>[0]; blocked?: Record<string, string>; agents?: OutfitAgents; composer?: Composer; acquire?: () => Promise<boolean>; noStore?: boolean; gate?: Promise<void>; published?: NormalizedAliExpressCatalogItem[] } = {}) {
   const f = fakeDb()
   const store = fakeStore(opts.store ?? all)
   const prepared: string[] = []
   const work: Promise<void>[] = []
   const deps: OutfitSearchDeps = {
     db: f.db, source: "aliexpress_affiliate", aliexpressCatalog: opts.noStore ? null : store.service, listCatalog: async () => [], agents: opts.agents ?? null, composer: opts.composer ?? null,
+    ...(opts.published ? { findPublishedOffers: async () => ({
+      items: opts.published!.map((piece) => ({ ...piece, catalogPublished: true, offerExpiresAt: new Date(Date.now() + 600_000).toISOString() })), nextCursor: null,
+    }) } : {}),
     acquireAgentCall: opts.acquire, agentPrice: { inputPerMTok: 1_000_000n, outputPerMTok: 5_000_000n },
     preparer: { prepare: async (items) => {
       if (opts.gate) await opts.gate
@@ -54,6 +57,47 @@ const agents = (over: Partial<OutfitAgents> = {}): OutfitAgents => ({
 })
 
 describe("outfit search", () => {
+  test("Buscar outra returns a published candidate and its affiliate link without another provider request", async () => {
+    const published = item(64, "shirts", "Camisa polo masculina branca", 6900)
+    const t = await make({ published: [published] })
+    try {
+      const { search } = await t.run()
+      const set = search.sets.find((entry: { kind: string }) => entry.kind === "assembled")
+      const callsBeforeOptions = t.store.queries.length
+      const res = await t.call("POST", `/v1/studio/outfit-sets/${set.id}/options`, { slot: "upper", query: "camisa polo" })
+      expect(res.statusCode).toBe(200)
+      expect(t.store.queries).toHaveLength(callsBeforeOptions)
+      expect(res.json().alternatives.upper[0]).toMatchObject({
+        product: { id: published.canonicalKey, offerExpiresAt: expect.any(String), links: { affiliateUrl: published.affiliateUrl } },
+        tryOn: { ready: false },
+      })
+    } finally { await t.app.close() }
+  })
+
+  test("a published offer without an affiliate link does not suppress live search or hide a quota refusal", async () => {
+    const invalid = { ...item(64, "shirts", "Camisa polo masculina branca"), affiliateUrl: null }
+    const t = await make({ published: [invalid], store: (query) => query.includes("polo") ? "limited" : all(query) })
+    try {
+      const { search } = await t.run()
+      const set = search.sets.find((entry: { kind: string }) => entry.kind === "assembled")
+      const before = t.store.queries.length
+      const response = await t.call("POST", `/v1/studio/outfit-sets/${set.id}/options`, { slot: "upper", query: "camisa polo" })
+      expect(t.store.queries).toHaveLength(before + 1)
+      expect(response.statusCode).toBe(429)
+      expect(response.json().error.code).toBe("source_rate_limited")
+    } finally { await t.app.close() }
+  })
+
+  test("quota exhaustion on link generation is distinct from a successful empty search", async () => {
+    const t = await make({ published: [], store: (query) => query.includes("polo") ? "links_limited" : all(query) })
+    try {
+      const { search } = await t.run()
+      const set = search.sets.find((entry: { kind: string }) => entry.kind === "assembled")
+      const response = await t.call("POST", `/v1/studio/outfit-sets/${set.id}/options`, { slot: "upper", query: "camisa polo" })
+      expect(response.statusCode).toBe(429)
+    } finally { await t.app.close() }
+  })
+
   test("real stages, complete outfits searched first, up to four coordinated sets persisted with prepared references", async () => {
     const t = await make()
     try {

@@ -1,16 +1,25 @@
 /** One coordinated outfit: the pieces as photos (tap one to see, swap or lock it), the total and the actions. */
 import { useId, useState, type FormEvent } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowUpRight, ArrowsClockwise, CaretDown, CircleNotch, ClockCounterClockwise, Lock, LockOpen, MagnifyingGlass } from "@phosphor-icons/react"
+import { ArrowsClockwise, CaretDown, CircleNotch, ClockCounterClockwise, Lock, LockOpen, MagnifyingGlass } from "@phosphor-icons/react"
 import { outfitsApi, type OptionsFound, type OutfitPiece, type OutfitSet, type OutfitSlotId } from "../../api/outfits"
 import type { Money } from "../../api/types"
 import { useStore } from "../../app/store"
 import { outfitKeys, type Outfits } from "../../app/useOutfits"
-import { resolvePartnerLink } from "../../lib/links"
 import { shortPieceName } from "../../lib/titles"
+import { useOfferExpiry } from "../../lib/useOfferExpiry"
+import { PartnerPurchaseLink } from "../PartnerPurchaseLink"
 import { Photo } from "../ui"
 
 export const money = (m: Money | null): string => (m ? m.amount.toLocaleString("pt-BR", { style: "currency", currency: m.currency }) : "preço não informado")
+export function usePieceOfferPrice(piece: OutfitPiece): string {
+  const expired = useOfferExpiry(piece.product.offerExpiresAt)
+  return expired ? "Oferta expirada" : money(piece.product.price)
+}
+
+export const hasKnownTryOnBlock = ({ tryOn }: OutfitPiece): boolean =>
+  !tryOn.ready && tryOn.code !== "not_prepared" && tryOn.code !== "size_required"
+
 type Result = { ok: true } | { ok: false; message: string }
 type Run = (act: () => Promise<Result>) => void
 
@@ -21,20 +30,15 @@ export const storeFacts = (p: OutfitPiece): string | null => {
 }
 
 export function StoreLink({ piece, label = false }: { piece: OutfitPiece; label?: boolean }) {
-  const link = resolvePartnerLink(piece.product.links)
-  if (link.kind === "none") return null
-  return (
-    <a href={link.href} target="_blank" rel={link.rel} data-link-kind={link.kind} className={label ? "sa-btn sa-btn-secondary sa-btn-sm" : "sa-iconbtn"} aria-label={`Ver ${piece.product.name} na loja (${link.kind === "affiliate" ? "link comissionado" : "link da loja"})`}>
-      {label ? "Ver na loja" : null} <ArrowUpRight size={label ? 16 : 18} aria-hidden="true" />
-    </a>
-  )
+  return <PartnerPurchaseLink product={piece.product} label={label ? "Ver na loja" : undefined} />
 }
 
 /** A piece as a photo. Tapping opens its details below the photos of the outfit. */
 function PieceTile({ piece, locked, open, panelId, onToggle }: { piece: OutfitPiece; locked: boolean; open: boolean; panelId: string; onToggle: () => void }) {
+  const price = usePieceOfferPrice(piece)
   return (
     <li className="min-w-0" data-testid={`outfit-piece-${piece.slot}`} data-product-id={piece.product.id}>
-      <button type="button" className="sa-piecetile" aria-expanded={open} aria-controls={open ? panelId : undefined} aria-label={`${piece.label}: ${piece.product.name}, ${money(piece.product.price)}${locked ? ", travada" : ""}. Ver, trocar ou travar`} onClick={onToggle} data-testid={`outfit-swap-${piece.slot}`}>
+      <button type="button" className="sa-piecetile" aria-expanded={open} aria-controls={open ? panelId : undefined} aria-label={`${piece.label}: ${piece.product.name}, ${price}${locked ? ", travada" : ""}. Ver, trocar ou travar`} onClick={onToggle} data-testid={`outfit-swap-${piece.slot}`}>
         <span className="sa-piecetile-photo">
           <Photo image={piece.product.images[0] ?? null} alt="" className="h-full w-full" sizes="(min-width: 1024px) 14vw, 44vw" />
           <span className="sa-piecetile-mark" aria-hidden="true">
@@ -43,7 +47,7 @@ function PieceTile({ piece, locked, open, panelId, onToggle }: { piece: OutfitPi
           {piece.tryOn.ready ? null : <span className="sa-badge sa-badge-photo sa-piecetile-flag">Sem prova</span>}
         </span>
         <span className="sa-caption sa-clamp2 mt-2 font-semibold">{shortPieceName(piece.product.name)}</span>
-        <span className="sa-caption sa-muted sa-num block">{money(piece.product.price)}</span>
+        <span className="sa-caption sa-muted sa-num block">{price}</span>
       </button>
     </li>
   )
@@ -54,7 +58,8 @@ export function optionsText(f: OptionsFound): string {
   const why = [f.otherPart ? `${f.otherPart} de outra parte do look` : "", f.filtered ? `${f.filtered} fora dos seus filtros` : "", f.unsuitable ? `${f.unsuitable} que não servem para este look ou repetidas` : ""].filter(Boolean)
   const rest = why.length ? ` Ficaram de fora: ${why.join(", ")}.` : ""
   if (f.added) return `${f.added === 1 ? "1 opção nova" : `${f.added} opções novas`}, na frente da lista.`
-  if (!f.returned) return "A loja não devolveu nada para esta busca. Tente um nome mais curto, como “bermuda jeans”."
+  if (!f.returned && f.filtered) return "Nenhuma opção atende aos filtros deste look."
+  if (!f.returned) return "Nenhuma opção encontrada. Tente um nome mais curto, como “bermuda jeans”."
   return `Nenhuma opção nova.${rest}`
 }
 
@@ -77,12 +82,31 @@ function OptionSearch({ set, piece, outfits, busy }: { set: OutfitSet; piece: Ou
     <form className="grid gap-1" onSubmit={(e) => void submit(e)} noValidate>
       <div className="flex items-center gap-2">
         <input className="sa-field sa-field-sm min-w-0 flex-1" type="search" name="query" autoComplete="off" maxLength={80} value={query} placeholder="Buscar outra…" aria-label={`Buscar outra opção para ${piece.label}`} onChange={(e) => setQuery(e.target.value)} data-testid="outfit-option-query" />
-        <button type="submit" className="sa-iconbtn flex-none" aria-label="Buscar na loja" disabled={busy || sending} data-testid="outfit-option-search">
+        <button type="submit" className="sa-iconbtn flex-none" aria-label="Buscar outra peça" disabled={busy || sending} data-testid="outfit-option-search">
           {sending ? <CircleNotch size={20} className="sa-spin" aria-hidden="true" /> : <MagnifyingGlass size={20} aria-hidden="true" />}
         </button>
       </div>
-      <p className={`sa-caption ${note?.tone === "error" ? "sa-error-text" : "sa-muted"}`} role="status" data-testid="outfit-option-note">{sending ? "Buscando na loja…" : (note?.text ?? "")}</p>
+      <p className={`sa-caption ${note?.tone === "error" ? "sa-error-text" : "sa-muted"}`} role="status" data-testid="outfit-option-note">{sending ? "Buscando opções…" : (note?.text ?? "")}</p>
     </form>
+  )
+}
+
+function Alternative({ piece, busy, onUse }: { piece: OutfitPiece; busy: boolean; onUse: () => void }) {
+  const { product, tryOn } = piece
+  // "not_prepared" is checked by the API when the person chooses the piece.
+  const blocked = hasKnownTryOnBlock(piece)
+  const price = usePieceOfferPrice(piece)
+  return (
+    <li>
+      <button type="button" className="sa-alt" disabled={busy || blocked} data-testid="outfit-use-alternative"
+        data-product-id={product.id} aria-label={`Usar ${product.name}, ${price}`} title={tryOn.message ?? product.name} onClick={onUse}>
+        <span className="sa-alt-photo"><Photo image={product.images[0] ?? null} alt="" className="h-full w-full" /></span>
+        <span className="sa-caption sa-clamp2 mt-1 font-semibold">{shortPieceName(product.name)}</span>
+        <span className="sa-caption sa-num mt-1 block">{price}</span>
+      </button>
+      {blocked ? <span className="sa-caption sa-muted block">Sem prova</span> : null}
+      <PartnerPurchaseLink product={product} affiliateOnly />
+    </li>
   )
 }
 
@@ -120,29 +144,11 @@ function PieceDetail({ id, set, piece, outfits, busy, run, onClose }: { id: stri
           {alternatives.length ? (
             <ul className="sa-altstrip" aria-label={`Outras opções para ${piece.label}`}>
               {alternatives.slice(0, 24).map((a) => (
-                <li key={a.product.id}>
-                  <button
-                    type="button"
-                    className="sa-alt"
-                    disabled={busy}
-                    data-testid="outfit-use-alternative"
-                    data-product-id={a.product.id}
-                    aria-label={`Usar ${a.product.name}, ${money(a.product.price)}`}
-                    title={a.product.name}
-                    onClick={() =>
-                      run(async () => {
-                        const r = await outfits.swap(set, piece.slot, a.product.id)
-                        if (r.ok) onClose()
-                        return r
-                      })
-                    }
-                  >
-                    <span className="sa-alt-photo">
-                      <Photo image={a.product.images[0] ?? null} alt="" className="h-full w-full" />
-                    </span>
-                    <span className="sa-caption sa-num mt-1 block">{money(a.product.price)}</span>
-                  </button>
-                </li>
+                <Alternative key={a.product.id} piece={a} busy={busy} onUse={() => run(async () => {
+                  const r = await outfits.swap(set, piece.slot, a.product.id)
+                  if (r.ok) onClose()
+                  return r
+                })} />
               ))}
             </ul>
           ) : null}
@@ -199,13 +205,19 @@ export function OutfitCard({ set, outfits, selected, canSelect, onSelect, onGene
   const openPiece = set.pieces.find((p) => p.slot === openSlot) ?? null
   const blocked = set.pieces.filter((p) => !p.tryOn.ready).length
   const sized = set.pieces.filter((p) => p.product.variants.length > 1)
+  const firstExpiry = set.pieces.reduce<string | null>((first, piece) => {
+    const expires = piece.product.offerExpiresAt
+    return expires && (!first || Date.parse(expires) < Date.parse(first)) ? expires : first
+  }, null)
+  const totalExpired = useOfferExpiry(firstExpiry)
+  const total = totalExpired ? "Total indisponível" : money(set.total)
   return (
     <article className="sa-panel sa-outfit" aria-label={set.title} aria-busy={busy || undefined} data-testid="outfit-card" data-set-id={set.id} data-revision={set.revision} data-kind={set.kind} data-selected={selected || undefined}>
       <header className="px-1 pt-1">
         <div className="flex items-start justify-between gap-3">
           <h3 className="sa-title-sm min-w-0">{set.title}</h3>
-          <strong className="sa-body-sm sa-num flex-none" data-testid="outfit-total" aria-label={`Total das peças: ${money(set.total)}`}>
-            {money(set.total)}
+          <strong className="sa-body-sm sa-num flex-none" data-testid="outfit-total" aria-label={`Total das peças: ${total}`}>
+            {total}
           </strong>
         </div>
       </header>
@@ -225,7 +237,7 @@ export function OutfitCard({ set, outfits, selected, canSelect, onSelect, onGene
         ) : null}
         {set.rationale ? <p className="sa-caption sa-muted sa-pretty">{set.rationale}</p> : null}
         {blocked ? <p className="sa-caption sa-warning-text">{blocked === 1 ? "1 peça não pode ser provada. Toque nela para trocar." : `${blocked} peças não podem ser provadas. Toque nelas para trocar.`}</p> : null}
-        {set.overBudget === true ? <p className="sa-caption sa-error-text">Acima do orçamento pedido.</p> : null}
+        {set.overBudget === true && !totalExpired ? <p className="sa-caption sa-error-text">Acima do orçamento pedido.</p> : null}
         {set.missingSlots.length ? <p className="sa-caption sa-muted">Sem opção para: {set.missingSlots.join(", ")}.</p> : null}
       </div>
       {sized.length ? (

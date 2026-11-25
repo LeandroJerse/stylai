@@ -14,7 +14,8 @@
  * No automatic retries and no pagination: every provider call is an explicit user search.
  */
 import type { AliExpressAffiliateClient, AliExpressErrorKind } from "./client.js"
-import { normalizeAliExpressProduct, safeAliExpressUrl, type NormalizedAliExpressCatalogItem } from "./catalog.js"
+import { normalizeAliExpressProduct, type NormalizedAliExpressCatalogItem } from "./catalog.js"
+import { linkAliExpressCatalogItems, type AliExpressLinkState } from "./affiliate-links.js"
 
 export const DEFAULT_ALIEXPRESS_CACHE_TTL_MS = 5 * 60_000
 /** Failures (incl. the undocumented resp_code 405) are remembered briefly: no repeated calls during an outage. */
@@ -28,9 +29,6 @@ export const ALIEXPRESS_NEGATIVE_TTL_MS = 30_000
 export const ALIEXPRESS_PROVIDER_BACKOFF_MS = 15_000
 const MAX_INDEXED_ITEMS = 2_000
 
-/** "unmatched": link.generate succeeded but no returned source_value matched a product. */
-export type AliExpressLinkState = "generated" | "unmatched" | "missing_tracking_id" | "failed"
-
 export interface AliExpressSearchResult {
   state: "ready" | "not_configured" | "degraded"
   items: NormalizedAliExpressCatalogItem[]
@@ -40,6 +38,7 @@ export interface AliExpressSearchResult {
   /** Tracking ID echoed by link.generate (compare with the configured one; not proof of attribution). */
   trackingIdEcho: string | null
   linkErrorCode: string | null
+  linkErrorKind?: AliExpressErrorKind
   observedAt: string
   expiresAt: string | null
   fromCache: boolean
@@ -135,35 +134,16 @@ export function createAliExpressCatalogService(opts: {
       // The query's promotion link is not attributed to our tracking ID: drop it (see header).
       if (!seen.has(outcome.item.canonicalKey)) seen.set(outcome.item.canonicalKey, { ...outcome.item, affiliateUrl: null })
     }
-    let items = [...seen.values()]
-    let links: AliExpressLinkState | null = null
-    let trackingIdEcho: string | null = null
-    let linkErrorCode: string | null = null
-    if (items.length) {
-      const sources = items.map((item) => item.productUrl).filter((url): url is string => url !== null)
-      if (!trackingId) links = "missing_tracking_id"
-      else if (sources.length) {
-        const generated = await client.generateLinks(sources)
-        if (generated.ok && generated.trackingId !== null && generated.trackingId !== trackingId) {
-          // The provider says these links belong to another tracking ID: never present them as ours.
-          links = "failed"
-          trackingIdEcho = generated.trackingId
-          linkErrorCode = "tracking_id_mismatch"
-        } else if (generated.ok) {
-          trackingIdEcho = generated.trackingId
-          const bySource = new Map(generated.links.map((link) => [link.sourceValue, safeAliExpressUrl(link.promotionLink, ["aliexpress.com"])]))
-          items = items.map((item) => ({ ...item, affiliateUrl: item.productUrl ? bySource.get(item.productUrl) ?? null : null }))
-          links = items.some((item) => item.affiliateUrl !== null) ? "generated" : "unmatched"
-        } else {
-          links = "failed"
-          linkErrorCode = generated.code ?? generated.kind
-        }
-      }
-    }
+    const { items, links, trackingIdEcho, linkErrorCode, linkErrorKind } = await linkAliExpressCatalogItems(client, [...seen.values()], trackingId)
     const expiresAtMs = currentMs + ttlMs
     const result: AliExpressSearchResult = {
       state: "ready", items, rejectedCount, links, trackingIdEcho, linkErrorCode, observedAt,
+      ...(linkErrorKind ? { linkErrorKind } : {}),
       expiresAt: new Date(expiresAtMs).toISOString(), fromCache: false, requestId: res.requestId, errorKind: null, errorCode: null, errorMessage: null, backoffUntil: null, emptyReason: null,
+    }
+    if (links === "failed") {
+      negative.set(key, { result, untilMs: currentMs + ALIEXPRESS_NEGATIVE_TTL_MS })
+      return result
     }
     if (pages.size >= maxEntries) {
       const oldest = pages.keys().next().value
@@ -207,12 +187,14 @@ export function createAliExpressCatalogService(opts: {
       }
       return out
     },
-    async findFresh(id: string): Promise<NormalizedAliExpressCatalogItem | null> {
+    async findFresh(id: string, viewer?: string): Promise<(NormalizedAliExpressCatalogItem & { offerExpiresAt: string }) | null> {
       const key = id.startsWith("aliexpress:") ? id : `aliexpress:${id}`
+      const at = now()
+      if (viewer && (viewers.get(viewer)?.get(key) ?? 0) <= at) return null
       const entry = byKey.get(key)
       if (!entry) return null
-      if (entry.expiresAtMs <= now()) { byKey.delete(key); return null }
-      return entry.item
+      if (entry.expiresAtMs <= at) { byKey.delete(key); return null }
+      return { ...entry.item, offerExpiresAt: new Date(entry.expiresAtMs).toISOString() }
     },
   }
 }

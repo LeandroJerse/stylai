@@ -23,6 +23,19 @@ export interface CatalogSourceCapabilities {
 
 export type CatalogSourceMode = "curated_pilot" | "tiktok_shop" | "aliexpress_affiliate" | "test_catalog"
 
+export interface OfferFreshness {
+  /** ISO instant after which a price and its purchase links must be hidden. */
+  offerExpiresAt?: string | null
+  /** The offer can be used to look up other published products in the catalog. */
+  catalogPublished?: boolean
+}
+
+export interface CatalogFacet {
+  id: string
+  label: string
+  count: number
+}
+
 export interface CatalogItemCapabilities {
   /** Authorized to display product metadata, image and external link in discovery/Estúdio. */
   displayAndLink: boolean

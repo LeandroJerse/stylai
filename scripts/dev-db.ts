@@ -7,6 +7,7 @@
 // Usage:  STYLAI_DEV_DB_PASSWORD=... bun run db:dev [--catalog path.json] [--fixtures]
 //         --fixtures --edge-cases also loads the synthetic edge cases used by automated tests
 //         bun run db:dev -- --plan <email> paid|free   (local test plan: 120 or 30 moedas/day; no password needed)
+//         bun run db:dev -- --catalog-worker          (provisions just the catalog worker role)
 // It never touches a hosted project: it only talks to the local container.
 import { spawnSync } from "node:child_process"
 import { readFileSync } from "node:fs"
@@ -29,6 +30,14 @@ function sql(text: string): string {
   return r.stdout.trim()
 }
 const lit = (v: string | number | boolean | null) => v === null ? "null" : typeof v === "number" ? String(v) : typeof v === "boolean" ? String(v) : `'${v.replaceAll("'", "''")}'`
+
+if (args.includes("--catalog-worker")) {
+  if (args.length !== 1) throw new Error("Run --catalog-worker on its own")
+  if (sql("select to_regrole('stylai_catalog_worker') is not null") !== "t") throw new Error("Apply the affiliate catalog migration to the local stack first")
+  sql(`alter role stylai_catalog_worker login password ${lit(password)};`)
+  console.log("Local catalog worker role ready. Set STYLAI_CATALOG_WORKER_DATABASE_URL in apps/worker/.env.catalog.local.")
+  process.exit(0)
+}
 
 if (sql("select to_regclass('private.catalog_image_rights') is not null") !== "t") {
   throw new Error("Local schema is not at 20261120000200. Run `bun run supabase:start` (or `bun run db:migrate:local`).")

@@ -3,7 +3,7 @@ begin;
 do $$
 declare role_name text; table_row record;
 begin
-  foreach role_name in array array['stylai_api','stylai_ai_worker','stylai_payments','stylai_procurement'] loop
+  foreach role_name in array array['stylai_api','stylai_ai_worker','stylai_payments','stylai_procurement','stylai_catalog_worker'] loop
     assert exists(select 1 from pg_roles where rolname=role_name and not rolcanlogin and not rolsuper
       and not rolbypassrls and not rolcreaterole and not rolcreatedb and not rolreplication and not rolinherit),
       'runtime role must start disabled and restricted';
@@ -30,7 +30,7 @@ set local role stylai_api;
 do $$
 declare job uuid;
 begin
-  assert private.server_boundary_version()='20261124230000', 'wrong boundary contract';
+  assert private.server_boundary_version()='20261125190100', 'wrong boundary contract';
   job := private.enqueue_ai_job('10000000-0000-4000-8000-000000000001','boundary-key',repeat('a',64),
     '20000000-0000-4000-8000-000000000001','test-tops','test-v1');
   assert private.cancel_ai_job('10000000-0000-4000-8000-000000000002',job)=false, 'foreign account cancelled job';

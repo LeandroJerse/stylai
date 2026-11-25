@@ -17,6 +17,7 @@ export const pieceSchema = z.object({
   reference: referenceSchema.nullable(), blocked: z.string().nullable(),
   // Absent in sets stored before 2026-11-24.
   ratingPercent: z.number().nullable().optional(), recentSales: z.number().int().nullable().optional(),
+  offerExpiresAt: z.iso.datetime({ offset: true }).nullable().optional(),
 })
 export type StoredPiece = z.infer<typeof pieceSchema>
 export const poolsSchema = z.partialRecord(slotSchema, z.array(pieceSchema))
@@ -24,12 +25,13 @@ export type StoredPools = z.infer<typeof poolsSchema>
 
 const short = (s: string, n: number) => s.replace(/\s+/g, " ").trim().slice(0, n)
 
-export function pieceFromAliExpress(item: NormalizedAliExpressCatalogItem, slot: OutfitSlot): StoredPiece {
+export function pieceFromAliExpress(item: NormalizedAliExpressCatalogItem, slot: OutfitSlot, offerExpiresAt?: string | null): StoredPiece {
   return {
     slot, id: item.canonicalKey, name: short(item.name, 160), reason: "", categoryId: item.category, priceMinor: item.priceMinor, priceObservedAt: item.priceObservedAt,
     image: item.image, productUrl: item.productUrl, affiliateUrl: item.affiliateUrl, source: item.source, partnerId: item.seller, partner: short(item.sellerName, 120),
     externalId: item.externalProductId, fixture: false, variants: [], variantId: null, reference: null, blocked: null,
     ratingPercent: item.ratingPercent, recentSales: item.recentSales,
+    ...(offerExpiresAt ? { offerExpiresAt } : {}),
   }
 }
 export const referenceItemOf = (p: StoredPiece): ReferenceItem => ({
@@ -51,6 +53,8 @@ export const candidateOf = (p: StoredPiece): OutfitCandidate => ({ id: p.id, slo
   ratingPercent: p.ratingPercent ?? null, recentSales: p.recentSales ?? null })
 export const totalOf = (pieces: readonly StoredPiece[]): number | null =>
   pieces.length && pieces.every((p) => p.priceMinor !== null) ? pieces.reduce((a, p) => a + (p.priceMinor ?? 0), 0) : null
+export const isPieceOfferExpired = (piece: StoredPiece, now = Date.now()): boolean =>
+  piece.offerExpiresAt != null && Date.parse(piece.offerExpiresAt) <= now
 export const orderPieces = (pieces: readonly StoredPiece[]): StoredPiece[] => OUTFIT_SLOTS.flatMap((s) => pieces.filter((p) => p.slot === s))
 
 /** Portuguese reason shown on the card; unknown codes never leak. */
@@ -70,6 +74,8 @@ export const blockedCode = (p: StoredPiece): string | null =>
 
 export function presentPieceCard(p: StoredPiece, base: string) {
   const code = blockedCode(p)
+  const expired = isPieceOfferExpired(p)
+  const priceMinor = expired ? null : p.priceMinor
   return {
     slot: p.slot, label: OUTFIT_SLOT_LABEL[p.slot], reason: p.reason, variantId: p.variantId,
     // As the store publishes them (percentage of positive feedback, recent units); never converted to stars.
@@ -77,12 +83,13 @@ export function presentPieceCard(p: StoredPiece, base: string) {
     tryOn: { ready: code === null, code, message: code === null ? null : code === "not_prepared" ? null : blockedMessage(code) },
     product: {
       id: p.id, name: p.name, category: { id: p.categoryId, label: OUTFIT_SLOT_LABEL[p.slot] }, partner: { id: p.partnerId, name: p.partner }, source: p.source,
-      price: p.priceMinor === null ? null : { amount: p.priceMinor / 100, currency: "BRL" },
+      price: priceMinor === null ? null : { amount: priceMinor / 100, currency: "BRL" },
       images: p.image ? [{ url: displayImageUrl(p.image, base), width: 600, height: 800, alt: p.name, focus: null }] : [],
       rating: null, reviewsCount: null, sellerRating: null, variants: p.variants.map((v) => ({ ...v, available: true })), availability: "unknown" as const,
       material: null, color: null, fit: null, deliveryDays: null, measurements: [], styles: [], updatedAt: p.priceObservedAt,
-      links: { productUrl: p.productUrl, affiliateUrl: p.affiliateUrl }, favorite: false, fixture: p.fixture, stockConfirmed: false,
-      priceKind: p.priceMinor === null ? "none" as const : p.fixture ? "test_price" as const : "observed" as const, tryOnReady: code === null,
+      ...(p.offerExpiresAt ? { offerExpiresAt: p.offerExpiresAt } : {}),
+      links: { productUrl: expired ? null : p.productUrl, affiliateUrl: expired ? null : p.affiliateUrl }, favorite: false, fixture: p.fixture, stockConfirmed: false,
+      priceKind: priceMinor === null ? "none" as const : p.fixture ? "test_price" as const : "observed" as const, tryOnReady: code === null,
     },
   }
 }

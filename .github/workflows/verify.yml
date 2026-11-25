@@ -23,5 +23,6 @@ jobs:
       - run: bun run test:db:private
       - run: bun run test:e2e:install
       - run: bun run test:e2e
+      - run: bun run test:e2e:catalog
       # SQL/RLS tests use a disposable PostgreSQL compatibility fixture.
       # Hosted checks and Segmind/Asaas/source flows need separate gated integration jobs.

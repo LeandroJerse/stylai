@@ -32,6 +32,7 @@ export type Overlay =
 
 export interface ExploreQuery {
   text: string
+  collection: string | null
   category: string | null
   partner: string | null
   price: { min: number | null; max: number | null }
@@ -39,7 +40,7 @@ export interface ExploreQuery {
   sort: CatalogSort
 }
 
-export const DEFAULT_EXPLORE: ExploreQuery = { text: "", category: null, partner: null, price: { min: null, max: null }, favoritesOnly: false, sort: "relevance" }
+export const DEFAULT_EXPLORE: ExploreQuery = { text: "", collection: null, category: null, partner: null, price: { min: null, max: null }, favoritesOnly: false, sort: "relevance" }
 
 /**
  * Estúdio modes. "procurar": the prompt drives a catalog search and the person is shown wearing the

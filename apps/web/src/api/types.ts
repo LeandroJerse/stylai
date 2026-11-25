@@ -4,6 +4,7 @@
  */
 
 import type { FilterId } from "../lib/filters"
+import type { CatalogFacet, OfferFreshness } from "@stylai/contracts"
 
 export interface ImageAsset {
   url: string
@@ -55,7 +56,7 @@ export interface ProductOffer {
   links: ProductLinks
 }
 
-export interface Product {
+export interface Product extends OfferFreshness {
   id: string
   name: string
   category: CategoryRef | null
@@ -95,15 +96,12 @@ export interface Page<T> {
   total: number | null
 }
 
-export interface Facet {
-  id: string
-  label: string
-  count: number | null
-}
+export type Facet = Omit<CatalogFacet, "count"> & { count: number | null }
 
 export interface CatalogFacets {
   categories: Facet[]
   partners: Facet[]
+  collections?: Facet[]
   priceRange: { min: number; max: number; currency: string } | null
   total: number | null
 }

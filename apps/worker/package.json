@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "node --env-file-if-exists=.env.local --conditions=development --import tsx --watch src/server.ts",
-    "start": "node --env-file-if-exists=.env.local dist/server.js"
+    "start": "node --env-file-if-exists=.env.local dist/server.js",
+    "dev:catalog": "node --env-file-if-exists=.env.catalog.local --conditions=development --import tsx src/catalog-server.ts",
+    "start:catalog": "node --env-file-if-exists=.env.catalog.local dist/catalog-server.js"
   },
   "dependencies": {
     "@stylai/ai": "workspace:*",
+    "@stylai/commerce": "workspace:*",
     "@stylai/config": "workspace:*",
     "@stylai/contracts": "workspace:*",
     "@stylai/supabase": "workspace:*",

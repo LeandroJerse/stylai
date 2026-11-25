@@ -2,7 +2,7 @@ import type { Json } from "./database.types.js"
 import type { DatabasePurpose } from "./private-config.js"
 
 /** Must match private.server_boundary_version() of the latest boundary migration. */
-export const privateBoundaryVersion = "20261124230000"
+export const privateBoundaryVersion = "20261125190100"
 
 // bigint inputs/outputs remain decimal text: never silently round money/fences.
 type Call<A extends unknown[], R> = { args: A; result: R }
@@ -29,6 +29,9 @@ export interface PrivateTransactions {
     read_version_asset: Call<[actor: string,version: string],Json|null>
     list_catalog_products: Call<[limit: number,offset: number,category: string|null],Json|null>
     read_catalog_product: Call<[product: string],Json|null>
+    list_affiliate_offers: Call<[query: Json],Json>
+    read_affiliate_offer: Call<[id: string],Json|null>
+    read_affiliate_facets: Call<[],Json>
     read_source_generation_references: Call<[source: string,items: Json],Json|null>
     register_source_reference: Call<[source: string,item: Json,check: Json],Json|null>
     read_cached_source_references: Call<[source: string,items: Json],Json|null>
@@ -114,6 +117,12 @@ export interface PrivateTransactions {
     claim_telemetry_events: Call<[limit: number],Json|null>
     mark_telemetry_event: Call<[id: string,outcome: "sent"|"retry"|"unknown"|"dead"],boolean>
   }
+  catalog_worker: {
+    claim_affiliate_collection: Call<[slug: string,leaseSeconds: number],{ token: string }|null>
+    publish_affiliate_collection: Call<[slug: string,token: string,label: string,observedAt: string,expiresAt: string,nextDueAt: string,offers: Json,withdrawn: Json],boolean>
+    retry_affiliate_collection: Call<[slug: string,token: string,nextDueAt: string],boolean>
+    take_affiliate_catalog_slot: Call<[minuteLimit: number,dailyLimit: number],boolean>
+  }
   payments: {
     start_order_payment: Call<[actor: string,quote: string,method: "pix"|"card"|"boleto",environment: "sandbox"|"production",merchant: string],string>
     begin_payment_submission: Call<[attempt: string],boolean>
@@ -167,6 +176,9 @@ export const privateOperations = {
     read_version_asset: transaction('read_version_asset',['uuid','uuid'],'json'),
     list_catalog_products: transaction('list_catalog_products',['integer','integer','text'],'json'),
     read_catalog_product: transaction('read_catalog_product',['uuid'],'json'),
+    list_affiliate_offers: transaction('list_affiliate_offers',['jsonb'],'json'),
+    read_affiliate_offer: transaction('read_affiliate_offer',['text'],'json'),
+    read_affiliate_facets: transaction('read_affiliate_facets',[],'json'),
     read_source_generation_references: transaction('read_source_generation_references',['text','jsonb'],'json'),
     register_source_reference: transaction('register_source_reference',['text','jsonb','jsonb'],'json'),
     read_cached_source_references: transaction('read_cached_source_references',['text','jsonb'],'json'),
@@ -251,6 +263,12 @@ export const privateOperations = {
     enqueue_telemetry_event: transaction('enqueue_telemetry_event',['text','uuid','jsonb'],'boolean'),
     claim_telemetry_events: transaction('claim_telemetry_events',['integer'],'json'),
     mark_telemetry_event: transaction('mark_telemetry_event',['uuid','text'],'boolean'),
+  },
+  catalog_worker: {
+    claim_affiliate_collection: transaction('claim_affiliate_collection',['text','integer'],'json'),
+    publish_affiliate_collection: transaction('publish_affiliate_collection',['text','text','text','text','text','text','jsonb','jsonb'],'boolean'),
+    retry_affiliate_collection: transaction('retry_affiliate_collection',['text','text','text'],'boolean'),
+    take_affiliate_catalog_slot: transaction('take_affiliate_catalog_slot',['integer','integer'],'boolean'),
   },
   payments: {
     start_order_payment: transaction('start_order_payment',['uuid','uuid','text','text','text'],'uuid'),

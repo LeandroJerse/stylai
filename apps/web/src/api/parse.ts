@@ -131,6 +131,7 @@ export function parseProduct(raw: unknown): Product {
   const partner = obj(o.partner, "product.partner")
   const category = isObj(o.category) && str(o.category.id) ? { id: String(o.category.id), label: str(o.category.label) ?? String(o.category.id) } : null
   const links = isObj(o.links) ? o.links : {}
+  const expiry = str(o.offerExpiresAt)
   const own: ProductOffer = {
     partner: { id: reqStr(partner.id, "partner.id"), name: str(partner.name) ?? String(partner.id) },
     price: money(o.price),
@@ -166,6 +167,8 @@ export function parseProduct(raw: unknown): Product {
       .filter((m) => m.label && m.value),
     styles: strs(o.styles),
     updatedAt: str(o.updatedAt),
+    offerExpiresAt: expiry && Number.isFinite(Date.parse(expiry)) ? expiry : null,
+    catalogPublished: o.catalogPublished === true,
     links: own.links,
     offers,
     favorite: bool(o.favorite),
@@ -189,6 +192,7 @@ export function parseFacets(raw: unknown): CatalogFacets {
   return {
     categories: arr(o.categories).map(facet).filter((f): f is Facet => f !== null),
     partners: arr(o.partners).map(facet).filter((f): f is Facet => f !== null),
+    collections: arr(o.collections).map(facet).filter((f): f is Facet => f !== null),
     priceRange: min !== null && max !== null && max >= min ? { min, max, currency: (pr && str(pr.currency)) ?? "BRL" } : null,
     total: num(o.total),
   }

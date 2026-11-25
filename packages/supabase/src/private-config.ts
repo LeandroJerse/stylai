@@ -2,6 +2,7 @@ import type { PoolConfig } from "pg"
 
 export const privateDatabaseRoles = {
   api: "stylai_api", ai_worker: "stylai_ai_worker", payments: "stylai_payments", procurement: "stylai_procurement",
+  catalog_worker: "stylai_catalog_worker",
 } as const
 export type DatabasePurpose = keyof typeof privateDatabaseRoles
 export interface PrivateDatabaseConfig<P extends DatabasePurpose = DatabasePurpose> { purpose: P; connection: PoolConfig }

@@ -32,7 +32,7 @@ declare b uuid := '30000000-0000-4000-8000-00000000000b';
 declare sa uuid := '35000000-0000-4000-8000-00000000000a';
 declare session uuid; declare r jsonb; declare consent uuid; declare photo uuid; declare photo2 uuid; declare job uuid;
 begin
-  assert private.server_boundary_version()='20261124230000', 'boundary version not bumped';
+  assert private.server_boundary_version()='20261125190100', 'boundary version not bumped';
 
   -- Catalog: only published + cleared rows; fixture flag and rights are visible to the API.
   r := private.list_catalog_products(24,0,null);

@@ -1,4 +1,5 @@
 export * from "./sign.js"
 export * from "./client.js"
 export * from "./catalog.js"
+export * from "./affiliate-links.js"
 export * from "./search.js"

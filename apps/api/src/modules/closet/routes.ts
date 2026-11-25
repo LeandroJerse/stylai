@@ -12,6 +12,7 @@ import type { AliExpressCatalogService } from "@stylai/commerce"
 import { PrivateDatabaseError, type Json, type PrivateDatabase } from "@stylai/supabase"
 import type { SessionKeys } from "../auth/session-crypto.js"
 import { presentAliExpressProduct, presentProduct, productRow } from "../catalog/routes.js"
+import { createAffiliateCatalogReader } from "../catalog/affiliate.js"
 import { presentPieceCard } from "../outfits/pieces.js"
 import { planSchema } from "../outfits/search.js"
 import { presentLook, versionRow, type ActorResolver } from "../studio/routes.js"
@@ -32,18 +33,22 @@ export interface ClosetDeps {
   resolveActor: ActorResolver
   publicBaseUrl: string
   aliexpressCatalog?: AliExpressCatalogService | null
+  publishedAffiliate?: boolean
 }
 
 /** Finds a piece the person can see: catalog row, active store search, their saved pieces, looks or recent outfits. */
 export function createPieceResolver(deps: Omit<ClosetDeps, "resolveActor">) {
+  const affiliate = deps.publishedAffiliate ? createAffiliateCatalogReader(deps.db) : null
   return async (user: string, id: string): Promise<Product | null> => {
     if (uuid.safeParse(id).success) {
       const raw = await deps.db.call("read_catalog_product", id)
       const row = productRow.safeParse(raw)
       if (row.success) return presentProduct(row.data, deps.publicBaseUrl) as Product
     }
-    if (/^aliexpress:\d{1,20}$/.test(id) && deps.aliexpressCatalog) {
-      const fresh = await deps.aliexpressCatalog.findFresh(id)
+    if (/^aliexpress:\d{1,20}$/.test(id)) {
+      const published = await affiliate?.detail(id)
+      if (published) return presentAliExpressProduct(published) as Product
+      const fresh = await deps.aliexpressCatalog?.findFresh(id, user)
       if (fresh) return presentAliExpressProduct(fresh) as Product
     }
     const favourite = z.array(savedPiece).parse((await deps.db.call("list_saved_pieces", user)) ?? []).find((p) => p.key === id)

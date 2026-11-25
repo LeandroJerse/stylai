@@ -16,7 +16,7 @@ export function item(n: number, category: string, name: string, priceMinor: numb
   } as NormalizedAliExpressCatalogItem
 }
 
-type Answer = NormalizedAliExpressCatalogItem[] | "down" | "limited"
+type Answer = NormalizedAliExpressCatalogItem[] | "down" | "limited" | "links_limited"
 export function fakeStore(answer: (keywords: string) => Answer) {
   const queries: string[] = []
   const service = { search: async ({ keywords }: { keywords: string }) => {
@@ -25,6 +25,7 @@ export function fakeStore(answer: (keywords: string) => Answer) {
     const common = { rejectedCount: 0, links: null, trackingIdEcho: null, linkErrorCode: null, observedAt: "x", expiresAt: null, fromCache: false, requestId: null, errorMessage: null, backoffUntil: null, emptyReason: null }
     return items === "down" ? { ...common, state: "degraded", items: [], errorKind: "network", errorCode: null }
       : items === "limited" ? { ...common, state: "degraded", items: [], errorKind: "rate_limited", errorCode: "429" }
+      : items === "links_limited" ? { ...common, state: "ready", items: [], links: "failed", linkErrorKind: "rate_limited", linkErrorCode: "call_budget_exhausted", errorKind: null, errorCode: null }
       : { ...common, state: "ready", items, errorKind: null, errorCode: null }
   }, findFresh: async () => null } as unknown as AliExpressCatalogService
   return { service, queries }

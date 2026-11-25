@@ -29,6 +29,7 @@ import { DEFAULT_EXPLORE, useStore, type ExploreQuery } from "../app/store";
 import { useAuth } from "../auth/AuthProvider";
 import { brand } from "../assets/brand";
 import { formatMoney, plural } from "../lib/format";
+import { useOfferExpiry } from "../lib/useOfferExpiry";
 import {
   INTRO_WORDS,
   introMode,
@@ -98,6 +99,7 @@ function useCatalogQuery(): CatalogQuery {
   const price = useDebounced(explore.price, 250);
   return {
     q: text || undefined,
+    collection: explore.collection,
     category: explore.category,
     partner: explore.partner,
     priceMin: price.min,
@@ -115,6 +117,7 @@ function Hero() {
   const facets = useFacets();
   const reduced = useReducedMotion();
   const h = hero.data ?? null;
+  const expired = useOfferExpiry(h?.product.offerExpiresAt);
   const total = facets.data?.total ?? null;
   const stores = facets.data ? facets.data.partners.length : null;
 
@@ -144,7 +147,7 @@ function Hero() {
               type="button"
               className="sa-hero-tag"
               onClick={() => open({ kind: "product", productId: h.product.id })}
-              aria-label={`Na foto: ${h.product.name}, ${h.product.partner.name}, ${priceText(h.product)}. Ver peça`}
+              aria-label={`Na foto: ${h.product.name}, ${h.product.partner.name}, ${expired ? "oferta expirada" : priceText(h.product)}. Ver peça`}
             >
               <span className="min-w-0">
                 <span className="sa-caption block sa-truncate font-semibold">
@@ -152,7 +155,7 @@ function Hero() {
                 </span>
                 <span className="sa-caption sa-muted block">
                   {h.product.partner.name} ·{" "}
-                  <span className="sa-num">{priceText(h.product)}</span>
+                  <span className="sa-num">{expired ? "Oferta expirada" : priceText(h.product)}</span>
                 </span>
               </span>
             </button>
@@ -404,7 +407,7 @@ function SortField({ className = "" }: { className?: string }) {
 }
 
 interface ActiveChip {
-  key: "category" | "partner" | "price" | "favorites" | "text";
+  key: "collection" | "category" | "partner" | "price" | "favorites" | "text";
   label: string;
 }
 
@@ -416,6 +419,11 @@ function useActiveChips(): ActiveChip[] {
     list?.find((f) => f.id === id)?.label ?? id;
   if (explore.text.trim())
     chips.push({ key: "text", label: `“${explore.text.trim()}”` });
+  if (explore.collection)
+    chips.push({
+      key: "collection",
+      label: labelOf(facets.data?.collections, explore.collection),
+    });
   if (explore.category)
     chips.push({
       key: "category",
@@ -439,16 +447,14 @@ function useActiveChips(): ActiveChip[] {
   return chips;
 }
 
-const clearPatch = (key: ActiveChip["key"]): Partial<ExploreQuery> =>
-  key === "text"
-    ? { text: "" }
-    : key === "category"
-      ? { category: null }
-      : key === "partner"
-        ? { partner: null }
-        : key === "price"
-          ? { price: { min: null, max: null } }
-          : { favoritesOnly: false };
+const clearPatches: Record<ActiveChip["key"], Partial<ExploreQuery>> = {
+  text: { text: "" },
+  collection: { collection: null },
+  category: { category: null },
+  partner: { partner: null },
+  price: { price: { min: null, max: null } },
+  favorites: { favoritesOnly: false },
+};
 
 export function ExploreFiltersSheet() {
   const { close } = useStore();
@@ -530,6 +536,7 @@ function useAutoLoad(
 function Catalog() {
   const { explore, setExplore, open } = useStore();
   const { status } = useAuth();
+  const collections = useFacets().data?.collections ?? [];
   const inputRef = useRef<HTMLInputElement | null>(null);
   const query = useCatalogQuery();
   const catalog = useCatalog(query, !query.favorites || status === "signed-in");
@@ -567,6 +574,19 @@ function Catalog() {
           </p>
         ) : null}
       </div>
+
+      {collections.length ? (
+        <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Coleções do catálogo">
+          <button type="button" className={`sa-chip ${explore.collection === null ? "sa-chip-active" : ""}`} aria-pressed={explore.collection === null} onClick={() => setExplore({ collection: null })}>
+            Todas as coleções
+          </button>
+          {collections.map((collection) => (
+            <button key={collection.id} type="button" className={`sa-chip ${explore.collection === collection.id ? "sa-chip-active" : ""}`} aria-pressed={explore.collection === collection.id} onClick={() => setExplore({ collection: collection.id })}>
+              {collection.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="sa-searchbar mt-4">
         <span className="sa-seam" aria-hidden="true" />
@@ -644,7 +664,7 @@ function Catalog() {
               key={c.key}
               type="button"
               className="sa-chip sa-chip-active"
-              onClick={() => setExplore(clearPatch(c.key))}
+              onClick={() => setExplore(clearPatches[c.key])}
               aria-label={`Remover filtro ${c.label}`}
             >
               {c.label}

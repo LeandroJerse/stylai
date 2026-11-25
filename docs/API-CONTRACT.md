@@ -1,6 +1,6 @@
 # StylAI — contrato da API REST (frontend)
 
-> Contrato do frontend existente, preservado durante a migração para `apps/web`. O backend de domínio ainda não está implementado. As mudanças planejadas (Supabase, cadastro pendente de confirmação, uma peça/variante/foto por Try-On Diffusion e checkout Asaas) estão em [START-HERE](START-HERE.md), [plano completo](handoff/IMPLEMENTATION-PLAN.md) e [matriz de alterações](superpowers/plans/2026-11-10-supabase-mvp-api-matrix.md). Atualizar contratos, parsers, telas e testes juntos ao implementar; não tratar esta descrição histórica como entrega do servidor.
+> Contrato das telas em `apps/web`, com a atualização do catálogo afiliado na seção 4. As demais seções incluem contratos históricos e planejados. Consulte o código da API e o [handoff](START-HERE.md) para verificar quais rotas estão disponíveis em cada modo.
 
 Contrato que o frontend (`src/api/`) espera do backend. É a fonte de verdade para implementar o servidor; os parsers em `src/api/parse.ts` são tolerantes (campo opcional malformado vira `null`/vazio), mas campos **obrigatórios** ausentes geram erro `bad_response`.
 
@@ -85,6 +85,27 @@ Códigos com tratamento específico: `invalid_credentials`, `email_taken`, `inva
 Enquanto houver foto com status `processing`, o app consulta `GET /me/body-photos` a cada 2,5 s.
 
 ## 4. Catálogo (público; com sessão, preenche `favorite`)
+
+Em `aliexpress_affiliate`, lista, destaque, facetas e relacionados leem as
+ofertas publicadas no PostgreSQL. Essas rotas não consultam o AliExpress.
+
+- `GET /catalog/products` aceita `collection`, `category`, `partner`, `q`,
+  `priceMin`, `priceMax`, `sort`, `cursor` e `limit`. O cursor é opaco.
+  Com `favorites=true`, exige sessão e filtra pelos favoritos dessa conta.
+- `GET /catalog/facets` inclui `collections: [{id, label, count}]`.
+- `GET /catalog/products/{id}/related?limit=6` devolve uma página de
+  ofertas relacionadas por categoria e proximidade de preço, excluindo a
+  peça atual.
+- Uma oferta publicada inclui `catalogPublished: true` e
+  `offerExpiresAt`. Ao vencer, o cliente oculta preço e links. A presença
+  de um link de afiliado indica uma opção de compra. O provador verifica
+  os direitos de imagem separadamente.
+
+No Estúdio, `POST /studio/outfit-sets/{id}/options` usa primeiro ofertas
+publicadas compatíveis. Em seguida, quando necessário, consulta a loja.
+`429 source_rate_limited` indica cota da loja, `503 source_unavailable`
+indica indisponibilidade, e uma busca sem opções elegíveis devolve
+`200` com os contadores do resultado.
 
 | Método e rota | Resposta |
 |---|---|

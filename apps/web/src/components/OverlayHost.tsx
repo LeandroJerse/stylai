@@ -31,7 +31,7 @@ export function OverlayHost() {
   if (!overlay) return null
   switch (overlay.kind) {
     case "product":
-      return <ProductDetailSheet productId={overlay.productId} back={overlay.back} />
+      return <ProductDetailSheet key={overlay.productId} productId={overlay.productId} back={overlay.back} />
     case "goToPiece":
       return <GoToPieceSheet product={overlay.product} back={overlay.back} />
     case "viewer":

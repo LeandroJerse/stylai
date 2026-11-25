@@ -35,6 +35,7 @@ export const keys = {
   facets: ["catalog", "facets"] as const,
   products: (q: CatalogQuery) => ["catalog", "products", q] as const,
   product: (id: string) => ["catalog", "product", id] as const,
+  related: (id: string) => ["catalog", "related", id] as const,
   closet: ["closet"] as const,
   preferences: ["preferences"] as const,
   studioConfig: ["studio", "config"] as const,
@@ -62,6 +63,7 @@ export function useCatalog(q: CatalogQuery, enabled = true) {
 }
 
 export const useProduct = (id: string | null) => useQuery({ queryKey: keys.product(id ?? ""), queryFn: () => api.catalog.product(id ?? ""), enabled: id !== null })
+export const useRelatedProducts = (id: string) => useQuery({ queryKey: keys.related(id), queryFn: ({ signal }) => api.catalog.related(id, signal), retry: false })
 
 /* ------------------------------------------------------------------ account */
 

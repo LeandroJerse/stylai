@@ -2,20 +2,22 @@
  * Catalog pieces: card, favourite button, detail sheet and the partner exit. Everything shown
  * comes from the product returned by the API; missing data is said to be missing, never invented.
  */
-import { useState } from "react"
-import { ArrowUpRight, Heart, Info, PenNib } from "@phosphor-icons/react"
+import { useId, useState } from "react"
+import { ArrowLeft, ArrowUpRight, Heart, Info, PenNib } from "@phosphor-icons/react"
 import { messageOf } from "../api/errors"
-import { useCloset, useProduct, useStudioConfig, useToggleFavorite } from "../api/queries"
+import { useCloset, useProduct, useRelatedProducts, useStudioConfig, useToggleFavorite } from "../api/queries"
 import type { PieceRole, Product } from "../api/types"
 import { useStore, type Overlay } from "../app/store"
 import { useAuth } from "../auth/AuthProvider"
 import { formatDay, formatInt, formatMoney, formatRating } from "../lib/format"
 import { resolvePartnerLink } from "../lib/links"
 import { StarRating } from "./controls"
-import { ErrorState, Hint, Notice, Photo, Sheet, Skeleton, useLongPress } from "./ui"
+import { ErrorState, Hint, LoadingState, Notice, Photo, Sheet, Skeleton, useLongPress } from "./ui"
 import { OfferPrice, StoreTags, useOfferProduct } from "./offers"
-import { withOffer } from "../lib/offers"
+import { isOfferExpired, withOffer } from "../lib/offers"
 import { shortPieceName } from "../lib/titles"
+import { useOfferExpiry } from "../lib/useOfferExpiry"
+import { PartnerPurchaseLink } from "./PartnerPurchaseLink"
 
 export const ROLE_LABEL: Record<PieceRole, string> = {
   look: "Peça do look",
@@ -30,7 +32,10 @@ const ROLE_NOTE: Record<PieceRole, string> = {
 }
 
 /** Test-catalog prices are synthetic: always labelled, never shown as an offer. */
-export const priceText = (p: Product): string => (p.price ? `${formatMoney(p.price.amount, p.price.currency)}${p.fixture ? " (preço de teste)" : ""}` : "Preço não informado")
+export function priceText(p: Product): string {
+  if (isOfferExpired(p.offerExpiresAt)) return "Oferta expirada"
+  return p.price ? `${formatMoney(p.price.amount, p.price.currency)}${p.fixture ? " (preço de teste)" : ""}` : "Preço não informado"
+}
 
 /** Runs `action` when signed in; otherwise sends the person to sign in and back to this tab. */
 export function useRequireAccount(): (reason: string, action: () => void) => void {
@@ -74,7 +79,9 @@ export function useSendToStudio(product: Product | undefined): { send: () => voi
 /** Primary exit to the partner store. Only opens https URLs validated in api/parse.ts. */
 export function StoreCta({ product, back }: { product: Product; back?: Overlay }) {
   const { open } = useStore()
+  const expired = useOfferExpiry(product.offerExpiresAt)
   const link = resolvePartnerLink(product.links)
+  if (expired) return null
   if (link.kind === "none") {
     return (
       <button type="button" className="sa-btn sa-btn-primary sa-btn-block" onClick={() => open({ kind: "goToPiece", product, back })}>
@@ -83,7 +90,7 @@ export function StoreCta({ product, back }: { product: Product; back?: Overlay }
     )
   }
   return (
-    <a className="sa-btn sa-btn-primary sa-btn-block" href={link.href} target="_blank" rel={link.rel} data-link-kind={link.kind}>
+    <a className="sa-btn sa-btn-primary sa-btn-block" href={link.href} target="_blank" rel={link.rel} data-link-kind={link.kind} onClick={(event) => { if (isOfferExpired(product.offerExpiresAt)) event.preventDefault() }}>
       Ver na {product.partner.name} <ArrowUpRight size={18} aria-hidden="true" />
       <span className="sa-sr"> (abre o site da loja em nova aba)</span>
     </a>
@@ -91,6 +98,8 @@ export function StoreCta({ product, back }: { product: Product; back?: Overlay }
 }
 
 export function StoreLinkNote({ product }: { product: Product }) {
+  const expired = useOfferExpiry(product.offerExpiresAt)
+  if (expired) return <Hint>Esta oferta expirou. Confira outras opções do catálogo.</Hint>
   const link = resolvePartnerLink(product.links)
   const text =
     link.kind === "affiliate"
@@ -172,6 +181,9 @@ export function PieceCard({ product, role, warnings = [], back, extra, eager = f
       {/* Outside the card button: store tags are their own controls (no nested buttons). */}
       <OfferPrice product={product} />
       <StoreTags product={product} className="mt-2" />
+      {product.catalogPublished ? (
+        <div className="mt-2"><PartnerPurchaseLink product={shown} label="Ver na loja" affiliateOnly /></div>
+      ) : null}
       {role ? <p className="sa-caption sa-accent-text mt-2">{ROLE_LABEL[role]}</p> : null}
       {extra ? <p className="sa-caption sa-muted mt-1">{extra}</p> : null}
       {warnings.length > 0 ? <p className="sa-caption sa-warning-text mt-1">{warnings[0]}</p> : null}
@@ -221,18 +233,65 @@ function RatingLine({ product }: { product: Product }) {
 
 const FIT_LABEL = { ajustado: "Ajustado", regular: "Regular", amplo: "Amplo" } as const
 
+function RelatedPiece({ product, back }: { product: Product; back: Overlay }) {
+  const { open } = useStore()
+  const expired = useOfferExpiry(product.offerExpiresAt)
+  return (
+    <li className="flex items-center gap-2 py-3">
+      <button type="button" className="sa-cardbtn flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => open({ kind: "product", productId: product.id, back })}>
+        <span className="sa-alt-photo w-11">
+          <Photo image={product.images[0] ?? null} alt="" className="h-full w-full" sizes="44px" />
+        </span>
+        <span className="min-w-0">
+          <span className="sa-body-sm sa-clamp2 font-semibold">{product.name}</span>
+          <span className="sa-caption sa-muted block">{product.partner.name} · <span className="sa-num">{expired ? "Oferta expirada" : priceText(product)}</span></span>
+        </span>
+      </button>
+      <PartnerPurchaseLink product={product} affiliateOnly />
+    </li>
+  )
+}
+
+function RelatedProducts({ productId, back }: { productId: string; back: Overlay }) {
+  const label = useId()
+  const query = useRelatedProducts(productId)
+  const products = query.data?.items ?? []
+  return (
+    <section className="grid gap-2" aria-labelledby={label}>
+      <h3 id={label} className="sa-title-sm">Peças relacionadas</h3>
+      {query.isPending ? (
+        <LoadingState label="Carregando peças relacionadas…" />
+      ) : query.isError && products.length === 0 ? (
+        <div className="grid justify-items-start gap-2">
+          <p className="sa-body-sm sa-muted">Não foi possível carregar as peças relacionadas.</p>
+          <button type="button" className="sa-btn sa-btn-secondary sa-btn-sm" onClick={() => void query.refetch()}>Tentar novamente</button>
+        </div>
+      ) : products.length === 0 ? (
+        <p className="sa-body-sm sa-muted">Ainda não há peças semelhantes disponíveis.</p>
+      ) : (
+        <>
+          <ul className="sa-divided">{products.map((item) => <RelatedPiece key={item.id} product={item} back={back} />)}</ul>
+          <Hint>Compras pelos links comissionados podem gerar comissão para o StylAI, sem custo extra para você.</Hint>
+        </>
+      )}
+    </section>
+  )
+}
+
 export function ProductDetailSheet({ productId, back, role, warnings }: { productId: string; back?: Overlay; role?: PieceRole; warnings?: string[] }) {
   const { close, offerChoice } = useStore()
   const query = useProduct(productId)
   const product = query.data
+  const expired = useOfferExpiry(product?.offerExpiresAt)
   const [size, setSize] = useState<string | null>(null)
   const [imageIndex, setImageIndex] = useState(0)
   const studio = useSendToStudio(product)
   const self: Overlay = { kind: "product", productId, back }
+  const previous = back?.kind === "product" ? <button type="button" className="sa-iconbtn" onClick={close} aria-label="Voltar à peça anterior"><ArrowLeft size={22} aria-hidden="true" /></button> : undefined
 
   if (!product) {
     return (
-      <Sheet title="Detalhe da peça" onClose={close}>
+      <Sheet title="Detalhe da peça" onClose={close} leading={previous}>
         {query.isError ? (
           <ErrorState error={query.error} onRetry={() => void query.refetch()} />
         ) : (
@@ -256,19 +315,21 @@ export function ProductDetailSheet({ productId, back, role, warnings }: { produc
   const updated = formatDay(product.updatedAt)
   // The exit, link note and price follow the store chosen in the tags.
   const shown = withOffer(product, offerChoice[product.id])
+  const canSendToStudio = !product.catalogPublished || (product.tryOnReady && !expired)
 
   return (
     <Sheet
       title="Detalhe da peça"
       onClose={close}
+      leading={previous}
       footer={
         <div className="grid gap-2">
           <StoreCta product={shown} back={self} />
           <div className="flex gap-2">
-            <button type="button" className="sa-btn sa-btn-secondary flex-1" onClick={studio.send} aria-disabled={studio.full || undefined}>
+            {canSendToStudio ? <button type="button" className="sa-btn sa-btn-secondary flex-1" onClick={studio.send} aria-disabled={studio.full || undefined}>
               <PenNib size={18} aria-hidden="true" />
               {studio.inStudio ? "Ver no Estúdio" : "Levar ao Estúdio"}
-            </button>
+            </button> : null}
             <div className="sa-btn sa-btn-secondary" style={{ padding: 0, width: 48 }}>
               <FavButton product={product} />
             </div>
@@ -367,8 +428,9 @@ export function ProductDetailSheet({ productId, back, role, warnings }: { produc
           </dl>
         ) : null}
 
-        {updated ? <Hint>Preço observado na loja em {updated}; pode ter mudado desde então. Estoque não confirmado.</Hint> : null}
+        {updated && !expired ? <Hint>Preço observado na loja em {updated}. Estoque não confirmado.</Hint> : null}
         <StoreLinkNote product={shown} />
+        {product.catalogPublished && !expired ? <RelatedProducts productId={product.id} back={self} /> : null}
       </div>
     </Sheet>
   )

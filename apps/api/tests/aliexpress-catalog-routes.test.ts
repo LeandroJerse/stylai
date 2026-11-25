@@ -5,7 +5,7 @@ import { buildApp } from "../src/app"
 
 const SECRET = "synthetic-aliexpress-secret"
 const ACTOR = "20000000-0000-4000-8000-000000000001"
-const db = {} as PrivateDatabase<"api">
+const db = { call: async (name: string) => name === "list_affiliate_offers" ? { items: [], total: 0, nextCursor: null } : null } as unknown as PrivateDatabase<"api">
 const queryBody = { aliexpress_affiliate_product_query_response: { resp_result: { resp_code: 200, result: { products: { product: [{
   product_id: "1005000000000001", product_title: "Vestido midi floral", product_main_image_url: "https://ae01.alicdn.com/kf/S1.jpg",
   target_sale_price: "89.90", target_sale_price_currency: "BRL", product_detail_url: "https://pt.aliexpress.com/item/1005000000000001.html",
@@ -41,7 +41,7 @@ async function build(aliexpressCatalog: ReturnType<typeof service>["aliexpressCa
 const search = (app: Awaited<ReturnType<typeof build>>, prompt = "vestido") => app.inject({ method: "POST", url: "/v1/studio/searches", payload: { prompt } })
 
 describe("aliexpress_affiliate catalog mode", () => {
-  test("search returns real-shaped items with separated plain and tracked links, readable afterwards from cache", async () => {
+  test("store search prepares tracked links and its cache is readable without adding items to the home", async () => {
     const { aliexpressCatalog, methods } = service()
     const app = await build(aliexpressCatalog)
     try {
@@ -61,10 +61,10 @@ describe("aliexpress_affiliate catalog mode", () => {
       expect(res.body).not.toContain("_from_query")
 
       expect((await search(app, " Vestido ")).json().fromCache).toBe(true)
-      expect((await app.inject("/v1/catalog/products")).json()).toMatchObject({ total: 1, source: "aliexpress_affiliate" })
+      expect((await app.inject("/v1/catalog/products")).json()).toMatchObject({ total: 0, source: "aliexpress_affiliate" })
       expect((await app.inject("/v1/catalog/products/aliexpress:1005000000000001")).json().links.affiliateUrl).toBe("https://s.click.aliexpress.com/e/_generated")
       expect((await app.inject("/v1/catalog/products/aliexpress:999")).statusCode).toBe(404)
-      expect((await app.inject("/v1/catalog/source")).json()).toMatchObject({ id: "aliexpress_affiliate", configured: true, capabilities: { affiliateLinks: true, variants: "none", pagination: "none", stock: "unknown" } })
+      expect((await app.inject("/v1/catalog/source")).json()).toMatchObject({ id: "aliexpress_affiliate", configured: true, capabilities: { affiliateLinks: true, variants: "none", pagination: "cursor", stock: "unknown" } })
       expect(methods).toEqual(["aliexpress.affiliate.product.query", "aliexpress.affiliate.link.generate"])
     } finally { await app.close() }
   })
@@ -76,7 +76,7 @@ describe("aliexpress_affiliate catalog mode", () => {
       const body = (await search(app)).json()
       expect(body.links).toBe("missing_tracking_id")
       expect(body.items[0].product.links).toEqual({ productUrl: "https://pt.aliexpress.com/item/1005000000000001.html", affiliateUrl: null })
-      expect((await app.inject("/v1/catalog/source")).json().capabilities.affiliateLinks).toBe(false)
+      expect((await app.inject("/v1/catalog/source")).json().capabilities.affiliateLinks).toBe(true)
       expect(methods).toEqual(["aliexpress.affiliate.product.query"])
     } finally { await app.close() }
   })
@@ -85,8 +85,7 @@ describe("aliexpress_affiliate catalog mode", () => {
     const missing = await build(null)
     try {
       expect((await search(missing)).statusCode).toBe(503)
-      expect((await missing.inject("/v1/catalog/products")).statusCode).toBe(503)
-      expect((await missing.inject("/v1/catalog/source")).json()).toMatchObject({ id: "aliexpress_affiliate", configured: false })
+      expect((await missing.inject("/v1/catalog/products")).json()).toMatchObject({ total: 0, items: [] })
     } finally { await missing.close() }
 
     const failing = await build(service({ fail: true }).aliexpressCatalog)

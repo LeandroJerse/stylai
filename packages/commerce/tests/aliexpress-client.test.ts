@@ -109,8 +109,18 @@ describe("AliExpress affiliate client", () => {
       init.signal?.addEventListener("abort", () => reject(new Error(`timeout ${SECRET}`)))
     })
     const client = createAliExpressAffiliateClient({ appKey: "500000", appSecret: SECRET, trackingId: null, fetch, timeoutMs: 20 })
-    const result = await client.queryProducts({ keywords: "vestido" })
-    expect(result).toEqual({ ok: false, kind: "network", code: null, requestId: null })
+    // AbortSignal.timeout does not keep the event loop alive on its own. This
+    // fake transport has no socket to keep it running as the real fetch does.
+    let watchdog: ReturnType<typeof setTimeout> | undefined
+    try {
+      const result = await Promise.race([
+        client.queryProducts({ keywords: "vestido" }),
+        new Promise<never>((_, reject) => { watchdog = setTimeout(() => reject(new Error("Request did not abort")), 1000) }),
+      ])
+      expect(result).toEqual({ ok: false, kind: "network", code: null, requestId: null })
+    } finally {
+      clearTimeout(watchdog)
+    }
   })
 })
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { AliExpressCatalogError, createAliExpressCatalogConnector, normalizeAliExpressProduct, type AliExpressAffiliateClient, type AliExpressProductRaw } from "../src/index"
+import { AliExpressCatalogError, createAliExpressAffiliateClient, createAliExpressCatalogConnector, normalizeAliExpressProduct, type AliExpressAffiliateClient, type AliExpressProductRaw } from "../src/index"
 
 const raw = (overrides: Partial<AliExpressProductRaw> = {}): AliExpressProductRaw => ({
   productId: "1005001", title: "Vestido longo verde", mainImageUrl: "https://ae01.alicdn.com/kf/a.jpg",
@@ -9,6 +9,19 @@ const raw = (overrides: Partial<AliExpressProductRaw> = {}): AliExpressProductRa
 })
 
 describe("AliExpress catalog normalization", () => {
+  test("a full provider page without a total can continue to the next page", async () => {
+    const client = createAliExpressAffiliateClient({
+      appKey: "test-app", appSecret: "test-secret",
+      fetch: async () => ({ ok: true, status: 200, text: async () => JSON.stringify({
+        resp_result: { resp_code: "200", result: { products: [{
+          product_id: "1005001", product_title: "Vestido longo verde", product_main_image_url: "https://ae01.alicdn.com/kf/a.jpg",
+        }] } },
+      }) }),
+    })
+    const connector = createAliExpressCatalogConnector({ client, keywords: "vestido", pageSize: 1 })
+    expect((await connector.page(null)).nextCursor).toBe("2")
+  })
+
   test("distinguishes outfit sets, dress shirts and denim jackets", () => {
     for (const [title, category] of [
       ["Conjunto masculino camisa e calça linho", "outfit_sets"],

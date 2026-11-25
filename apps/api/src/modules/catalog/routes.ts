@@ -12,13 +12,14 @@ import { readFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 import {
   apiError, isTestImageUrl, PILOT_SELLER_NAME, TEST_CATALOG_CAPABILITIES, TEST_CATALOG_IMAGES, TEST_IMAGE_ORIGIN,
-  type CatalogSourceMode,
+  type CatalogSourceMode, type OfferFreshness,
 } from "@stylai/contracts"
 import {
   ALIEXPRESS_AFFILIATE_CATALOG_CAPABILITIES, TIKTOK_CREATOR_CATALOG_CAPABILITIES,
   type AliExpressCatalogService, type NormalizedAliExpressCatalogItem, type NormalizedTikTokCatalogItem, type TikTokCatalogCache,
 } from "@stylai/commerce"
 import { PrivateDatabaseError, type PrivateDatabase } from "@stylai/supabase"
+import { canonicalAffiliateId, createAffiliateCatalogReader } from "./affiliate.js"
 
 export const productRow = z.object({
   id: z.string().uuid(), name: z.string(), price_minor: z.number().int().nullable(), currency: z.string(),
@@ -108,7 +109,7 @@ export function presentTikTokProduct(item: NormalizedTikTokCatalogItem) {
  * Presents a normalized AliExpress Affiliates item. `links.affiliateUrl` is only set when the service
  * generated it with our tracking ID; otherwise the card falls back to the plain product page.
  */
-export function presentAliExpressProduct(item: NormalizedAliExpressCatalogItem) {
+export function presentAliExpressProduct(item: NormalizedAliExpressCatalogItem & OfferFreshness) {
   return {
     id: item.canonicalKey,
     externalId: item.externalProductId,
@@ -125,6 +126,8 @@ export function presentAliExpressProduct(item: NormalizedAliExpressCatalogItem) 
     availability: "unknown" as const,
     material: null, color: null, fit: null, deliveryDays: null, measurements: [], styles: [],
     updatedAt: item.priceObservedAt,
+    ...(item.offerExpiresAt ? { offerExpiresAt: item.offerExpiresAt } : {}),
+    ...(item.catalogPublished ? { catalogPublished: true } : {}),
     links: { productUrl: item.productUrl, affiliateUrl: item.affiliateUrl },
     favorite: false,
     fixture: false,
@@ -140,6 +143,20 @@ const listQuery = z.object({
   cursor: z.string().regex(/^\d{1,5}$/).optional(),
   limit: z.coerce.number().int().min(1).max(48).optional(),
 }).passthrough()
+
+const price = z.coerce.number().finite().nonnegative().max(1_000_000)
+const affiliateListQuery = z.object({
+  q: z.string().trim().min(1).max(120).optional(),
+  collection: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(64).optional(),
+  category: z.string().min(1).max(64).optional(),
+  partner: z.string().min(1).max(120).optional(),
+  cursor: z.string().min(1).max(80).optional(),
+  limit: z.coerce.number().int().min(1).max(48).default(24),
+  priceMin: price.optional(),
+  priceMax: price.optional(),
+  favorites: z.enum(["true", "false"]).optional(),
+  sort: z.enum(["newest", "price_asc", "price_desc", "relevance"]).optional(),
+}).refine((input) => input.priceMin === undefined || input.priceMax === undefined || input.priceMin <= input.priceMax)
 
 export async function registerCatalogRoutes(
   app: FastifyInstance,
@@ -157,29 +174,42 @@ export async function registerCatalogRoutes(
   },
 ) {
   const viewerOf = async (request: FastifyRequest) => (deps.resolveActor ? await deps.resolveActor(request).catch(() => null) : null)
-  const aliexpressUnavailable = (reply: FastifyReply) =>
-    reply.code(503).send(apiError("service_unavailable", "Catálogo AliExpress não configurado no servidor. Nenhum catálogo sintético foi usado como substituto."))
   const base = deps.publicBaseUrl ?? ""
   const catalogMode: CatalogSourceMode = deps.catalogMode ?? (deps.pilotOnly ? "curated_pilot" : "test_catalog")
+  const affiliate = catalogMode === "aliexpress_affiliate" ? createAffiliateCatalogReader(deps.db) : null
   const pilotOnly = catalogMode === "curated_pilot"
   const isPilotRow = (row: CatalogRow) => !row.fixture && row.partner?.name === PILOT_SELLER_NAME
   const failure = (reply: FastifyReply, error: unknown) => {
     if (error instanceof PrivateDatabaseError) app.log.warn({ outcome: error.outcome, sqlState: error.sqlState }, "catalog read failed")
     return reply.code(503).send(apiError("service_unavailable", "Catálogo temporariamente indisponível."))
   }
+  const notFound = (reply: FastifyReply) => reply.code(404).send(apiError("not_found", "Peça indisponível no catálogo."))
+  const invalidFilter = (reply: FastifyReply) => reply.code(400).send(apiError("validation", "Filtro inválido."))
 
   app.get("/v1/catalog/products", async (request, reply) => {
+    if (affiliate) {
+      const parsed = affiliateListQuery.safeParse(request.query)
+      if (!parsed.success) return invalidFilter(reply)
+      const { q, collection, category, partner, cursor, limit, priceMin, priceMax, sort, favorites } = parsed.data
+      const favoriteActor = favorites === "true" ? await viewerOf(request) : null
+      if (favorites === "true" && !favoriteActor) return reply.code(401).send(apiError("unauthorized", "Entre para ver suas peças favoritas."))
+      try {
+        const page = await affiliate.list({
+          keyword: q, collection, category, partner, cursor, limit, favoriteActor: favoriteActor ?? undefined,
+          minPriceMinor: priceMin === undefined ? undefined : Math.round(priceMin * 100),
+          maxPriceMinor: priceMax === undefined ? undefined : Math.round(priceMax * 100),
+          sort: sort === "relevance" ? undefined : sort,
+        })
+        return { ...page, items: page.items.map((item) => ({ ...presentAliExpressProduct(item), favorite: Boolean(favoriteActor) })), source: "aliexpress_affiliate" }
+      } catch (error) {
+        if (error instanceof PrivateDatabaseError && error.sqlState === "22023") return invalidFilter(reply)
+        return failure(reply, error)
+      }
+    }
     const q = listQuery.safeParse(request.query)
-    if (!q.success) return reply.code(400).send(apiError("validation", "Filtro inválido."))
+    if (!q.success) return invalidFilter(reply)
     const limit = q.data.limit ?? 24
     const offset = Number(q.data.cursor ?? 0)
-    if (catalogMode === "aliexpress_affiliate") {
-      if (!deps.aliexpressCatalog) return aliexpressUnavailable(reply)
-      const cached = (await deps.aliexpressCatalog.listFreshCached(await viewerOf(request))).filter((item) => !q.data.category || item.category === q.data.category)
-      const slice = cached.slice(offset, offset + limit)
-      const next = offset + slice.length
-      return { items: slice.map(presentAliExpressProduct), nextCursor: next < cached.length ? String(next) : null, total: cached.length, source: "aliexpress_affiliate" }
-    }
     if (catalogMode === "tiktok_shop") {
       if (!deps.tiktokCache) {
         return reply.code(503).send(apiError("service_unavailable", "Catálogo TikTok Shop não configurado ou sem autorização de criador ativa."))
@@ -206,16 +236,21 @@ export async function registerCatalogRoutes(
   })
 
   app.get<{ Params: { id: string } }>("/v1/catalog/products/:id", async (request, reply) => {
-    if (catalogMode === "aliexpress_affiliate") {
-      if (!deps.aliexpressCatalog) return aliexpressUnavailable(reply)
-      const found = /^(aliexpress:)?\d{1,20}$/.test(request.params.id) ? await deps.aliexpressCatalog.findFresh(request.params.id) : null
-      if (!found) {
-        const viewer = deps.ownedPiece ? await viewerOf(request) : null
-        const owned = viewer ? await deps.ownedPiece!(viewer, request.params.id).catch(() => null) : null
-        if (owned) return owned
-        return reply.code(404).send(apiError("not_found", "Peça não encontrada no cache ativo do AliExpress. Faça a busca de novo."))
-      }
-      return presentAliExpressProduct(found)
+    if (affiliate) {
+      const id = canonicalAffiliateId(request.params.id)
+      try {
+        const published = id ? await affiliate.detail(id) : null
+        if (published) return presentAliExpressProduct(published)
+        const viewer = await viewerOf(request)
+        if (!viewer) return notFound(reply)
+        // Results of an explicit store search stay associated with the signed-in viewer.
+        const cached = id ? await deps.aliexpressCatalog?.findFresh(id, viewer) : null
+        if (cached) return presentAliExpressProduct(cached)
+        const owned = await deps.ownedPiece?.(viewer, id ?? request.params.id)
+        if (!owned) return notFound(reply)
+        // Saved pieces and generated looks keep their identity after their offer is no longer published.
+        return id ? { ...owned, catalogPublished: false, price: null, priceKind: "none", offers: [], links: { productUrl: null, affiliateUrl: null } } : owned
+      } catch (error) { return failure(reply, error) }
     }
     if (catalogMode === "tiktok_shop") {
       if (!deps.tiktokCache) return reply.code(503).send(apiError("service_unavailable", "Catálogo TikTok Shop não configurado ou sem autorização de criador ativa."))
@@ -233,16 +268,26 @@ export async function registerCatalogRoutes(
     } catch (error) { return failure(reply, error) }
   })
 
-  app.get("/v1/catalog/facets", async (request, reply) => {
-    if (catalogMode === "aliexpress_affiliate") {
-      if (!deps.aliexpressCatalog) return aliexpressUnavailable(reply)
-      const items = await deps.aliexpressCatalog.listFreshCached(await viewerOf(request))
-      const cats = new Map<string, { id: string; label: string; count: number }>()
-      for (const item of items) {
-        const c = cats.get(item.category) ?? { id: item.category, label: item.categoryLabel, count: 0 }
-        c.count++; cats.set(c.id, c)
-      }
-      return { categories: [...cats.values()], partners: [], priceRange: null, total: items.length }
+  app.get<{ Params: { id: string } }>("/v1/catalog/products/:id/related", async (request, reply) => {
+    if (!affiliate) return { items: [], nextCursor: null, total: 0 }
+    const query = z.object({ limit: z.coerce.number().int().min(1).max(12).default(6) }).safeParse(request.query)
+    if (!query.success) return invalidFilter(reply)
+    const id = canonicalAffiliateId(request.params.id)
+    if (!id) return notFound(reply)
+    try {
+      const product = await affiliate.detail(id)
+      if (!product) return notFound(reply)
+      const page = await affiliate.list({
+        category: product.category, exclude: id, limit: query.data.limit,
+        ...(product.priceMinor === null ? {} : { sort: "price_near", nearPriceMinor: product.priceMinor }),
+      })
+      return { ...page, items: page.items.map(presentAliExpressProduct) }
+    } catch (error) { return failure(reply, error) }
+  })
+
+  app.get("/v1/catalog/facets", async (_request, reply) => {
+    if (affiliate) {
+      try { return await affiliate.facets() } catch (error) { return failure(reply, error) }
     }
     if (catalogMode === "tiktok_shop") {
       if (!deps.tiktokCache) return reply.code(503).send(apiError("service_unavailable", "Catálogo TikTok Shop não configurado ou sem autorização de criador ativa."))
@@ -290,9 +335,8 @@ export async function registerCatalogRoutes(
       return {
         id: "aliexpress_affiliate",
         label: "AliExpress — Affiliates API (BR, BRL)",
-        // This mode returns no SKUs and does not paginate (one small page per search).
-        capabilities: { ...ALIEXPRESS_AFFILIATE_CATALOG_CAPABILITIES, variants: "none", pagination: "none", affiliateLinks: Boolean(deps.aliexpressCatalog?.hasTrackingId) },
-        configured: Boolean(deps.aliexpressCatalog),
+        capabilities: { ...ALIEXPRESS_AFFILIATE_CATALOG_CAPABILITIES, variants: "none", pagination: "cursor" },
+        configured: true,
       }
     }
     if (catalogMode === "tiktok_shop") {
@@ -319,7 +363,15 @@ export async function registerCatalogRoutes(
     } catch { return reply.code(404).send(apiError("not_found", "Imagem não encontrada.")) }
   })
 
-  // No editorial hero yet: an honest empty answer instead of a made-up highlight.
-  app.get("/v1/explore/hero", async () => ({ hero: null }))
+  app.get("/v1/explore/hero", async (_request, reply) => {
+    if (!affiliate) return { hero: null }
+    try {
+      const { items } = await affiliate.list({ limit: 1 })
+      const first = items[0]
+      if (!first) return { hero: null }
+      const product = presentAliExpressProduct(first)
+      return { hero: { product, image: product.images[0] } }
+    } catch (error) { return failure(reply, error) }
+  })
 }
 

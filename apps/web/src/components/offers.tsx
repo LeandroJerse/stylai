@@ -10,10 +10,12 @@ import type { Product } from "../api/types"
 import { useStore } from "../app/store"
 import { formatMoney } from "../lib/format"
 import { rankOffers, withOffer, type RankedOffer } from "../lib/offers"
+import { useOfferExpiry } from "../lib/useOfferExpiry"
 
 /** The product as shown for the store the person chose (or its own store). */
 export function useOfferProduct(product: Product): Product {
   const { offerChoice } = useStore()
+  useOfferExpiry(product.offerExpiresAt)
   return withOffer(product, offerChoice[product.id])
 }
 
@@ -96,6 +98,7 @@ export function StoreTags({ product, size = "sm", className = "" }: StoreTagsPro
 /** Price of the chosen store plus its rank marker ("Menor preço" / "Maior preço"). */
 export function OfferPrice({ product, size = "sm" }: { product: Product; size?: "sm" | "lg" }) {
   const { offerChoice } = useStore()
+  const expired = useOfferExpiry(product.offerExpiresAt)
   const offers = rankOffers(product)
   const selectedId = withOffer(product, offerChoice[product.id]).partner.id
   const selected = offers.find((o) => o.partner.id === selectedId) ?? offers[0]
@@ -103,7 +106,7 @@ export function OfferPrice({ product, size = "sm" }: { product: Product; size?: 
   return (
     <p className={`flex flex-wrap items-baseline gap-x-2 ${size === "lg" ? "mt-2" : "mt-1"}`} aria-live="polite">
       <span className={`sa-num font-semibold ${size === "lg" ? "text-lg" : "sa-caption"}`} style={{ color: "var(--text1)" }}>
-        {selected.price ? formatMoney(selected.price.amount, selected.price.currency) : "Preço não informado"}
+        {expired ? "Oferta expirada" : selected.price ? formatMoney(selected.price.amount, selected.price.currency) : "Preço não informado"}
       </span>
       {selected.lowest || selected.highest ? (
         <span className={`sa-caption sa-pricerank ${rankClass(selected)}`}>

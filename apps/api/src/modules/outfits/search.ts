@@ -6,13 +6,14 @@
 import { z } from "zod"
 import {
   interpretCompositionRules, MAX_OUTFITS, outfitSlotOfCategory, OUTFIT_TARGET_PER_SLOT, rankCandidates, searchPlan, selectOutfitsRules,
-  applyFiltersToIntent, normalizeText, storeQuery, NO_FILTERS, normalizeFilters, type OutfitFilters,
+  applyFiltersToIntent, normalizeText, storeQuery, NO_FILTERS, normalizeFilters, SLOT_CATEGORIES, type OutfitFilters,
   type CompositionIntent, type LockedPieces, type OutfitCandidate, type OutfitPools, type OutfitSlot, type SlotId, type ValidOutfit,
 } from "@stylai/contracts"
 import type { AliExpressCatalogService } from "@stylai/commerce"
 import { ComposerResponseError, type Composer, type ComposerUsage, type InterpretationCache, type OutfitAgents } from "@stylai/ai"
 import type { Json, PrivateDatabase } from "@stylai/supabase"
 import type { CatalogRow } from "../catalog/routes.js"
+import type { AffiliateOfferQuery, PublishedAffiliateOffer } from "../catalog/affiliate.js"
 import {
   candidateOf, orderPieces, pieceFromAliExpress, pieceFromCatalog, poolsSchema, referenceItemOf, slotSchema, totalOf, type StoredPiece, type StoredPools,
 } from "./pieces.js"
@@ -23,6 +24,7 @@ export interface OutfitSearchDeps {
   db: PrivateDatabase<"api">
   source: OutfitSourceKind
   aliexpressCatalog?: AliExpressCatalogService | null
+  findPublishedOffers?: (query: AffiliateOfferQuery) => Promise<{ items: PublishedAffiliateOffer[]; nextCursor: string | null }>
   listCatalog: () => Promise<CatalogRow[]>
   composer?: Composer | null
   interpretationCache?: InterpretationCache | null
@@ -140,7 +142,7 @@ export function createOutfitSearch(deps: OutfitSearchDeps) {
         } else {
           const items = res.items.filter((x) => outfitSlotOfCategory(x.category) === slot)
           const list = raw.get(slot) ?? []
-          for (const x of items) if (!list.some((p) => p.id === x.canonicalKey)) list.push(pieceFromAliExpress(x, slot))
+          for (const x of items) if (!list.some((p) => p.id === x.canonicalKey)) list.push(pieceFromAliExpress(x, slot, res.expiresAt))
           raw.set(slot, list)
           logs.push({ slot, query, outcome: items.length ? "ok" : res.items.length ? "filtered_out" : "empty", returned: res.items.length, kept: items.length, fromCache: res.fromCache, code: res.errorCode })
         }
@@ -282,32 +284,85 @@ export function createOutfitSearch(deps: OutfitSearchDeps) {
     return null
   }
 
-  /**
-   * "Buscar outra": one store query for one part of an outfit. What the person asks for replaces the style of the first
-   * request; the part, the audience, the purchase filters and "is it outfit clothing at all" still apply.
-   */
-  async function options(user: string, plan: StoredPlan, slot: OutfitSlot, query: string): Promise<{ pieces: StoredPiece[]; returned: number; outside: Record<string, number> } | "unavailable"> {
-    const outside: Record<string, number> = {}
-    const left = (reason: string, n = 1) => { if (n) outside[reason] = (outside[reason] ?? 0) + n }
-    let found: StoredPiece[] = []
-    let returned: number
+  /** Explicit swap search. The new query replaces the initial style while keeping the purchase constraints. */
+  async function options(user: string, plan: StoredPlan, slot: OutfitSlot, query: string, current: readonly StoredPiece[] = []) {
+    const filters = plan.filters ?? NO_FILTERS
+    const asked: CompositionIntent = { ...plan.intent, style: [], occasion: null, climate: undefined, avoid: [], colors: [], terms: query.split(/\s+/), slots: slot === "set" ? [] : [{ slot, required: true, query }] }
+    const keywords = storeQuery(query)
+    const ids = new Set(current.map((piece) => piece.id))
+    const budget = applyFiltersToIntent(plan.intent, filters)
+    const remaining = current.filter((piece) => piece.slot !== slot)
+    const limit = budget.budgetMode === "require" && budget.budgetTotalBrl !== null
+      ? remaining.some((piece) => piece.priceMinor === null)
+        ? -1
+        : Math.round(budget.budgetTotalBrl * 100) - (totalOf(remaining) ?? 0)
+      : null
+    if (limit !== null && limit < 0) return { pieces: [], returned: 0, outside: { filter_total: 1 } }
+
+    function rankOptions(rows: StoredPiece[], returned: number, otherPart: number) {
+      const outside: Record<string, number> = {}
+      const left = (reason: string, n = 1) => { if (n) outside[reason] = (outside[reason] ?? 0) + n }
+      left("other_part", otherPart)
+      const available = rows.filter((piece) => {
+        if (ids.has(piece.id)) { left("already_in_look"); return false }
+        if (limit !== null && (piece.priceMinor === null || piece.priceMinor > limit)) { left("filter_total"); return false }
+        return true
+      })
+      const { kept, rejected } = rankCandidates(asked, available.map(candidateOf), filters)
+      for (const r of rejected) left(r.reason)
+      const byId = new Map(available.map((piece) => [piece.id, piece]))
+      return { pieces: kept.map((candidate) => byId.get(candidate.id)!), returned, outside }
+    }
+
     if (deps.source === "curated") {
       const words = normalizeText(query).split(/\s+/).filter((w) => w.length > 2)
       const rows = (await deps.listCatalog()).filter((r) => r.availability !== "unavailable" && words.some((w) => normalizeText(r.name).includes(w)))
-      returned = rows.length
-      found = rows.filter((r) => r.category && outfitSlotOfCategory(r.category.id) === slot).map((r) => pieceFromCatalog(r, slot))
-    } else {
-      if (!deps.aliexpressCatalog) return "unavailable"
-      const res = await deps.aliexpressCatalog.search({ keywords: storeQuery(query), pageSize: 50, viewer: user })
-      if (res.state !== "ready") { log({ stage: "options", reason: res.errorCode ?? res.errorKind ?? "unavailable" }); return "unavailable" }
-      returned = res.items.length
-      found = res.items.filter((x) => outfitSlotOfCategory(x.category) === slot).map((x) => pieceFromAliExpress(x, slot))
+      const found = rows.filter((r) => r.category && outfitSlotOfCategory(r.category.id) === slot).map((r) => pieceFromCatalog(r, slot))
+      return rankOptions(found, rows.length, rows.length - found.length)
     }
-    left("other_part", returned - found.length)
-    const asked: CompositionIntent = { ...plan.intent, style: [], occasion: null, climate: undefined, avoid: [], colors: [], terms: query.split(/\s+/), slots: slot === "set" ? [] : [{ slot, required: true, query }] }
-    const { kept, rejected } = rankCandidates(asked, found.map(candidateOf), plan.filters ?? NO_FILTERS)
-    for (const r of rejected) left(r.reason)
-    return { pieces: kept.map((c) => found.find((p) => p.id === c.id)!), returned, outside }
+
+    if (deps.findPublishedOffers && keywords) {
+      const stopWords = new Set(["para", "com", "uma", "das", "dos", "por", "sem"])
+      const requiredTerms = normalizeText(keywords).split(/[^a-z0-9]+/).filter((term) => term.length > 2 && !stopWords.has(term))
+      const categories = slot === "set" ? ["outfit_sets"] : [...SLOT_CATEGORIES[slot]]
+      const minPriceMinor = filters.minPieceBrl === null ? undefined : Math.round(filters.minPieceBrl * 100)
+      const pieceLimit = filters.maxPieceBrl === null ? null : Math.round(filters.maxPieceBrl * 100) * (slot === "set" ? 2 : 1)
+      const maxPriceMinor = limit === null ? pieceLimit : pieceLimit === null ? limit : Math.min(pieceLimit, limit)
+      if (minPriceMinor !== undefined && maxPriceMinor !== null && minPriceMinor > maxPriceMinor) {
+        return { pieces: [], returned: 0, outside: { filter_total: 1 } }
+      }
+      if (requiredTerms.length) {
+        let cursor: string | undefined
+        // The catalog is bounded by configured collections. Page past rows that
+        // only fail the shared style/ratings rules, before using a provider slot.
+        do {
+          const page: { items: PublishedAffiliateOffer[]; nextCursor: string | null } = await deps.findPublishedOffers({
+            categories, requiredTerms, minPriceMinor, maxPriceMinor: maxPriceMinor ?? undefined,
+            exclude: current.find((piece) => piece.slot === slot)?.id, cursor, limit: 96,
+          })
+          const matching = page.items.filter((item) => item.affiliateUrl)
+          const result = rankOptions(matching.map((item) => pieceFromAliExpress(item, slot, item.offerExpiresAt)), matching.length, 0)
+          if (result.pieces.length) return result
+          cursor = page.nextCursor ?? undefined
+        } while (cursor)
+      }
+    }
+
+    if (!deps.aliexpressCatalog) return "unavailable" as const
+    const res = await deps.aliexpressCatalog.search({ keywords, pageSize: 50, viewer: user })
+    if (res.state !== "ready") {
+      log({ stage: "options", reason: res.errorCode ?? res.errorKind ?? "unavailable" })
+      return res.errorKind === "rate_limited" ? "rate_limited" as const : "unavailable" as const
+    }
+    if (res.links === "failed" || res.links === "missing_tracking_id") {
+      log({ stage: "options_links", reason: res.linkErrorCode ?? res.links })
+      return res.linkErrorKind === "rate_limited" ? "rate_limited" as const : "unavailable" as const
+    }
+    const sameSlot = res.items.filter((item) => outfitSlotOfCategory(item.category) === slot)
+    const linked = sameSlot.filter((item) => item.affiliateUrl)
+    const result = rankOptions(linked.map((item) => pieceFromAliExpress(item, slot, res.expiresAt)), res.items.length, res.items.length - sameSlot.length)
+    if (sameSlot.length > linked.length) result.outside.affiliate_link_missing = sameSlot.length - linked.length
+    return result
   }
 
   return { run, resuggest, prepare, options }

@@ -10,7 +10,7 @@ import { plural } from "../../lib/format"
 import { shortPieceName } from "../../lib/titles"
 import { FavButton } from "../pieces"
 import { ErrorState, LoadingState, Photo, Sheet } from "../ui"
-import { money, StoreLink, storeFacts } from "./OutfitCard"
+import { hasKnownTryOnBlock, StoreLink, storeFacts, usePieceOfferPrice } from "./OutfitCard"
 
 function PieceSheet({ piece, outfits, onClose }: { piece: OutfitPiece; outfits: Outfits; onClose: () => void }) {
   const { setDraft, notify } = useStore()
@@ -18,6 +18,8 @@ function PieceSheet({ piece, outfits, onClose }: { piece: OutfitPiece; outfits: 
   const [error, setError] = useState<string | null>(null)
   const sets = (outfits.search.data?.sets ?? []).filter((s) => s.pieces.some((p) => p.slot === piece.slot))
   const facts = storeFacts(piece)
+  const price = usePieceOfferPrice(piece)
+  const blocked = hasKnownTryOnBlock(piece)
   const use = async (set: (typeof sets)[number]): Promise<void> => {
     if (busy) return
     setBusy(set.id)
@@ -38,7 +40,7 @@ function PieceSheet({ piece, outfits, onClose }: { piece: OutfitPiece; outfits: 
           </span>
           <div className="grid min-w-0 flex-1 content-start gap-1">
             <p className="sa-body-sm font-semibold">{piece.product.name}</p>
-            <p className="sa-body-sm sa-num">{money(piece.product.price)}</p>
+            <p className="sa-body-sm sa-num">{price}</p>
             <p className="sa-caption sa-muted">
               {piece.label} · {piece.product.partner.name}
             </p>
@@ -49,7 +51,9 @@ function PieceSheet({ piece, outfits, onClose }: { piece: OutfitPiece; outfits: 
             </div>
           </div>
         </div>
-        {sets.length ? (
+        {blocked ? (
+          <p className="sa-caption sa-muted">{piece.tryOn.message ?? "Esta peça não pode ser usada no provador."}</p>
+        ) : sets.length ? (
           <div className="grid gap-2">
             <p className="sa-body-sm font-semibold">Usar em qual conjunto?</p>
             {sets.map((s) => {
@@ -70,6 +74,21 @@ function PieceSheet({ piece, outfits, onClose }: { piece: OutfitPiece; outfits: 
       </div>
     </Sheet>,
     document.querySelector(".sa-root") ?? document.body,
+  )
+}
+
+function FoundPiece({ piece, onOpen }: { piece: OutfitPiece; onOpen: () => void }) {
+  const price = usePieceOfferPrice(piece)
+  return (
+    <li className="min-w-0">
+      <button type="button" className="sa-piecetile" onClick={onOpen} aria-label={`${piece.product.name}, ${price}. Ver detalhes`} data-testid="found-piece">
+        <span className="sa-piecetile-photo">
+          <Photo image={piece.product.images[0] ?? null} alt="" className="h-full w-full" sizes="(min-width: 1024px) 14vw, 30vw" />
+        </span>
+        <span className="sa-caption sa-clamp2 mt-2 font-semibold">{shortPieceName(piece.product.name)}</span>
+        <span className="sa-caption sa-muted sa-num block">{price}</span>
+      </button>
+    </li>
   )
 }
 
@@ -106,17 +125,7 @@ export function FoundPieces({ outfits, searchId }: { outfits: Outfits; searchId:
         <section key={g.slot} aria-label={g.label} className="grid gap-3">
           {shown.length > 1 ? <h3 className="sa-title-sm">{g.label}</h3> : null}
           <ul className="sa-foundgrid">
-            {g.pieces.map((p) => (
-              <li key={p.product.id} className="min-w-0">
-                <button type="button" className="sa-piecetile" onClick={() => setOpen(p)} aria-label={`${p.product.name}, ${money(p.product.price)}. Ver e usar`} data-testid="found-piece">
-                  <span className="sa-piecetile-photo">
-                    <Photo image={p.product.images[0] ?? null} alt="" className="h-full w-full" sizes="(min-width: 1024px) 14vw, 30vw" />
-                  </span>
-                  <span className="sa-caption sa-clamp2 mt-2 font-semibold">{shortPieceName(p.product.name)}</span>
-                  <span className="sa-caption sa-muted sa-num block">{money(p.product.price)}</span>
-                </button>
-              </li>
-            ))}
+            {g.pieces.map((p) => <FoundPiece key={p.product.id} piece={p} onOpen={() => setOpen(p)} />)}
           </ul>
         </section>
       ))}

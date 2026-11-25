@@ -2,7 +2,7 @@
  * Store offers: one product, several stores, each with its own price and links (Product.offers).
  * Pure helpers; the store chosen per product lives in the UI store (offerChoice).
  */
-import type { Look, Product, ProductOffer } from "../api/types"
+import type { Look, Product, ProductLinks, ProductOffer } from "../api/types"
 import { formatMoney } from "./format"
 
 export interface RankedOffer extends ProductOffer {
@@ -12,8 +12,23 @@ export interface RankedOffer extends ProductOffer {
   highest: boolean
 }
 
+const expiredLinks: ProductLinks = { affiliateUrl: null, productUrl: null }
+
+export function isOfferExpired(expiresAt: string | null | undefined, now = Date.now()): boolean {
+  if (!expiresAt) return false
+  const deadline = Date.parse(expiresAt)
+  return !Number.isFinite(deadline) || deadline <= now
+}
+
+/** Keep the item and its store identity in the UI, even when its commercial data has expired. */
+export function currentOffer(product: Product): Product {
+  if (!isOfferExpired(product.offerExpiresAt)) return product
+  return { ...product, price: null, links: expiredLinks, offers: product.offers.map((offer) => ({ ...offer, price: null, links: expiredLinks })) }
+}
+
 /** Offers with their price rank. No rank with a single store, tied prices, missing prices only or mixed currencies. */
-export function rankOffers(product: Product): RankedOffer[] {
+export function rankOffers(input: Product): RankedOffer[] {
+  const product = currentOffer(input)
   const offers = product.offers.length > 0 ? product.offers : [{ partner: product.partner, price: product.price, links: product.links }]
   const priced = offers.map((o) => o.price).filter((p): p is NonNullable<typeof p> => p !== null)
   const currency = priced[0]?.currency
@@ -30,7 +45,8 @@ export function rankOffers(product: Product): RankedOffer[] {
 }
 
 /** The product as shown for the chosen store: partner, price and links swapped for that offer. */
-export function withOffer(product: Product, partnerId: string | undefined): Product {
+export function withOffer(input: Product, partnerId: string | undefined): Product {
+  const product = currentOffer(input)
   if (!partnerId || partnerId === product.partner.id) return product
   const o = product.offers.find((x) => x.partner.id === partnerId)
   return o ? { ...product, partner: o.partner, price: o.price, links: o.links } : product

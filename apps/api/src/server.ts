@@ -13,6 +13,7 @@ import { readSessionKeys } from "./modules/auth/session-crypto.js"
 import { createSessionService } from "./modules/auth/session-service.js"
 import { createPoseAnalyzer } from "./modules/photos/pose-analyzer.js"
 import { listLocalCatalog } from "./modules/catalog/routes.js"
+import { createAffiliateCatalogReader } from "./modules/catalog/affiliate.js"
 import { createReferencePreparer } from "./modules/outfits/references.js"
 import { createOutfitSearch, type OutfitSourceKind } from "./modules/outfits/search.js"
 import { createTikTokConnection } from "./modules/integrations/tiktok/connection.js"
@@ -97,6 +98,8 @@ const aliexpressClient = aliexpressAppKey && aliexpressAppSecret
 // Only the aliexpress_affiliate mode searches the provider; other modes never call it.
 const aliexpressCatalog = catalogMode === "aliexpress_affiliate" && aliexpressClient
   ? createAliExpressCatalogService({ client: aliexpressClient, trackingId: aliexpressTrackingId }) : null
+const publishedAffiliate = catalogMode === "aliexpress_affiliate"
+const affiliateReader = database && publishedAffiliate ? createAffiliateCatalogReader(database) : null
 
 // Outfit composer (Claude). Off unless explicitly enabled AND a key exists: otherwise the labelled rules fallback runs.
 const composerEnabled = process.env.STYLAI_COMPOSER_ENABLED?.trim() === "true"
@@ -121,6 +124,7 @@ const acquireAgentCall = async () => Boolean(database && await database.call("ta
 const outfitSource: OutfitSourceKind | null = catalogMode === "tiktok_shop" ? null : catalogMode === "aliexpress_affiliate" ? "aliexpress_affiliate" : "curated"
 const outfitSearch = database && store && outfitSource ? createOutfitSearch({
   db: database, source: outfitSource, aliexpressCatalog, listCatalog: () => listLocalCatalog(database, catalogMode),
+  ...(affiliateReader ? { findPublishedOffers: affiliateReader.list } : {}),
   composer, interpretationCache, agents: composerEnabled ? createAnthropicOutfitAgents({ apiKey: process.env.ANTHROPIC_API_KEY!.trim(), model: composerModel }) : null,
   acquireAgentCall, agentPrice: composerPrice,
   preparer: createReferencePreparer({ db: database, store, download: createReferenceDownloader({ hosts: ["alicdn.com", "aliexpress-media.com"] }) }),
@@ -138,14 +142,14 @@ if (!Number.isInteger(rateLimitPerMinute) || rateLimitPerMinute < 10 || rateLimi
 const app = await buildApp({
   appOrigin: config.appOrigin, logger: true, rateLimitPerMinute, probeSupabase: () => probeFoundation(supabase),
   ...(database ? { probePrivateDatabase: () => database.probe(), catalog: { db: database, publicBaseUrl, pilotOnly: pilotCatalogOnly, catalogMode, tiktokCache, aliexpressCatalog, ...(resolveActor ? { resolveActor } : {}),
-    ...(keys ? { ownedPiece: createPieceResolver({ db: database, keys, publicBaseUrl, aliexpressCatalog }) } : {}) } } : {}),
+    ...(keys ? { ownedPiece: createPieceResolver({ db: database, keys, publicBaseUrl, aliexpressCatalog, publishedAffiliate }) } : {}) } } : {}),
   ...(sessions && provider ? { auth: { provider, sessions, appOrigin: config.appOrigin, secureCookie: config.nodeEnv === "production" } } : {}),
   ...(database && resolveActor ? { privacy: {
     appOrigin: config.appOrigin, resolveActor,
     requestDeletion: (actor: string) => database.call("request_account_deletion", actor),
   } } : {}),
   ...(database && store && keys && resolveActor ? {
-    closet: { db: database, keys, resolveActor, publicBaseUrl, aliexpressCatalog },
+    closet: { db: database, keys, resolveActor, publicBaseUrl, aliexpressCatalog, publishedAffiliate },
     photos: { db: database, store, keys, resolveActor, photoPolicyVersion, publicBaseUrl, analyzer },
     studio: { db: database, keys, resolveActor, photoPolicyVersion, publicBaseUrl, generationEnabled: generationMode !== "disabled", generationMode, realProvider,
       searchScope: catalogMode === "tiktok_shop" || catalogMode === "aliexpress_affiliate" ? "stores" : "curated_catalog",

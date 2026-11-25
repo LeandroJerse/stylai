@@ -185,7 +185,8 @@ export function createAliExpressAffiliateClient(config: AliExpressAffiliateConfi
       if (result.error) return result.error
       const payload = isObject(result.resp!.result) ? result.resp!.result : {}
       const products = listOf(payload.products, "product").map(toProduct).filter((item): item is AliExpressProductRaw => item !== null)
-      const total = Number(text(payload.total_record_count))
+      const rawTotal = text(payload.total_record_count)
+      const total = rawTotal === null ? NaN : Number(rawTotal)
       return { ok: true, products, pageNo, totalRecordCount: Number.isSafeInteger(total) && total >= 0 ? total : null, requestId: result.requestId }
     },
 

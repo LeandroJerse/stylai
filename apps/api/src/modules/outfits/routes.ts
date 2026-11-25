@@ -11,7 +11,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify"
 import { z } from "zod"
 import { countFilters, MAX_FILTER_BRL, normalizeFilters, apiError, OUTFIT_SLOT_LABEL, OUTFIT_SLOTS, SLOT_LABEL, type SlotId } from "@stylai/contracts"
 import { PrivateDatabaseError, type Json, type PrivateDatabase } from "@stylai/supabase"
-import { blockedMessage, orderPieces, overBudget, pieceSchema, presentPieceCard, slotSchema, totalOf, type StoredPiece } from "./pieces.js"
+import { blockedMessage, isPieceOfferExpired, orderPieces, overBudget, pieceSchema, presentPieceCard, slotSchema, totalOf, type StoredPiece } from "./pieces.js"
 import { planSchema, type OutfitSearch, type OutfitSourceKind, type StoredPlan } from "./search.js"
 
 export interface OutfitRouteDeps {
@@ -77,7 +77,8 @@ function outcomeMessage(row: z.infer<typeof searchRow>, plan: StoredPlan | null)
 }
 
 export function presentSet(row: z.infer<typeof setRow>, plan: StoredPlan | null, publicBase: string) {
-  const total = totalOf(row.pieces)
+  const now = Date.now()
+  const total = row.pieces.some((piece) => isPieceOfferExpired(piece, now)) ? null : totalOf(row.pieces)
   return {
     id: row.id, searchId: row.search_id, position: row.position, kind: row.pieces.some((p) => p.slot === "set") ? "bundle" as const : "assembled" as const,
     recommended: row.recommended, title: row.title, rationale: row.rationale, missingSlots: row.missing_slots.map((s) => SLOT_LABEL[s as SlotId] ?? s),
@@ -245,8 +246,9 @@ export async function registerOutfitRoutes(app: FastifyInstance, deps: OutfitRou
       const row = uuid.safeParse(request.params.id).success ? await readSet(user, request.params.id) : null
       if (!row) return notFound(reply, "Conjunto")
       if (!row.pieces.some((p) => p.slot === body.data.slot)) return reply.code(422).send(apiError("validation", "Esta parte não faz parte do conjunto."))
-      const found = await deps.search.options(user, row.plan, body.data.slot, body.data.query)
+      const found = await deps.search.options(user, row.plan, body.data.slot, body.data.query, row.pieces)
       if (found === "unavailable") return reply.code(503).send(apiError("source_unavailable", "A loja não respondeu agora. O conjunto não mudou; tente de novo em instantes."))
+      if (found === "rate_limited") return reply.code(429).send(apiError("source_rate_limited", "A busca na loja atingiu o limite. Tente novamente mais tarde."))
       const added = found.pieces.length ? await deps.db.call("add_outfit_options", user, row.id, body.data.slot, JSON.parse(JSON.stringify(found.pieces)) as Json) : 0
       return { ...presentFull((await readSet(user, row.id))!), found: { returned: found.returned, added, outside: found.outside } }
     } catch (error) { return failure(request, reply, error) }

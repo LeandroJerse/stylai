@@ -152,6 +152,8 @@ describe("AliExpress service hardening", () => {
     expect((await service.listFreshCached("user-a")).map((i) => i.externalProductId)).toEqual(["111"])
     expect((await service.listFreshCached("user-b")).map((i) => i.externalProductId)).toEqual(["222"])
     expect(await service.listFreshCached(null)).toEqual([])
+    expect(await service.findFresh("aliexpress:111", "user-b")).toBeNull()
+    expect(await service.findFresh("aliexpress:111", "user-a")).toMatchObject({ externalProductId: "111", offerExpiresAt: expect.any(String) })
   })
 
   test("a global call budget refusal blocks the provider call", async () => {

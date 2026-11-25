@@ -93,6 +93,9 @@ begin
   assert private.add_outfit_options(a,set_id,'upper','[{"slot":"upper","id":"aliexpress:2001"},{"slot":"upper","id":"aliexpress:2002"},{"slot":"upper","id":"aliexpress:2001"}]')=2, 'options not added once';
   assert private.add_outfit_options(a,set_id,'upper','[{"slot":"upper","id":"aliexpress:2002"},{"slot":"upper","id":"aliexpress:2003"}]')=1, 'known option added again';
   assert private.add_outfit_options(a,set_id,'upper','[{"slot":"upper","id":"aliexpress:2003"}]')=0, 'repeated option counted';
+  assert private.add_outfit_options(a,set_id,'upper','[{"slot":"upper","id":"aliexpress:2003","source":"aliexpress","priceObservedAt":"2026-11-25T16:00:00Z","offerExpiresAt":"2026-11-26T16:00:00Z","priceMinor":9900,"affiliateUrl":"https://s.click.aliexpress.com/e/fresh"}]')=1, 'fresh affiliate observation did not replace a known option';
+  assert private.add_outfit_options(a,set_id,'upper','[{"slot":"upper","id":"aliexpress:2003","source":"aliexpress","priceObservedAt":"2026-11-25T15:00:00Z","offerExpiresAt":"2026-11-26T15:00:00Z","priceMinor":1000,"affiliateUrl":"https://s.click.aliexpress.com/e/old"}]')=0, 'older affiliate observation overwrote a newer result';
+  assert private.read_outfit_set(a,set_id)#>>'{plan,pools,upper,0,affiliateUrl}'='https://s.click.aliexpress.com/e/fresh', 'updated affiliate link lost or duplicated';
   assert private.read_outfit_set(a,set_id)#>>'{plan,pools,upper,0,id}'='aliexpress:2003' and jsonb_array_length(private.read_outfit_set(a,set_id)#>'{plan,pools,upper}')=3, 'options not readable';
   assert (private.read_outfit_set(a,set_id)->>'revision')::integer=3, 'options created a revision';
   begin perform private.add_outfit_options(b,set_id,'upper','[{"slot":"upper","id":"x"}]'); raise exception 'foreign options accepted'; exception when insufficient_privilege then null; end;
@@ -147,7 +150,7 @@ set local role stylai_ai_worker;
 do $$
 declare j1 uuid; declare j2 uuid; declare f bigint; declare f2 bigint; declare c uuid; declare asset uuid; declare loaded jsonb;
 begin
-  assert private.server_boundary_version()='20261124230000', 'boundary version';
+  assert private.server_boundary_version()='20261125190100', 'boundary version';
   j1 := private.next_ai_job(); f := private.claim_ai_job(j1);
   loaded := private.load_ai_job(j1,f);
   assert loaded->'items'->0->>'canonical_id'='aliexpress:1002' and loaded->'items'->0->>'affiliate_url'='https://s.click.aliexpress.com/e/b', 'commerce link not bound to its panel';

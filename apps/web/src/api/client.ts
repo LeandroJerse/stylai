@@ -42,6 +42,7 @@ export type CatalogSort = "relevance" | "price_asc" | "price_desc" | "newest"
 
 export interface CatalogQuery {
   q?: string
+  collection?: string | null
   category?: string | null
   partner?: string | null
   priceMin?: number | null
@@ -121,6 +122,7 @@ export const api = {
         signal,
         query: {
           q: q.q?.trim() || undefined,
+          collection: q.collection,
           category: q.category,
           partner: q.partner,
           priceMin: q.priceMin,
@@ -132,6 +134,11 @@ export const api = {
         },
       }),
     product: (id: string) => get(`/catalog/products/${encodeURIComponent(id)}`, parseProduct, { auth: "optional" }),
+    related: (id: string, signal?: AbortSignal) => get(`/catalog/products/${encodeURIComponent(id)}/related`, (raw) => parsePage(raw, parseProduct), {
+      auth: "optional",
+      query: { limit: 6 },
+      signal,
+    }),
   },
   closet: {
     get: () => get("/closet", parseCloset, { auth: "required" }),
