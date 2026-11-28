@@ -84,7 +84,8 @@ export const api = {
   me: {
     get: () => get("/me", parseUser, { auth: "required" }),
     update: (patch: { name?: string }) => http.request<unknown>("/me", { method: "PATCH", body: patch, auth: "required" }).then(parseUser),
-    delete: () => http.request<null>("/me", { method: "DELETE", auth: "required" }),
+    /** Asks for account deletion. The API answers 202 "pending": acceptance, not proof of completed erasure. */
+    requestDeletion: () => http.request<unknown>("/privacy/deletion-requests", { method: "POST", body: { confirm: true }, auth: "required" }),
     balance: () => get("/me/balance", parseBalance, { auth: "required" }),
     measurements: () => get("/me/measurements", parseMeasurements, { auth: "required" }),
     saveMeasurements: (m: Measurements) => http.request<unknown>("/me/measurements", { method: "PUT", body: m, auth: "required" }).then(parseMeasurements),
@@ -107,7 +108,6 @@ export const api = {
       return photo
     }),
     deleteBodyPhoto: (angle: BodyAngle) => http.request<null>(`/me/body-photos/${angle}`, { method: "DELETE", auth: "required" }),
-    deleteAllBodyData: () => http.request<null>("/me/body-data", { method: "DELETE", auth: "required" }),
   },
   billing: {
     plans: () => get("/plans", parsePlans, { auth: "optional" }),

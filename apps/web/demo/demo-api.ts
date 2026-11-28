@@ -442,6 +442,12 @@ export function handle(method: string, path: string, url: URL, body: Json | null
     S.user = { ...S.user, ...(body ?? {}) }
     return ok(S.user)
   }
+  if (method === "POST" && path === "/privacy/deletion-requests") {
+    if (body?.confirm !== true) return err(422, "validation", "Confirme o pedido de exclusão da sua conta.")
+    resetDemo(); S.looks=[]; S.saved.clear(); S.favorites.clear(); S.body.clear()
+    S.signedIn = false
+    return ok({ requestId: "demo-deletion", status: "pending" }, 202)
+  }
   if (method === "DELETE" && path === "/me") {
     resetDemo(); S.looks=[]; S.saved.clear(); S.favorites.clear(); S.body.clear()
     S.signedIn = false

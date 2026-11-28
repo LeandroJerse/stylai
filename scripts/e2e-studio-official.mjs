@@ -345,6 +345,32 @@ try {
     t.check(rows.filter((r) => r.name === "try-on").length === 1, "Langfuse: uma observação try-on por job (sem duplicata nesta execução)")
     console.log(`trace: ${langfuse.LANGFUSE_BASE_URL}/project/cmwpaucmw00jfad0d028xwkog/traces/${traceId}`)
   }
+
+  // ------------------------------------------------------------- privacy controls through the UI (account A, last: it ends the account)
+  const privacyCalls = []
+  page.on("request", (r) => { if (/\/v1\/(me|privacy)/.test(r.url()) && r.method() !== "GET") privacyCalls.push(`${r.method()} ${new URL(r.url()).pathname}`) })
+  const privacyFails = []
+  page.on("response", (r) => { if (/\/v1\/(me|privacy)/.test(r.url()) && r.status() >= 400) privacyFails.push(`${r.status()} ${new URL(r.url()).pathname}`) })
+  await page.evaluate(() => { location.hash = "#/perfil" })
+  await page.getByRole("heading", { name: "Perfil" }).first().waitFor({ timeout: 15000 })
+  const photosBefore = psql(`select count(*) from private.assets where user_id=${lit(userA)} and kind='body_photo' and state='ready'`)
+  await page.getByRole("button", { name: /^Configurações/ }).click()
+  await page.getByRole("button", { name: "Apagar fotos do corpo", exact: true }).click()
+  await page.getByRole("button", { name: "Apagar", exact: true }).click()
+  const wiped = await page.getByText("Fotos do corpo apagadas").waitFor({ timeout: 15000 }).then(() => true, () => false)
+  t.check(wiped && Number(photosBefore) > 0 && psql(`select count(*) from private.assets where user_id=${lit(userA)} and kind='body_photo' and state='ready'`) === "0",
+    "Configurações: “Apagar fotos do corpo” apaga todas as fotos pelas rotas reais", `antes=${photosBefore} ${privacyFails.join(",")}`)
+  await page.getByRole("button", { name: "Excluir conta", exact: true }).click()
+  await page.getByLabel(/Digite EXCLUIR/).fill("EXCLUIR")
+  await page.getByRole("button", { name: "Pedir exclusão da conta", exact: true }).click()
+  const asked = await page.getByText("Pedido de exclusão recebido").waitFor({ timeout: 15000 }).then(() => true, () => false)
+  t.check(asked && privacyCalls.includes("POST /v1/privacy/deletion-requests"), "Configurações: “Pedir exclusão da conta” usa POST /v1/privacy/deletion-requests", privacyCalls.join(","))
+  t.check(privacyFails.length === 0, "nenhum botão de privacidade responde erro (sem rota inexistente)", privacyFails.join(","))
+  t.check(psql(`select deletion_state from public.profiles where id=${lit(userA)}`) === "deleting" && psql(`select count(*) from private.deletion_requests where user_id=${lit(userA)}`) === "1",
+    "banco: conta A marcada para exclusão e pedido registrado")
+  t.check(psql(`select count(*) from private.app_sessions where user_id=${lit(userA)} and revoked_at is null`) === "0", "pedido de exclusão encerra todas as sessões de A")
+  const relogin = await api("/auth/sign-in", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: emailA, password: "senhaTeste123" }) })
+  t.check(relogin.status >= 400, "conta em exclusão não consegue entrar de novo", String(relogin.status))
   await browser.close()
 } finally {
   for (const child of children) killTree(child)

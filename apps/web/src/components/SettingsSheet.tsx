@@ -9,7 +9,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { SignOut } from "@phosphor-icons/react"
 import { api } from "../api/client"
 import { isApiError, messageOf } from "../api/errors"
-import { keys, useBalance, useMeasurements, useSaveMeasurements } from "../api/queries"
+import { keys, useBalance, useCapability, useMeasurements, useSaveMeasurements } from "../api/queries"
 import { useStore, type Overlay, type ThemePref } from "../app/store"
 import { useAuth } from "../auth/AuthProvider"
 import { nameError, NAME_MAX, newPasswordError, passwordChecks } from "../auth/validation"
@@ -190,10 +190,15 @@ function PrivacyGroup() {
   const { notify } = useStore()
   const qc = useQueryClient()
   const measurements = useMeasurements(true)
+  const measurementsOn = useCapability("measurements")
   const save = useSaveMeasurements()
   const [confirmWipe, setConfirmWipe] = useState(false)
+  const what = measurementsOn ? "fotos do corpo e medidas" : "fotos do corpo"
   const wipe = useMutation({
-    mutationFn: () => api.me.deleteAllBodyData(),
+    // One request per stored photo, in order, through the same route as the Perfil delete button.
+    mutationFn: async () => {
+      for (const photo of await api.me.bodyPhotos()) await api.me.deleteBodyPhoto(photo.angle)
+    },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: keys.bodyPhotos })
       void qc.invalidateQueries({ queryKey: keys.measurements })
@@ -215,7 +220,7 @@ function PrivacyGroup() {
       ) : null}
       {confirmWipe ? (
         <Notice tone="warning">
-          <p>Apagar as fotos do corpo e as medidas da sua conta? Isso não pode ser desfeito. O Closet e as preferências de compra continuam.</p>
+          <p>Apagar as {what} da sua conta? Isso não pode ser desfeito. O Closet e as preferências de compra continuam.</p>
           <div className="mt-3 flex gap-2">
             <button
               type="button"
@@ -226,7 +231,7 @@ function PrivacyGroup() {
                 wipe.mutate(undefined, {
                   onSuccess: () => {
                     setConfirmWipe(false)
-                    notify("Fotos do corpo e medidas apagadas")
+                    notify(measurementsOn ? "Fotos do corpo e medidas apagadas" : "Fotos do corpo apagadas")
                   },
                   onError: (e) => notify(messageOf(e)),
                 })
@@ -241,7 +246,7 @@ function PrivacyGroup() {
         </Notice>
       ) : (
         <button type="button" className="sa-btn sa-btn-danger sa-btn-sm justify-self-start" onClick={() => setConfirmWipe(true)}>
-          Apagar fotos do corpo e medidas
+          {measurementsOn ? "Apagar fotos do corpo e medidas" : "Apagar fotos do corpo"}
         </button>
       )}
     </div>
@@ -408,7 +413,7 @@ export function DeleteAccountSheet() {
   const { user, signOut } = useAuth()
   const [typed, setTyped] = useState("")
   const fieldId = useId()
-  const del = useMutation({ mutationFn: () => api.me.delete() })
+  const del = useMutation({ mutationFn: () => api.me.requestDeletion() })
   const ok = typed.trim().toUpperCase() === CONFIRM_WORD
 
   const run = (): void => {
@@ -418,7 +423,7 @@ export function DeleteAccountSheet() {
         resetDraft()
         void signOut().finally(() => {
           go("explorar")
-          notify("Sua conta foi excluída")
+          notify("Pedido de exclusão recebido")
         })
       },
       onError: (e) => notify(messageOf(e)),
@@ -427,12 +432,12 @@ export function DeleteAccountSheet() {
 
   return (
     <Sheet
-      title="Excluir conta"
+      title="Pedir exclusão da conta"
       onClose={close}
       footer={
         <div className="grid gap-2">
           <button type="button" className="sa-btn sa-btn-danger sa-btn-block" aria-disabled={!ok || del.isPending || undefined} onClick={run}>
-            {del.isPending ? "Excluindo…" : "Excluir conta definitivamente"}
+            {del.isPending ? "Enviando pedido…" : "Pedir exclusão da conta"}
           </button>
           <button type="button" className="sa-btn sa-btn-secondary sa-btn-block" onClick={close}>
             Cancelar
@@ -443,7 +448,8 @@ export function DeleteAccountSheet() {
       <div className="grid gap-4">
         <Notice tone="warning">
           <p className="font-semibold">Isso não pode ser desfeito.</p>
-          <p className="mt-1">Apagamos a conta {user?.email ? <strong>{user.email}</strong> : null}, o Closet, os looks, as preferências, as fotos do corpo, as medidas e o saldo de moedas.</p>
+          <p className="mt-1">Ao confirmar, a conta {user?.email ? <strong>{user.email}</strong> : null} sai do ar na hora: as sessões são encerradas, a autorização de uso da foto é revogada e gerações pendentes são canceladas. As fotos e imagens guardadas pelo StylAI entram na fila para serem apagadas, e a exclusão dos demais dados é concluída em seguida.</p>
+          <p className="mt-1">Imagens já enviadas ao serviço de geração (Segmind) não são apagadas por este pedido. Dúvidas: <a className="sa-link" href="mailto:stylaioficial@gmail.com">stylaioficial@gmail.com</a>.</p>
         </Notice>
         <div>
           <label htmlFor={fieldId} className="sa-fieldlabel">
